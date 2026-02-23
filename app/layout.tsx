@@ -1,0 +1,59 @@
+import type { Metadata, Viewport } from 'next'
+import './globals.css'
+import { SpeechProviderWrapper } from '@/components/SpeechProviderWrapper'
+// eslint-disable-next-line @next/next/no-page-custom-font
+import { Lora } from 'next/font/google'
+
+const lora = Lora({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-lora',
+})
+
+export const metadata: Metadata = {
+  title: 'Pulse',
+  description: 'AI-powered interest channel briefings',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Pulse',
+  },
+  icons: {
+    apple: '/icons/icon-192.png',
+  },
+}
+
+export const viewport: Viewport = {
+  themeColor: '#6366f1',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
+}
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body className={`${lora.variable} bg-warm-900 text-warm-200 antialiased`}>
+        <SpeechProviderWrapper>
+          {children}
+        </SpeechProviderWrapper>
+
+        {/* Register service worker */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', () => {
+                  navigator.serviceWorker.register('/sw.js').catch(() => {});
+                });
+              }
+            `,
+          }}
+        />
+      </body>
+    </html>
+  )
+}

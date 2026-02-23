@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  /* Warm dark background — prevents white flash on iOS rubber-band scroll */
+  background-color: #1a1714;
+}
+
+body {
+  background-color: #1a1714;
+}
+
+/* Thin warm scrollbar */
+::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #3a342f;
+  border-radius: 3px;
+}
+
+/* Smooth tap highlight removal on mobile */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Lora for briefing prose */
+.prose-serif {
+  font-family: 'Lora', Georgia, Cambria, serif;
+}

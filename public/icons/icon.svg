@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#4f46e5"/>
+  <!-- Lightning bolt (Pulse icon) -->
+  <path
+    d="M296 80L160 272h96v160l160-192h-96z"
+    fill="white"
+    stroke="none"
+  />
+</svg>
+
+<!--
+  To generate PNG icons from this SVG, run:
+    npx sharp-cli -i public/icons/icon.svg -o public/icons/icon-192.png --resize 192
+    npx sharp-cli -i public/icons/icon.svg -o public/icons/icon-512.png --resize 512
+    npx sharp-cli -i public/icons/icon.svg -o public/icons/icon-maskable-512.png --resize 512
+
+  Or use https://maskable.app/editor to create the maskable variant.
+  Or use https://realfavicongenerator.net to generate a full icon set.
+-->
