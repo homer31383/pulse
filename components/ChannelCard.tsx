@@ -47,10 +47,10 @@ export function ChannelCard({ channel, isSelected, onToggle, groupId }: ChannelC
           'relative flex items-center gap-2 p-4 rounded-2xl border cursor-pointer',
           'transition-all duration-150 select-none',
           isDragging
-            ? 'bg-slate-700/80 border-slate-600 shadow-xl scale-[1.02]'
+            ? 'bg-warm-700/80 border-warm-600 shadow-xl scale-[1.02]'
             : isSelected
-            ? 'bg-indigo-950/60 border-indigo-500/50 shadow-sm shadow-indigo-500/10'
-            : 'bg-slate-800/50 border-slate-700/50 hover:border-slate-600 active:scale-[0.99]',
+            ? 'bg-brand-950/60 border-brand-500/50 shadow-sm shadow-brand-500/10'
+            : 'bg-warm-800/50 border-warm-700/50 hover:border-warm-600 active:scale-[0.99]',
         ].join(' ')}
       >
         {/* Drag handle */}
@@ -59,7 +59,7 @@ export function ChannelCard({ channel, isSelected, onToggle, groupId }: ChannelC
           {...listeners}
           onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.stopPropagation()}
-          className="touch-none flex-shrink-0 p-1 -ml-1 text-slate-600 hover:text-slate-400 cursor-grab active:cursor-grabbing"
+          className="touch-none flex-shrink-0 p-1 -ml-1 text-warm-600 hover:text-warm-400 cursor-grab active:cursor-grabbing"
           tabIndex={-1}
           aria-label="Drag to reorder"
           suppressHydrationWarning
@@ -73,7 +73,7 @@ export function ChannelCard({ channel, isSelected, onToggle, groupId }: ChannelC
         <div
           className={[
             'flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-150',
-            isSelected ? 'bg-indigo-500 border-indigo-500' : 'border-slate-600',
+            isSelected ? 'bg-brand-500 border-brand-500' : 'border-warm-600',
           ].join(' ')}
         >
           {isSelected && (
@@ -85,12 +85,12 @@ export function ChannelCard({ channel, isSelected, onToggle, groupId }: ChannelC
 
         {/* Text */}
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm text-slate-100 truncate">{channel.name}</p>
+          <p className="font-semibold text-sm text-warm-100 truncate">{channel.name}</p>
           {channel.description && (
-            <p className="text-xs text-slate-500 mt-0.5 truncate">{channel.description}</p>
+            <p className="text-xs text-warm-500 mt-0.5 truncate">{channel.description}</p>
           )}
           {lastBriefed && (
-            <p className="text-xs text-slate-600 mt-1">Last briefed {lastBriefed}</p>
+            <p className="text-xs text-warm-600 mt-1">Last briefed {lastBriefed}</p>
           )}
         </div>
 
@@ -98,7 +98,7 @@ export function ChannelCard({ channel, isSelected, onToggle, groupId }: ChannelC
         <Link
           href={`/channels/${channel.id}/config`}
           onClick={(e) => e.stopPropagation()}
-          className="flex-shrink-0 p-1.5 rounded-lg text-slate-600 hover:text-slate-300 hover:bg-slate-700/50 transition-colors"
+          className="flex-shrink-0 p-1.5 rounded-lg text-warm-600 hover:text-warm-300 hover:bg-warm-700/50 transition-colors"
           aria-label={`Configure ${channel.name}`}
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

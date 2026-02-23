@@ -183,22 +183,22 @@ export function BriefingHistorySection({ channelName, channelId, initialBriefing
   }
 
   return (
-    <div className="border-t border-slate-800 pt-6">
+    <div className="border-t border-warm-800 pt-6">
       {/* Section header / toggle */}
       <button
         onClick={() => setIsOpen((v) => !v)}
         className="w-full flex items-center justify-between group"
       >
-        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider group-hover:text-slate-300 transition-colors">
+        <span className="text-xs font-semibold text-warm-400 uppercase tracking-wider group-hover:text-warm-300 transition-colors">
           Briefing history
           {briefings.length > 0 && (
-            <span className="ml-2 inline-flex items-center justify-center w-5 h-5 bg-slate-700 rounded-full text-[10px] font-bold text-slate-300 normal-case tracking-normal">
+            <span className="ml-2 inline-flex items-center justify-center w-5 h-5 bg-warm-700 rounded-full text-[10px] font-bold text-warm-300 normal-case tracking-normal">
               {briefings.length}
             </span>
           )}
         </span>
         <svg
-          className={`w-4 h-4 text-slate-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+          className={`w-4 h-4 text-warm-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
           fill="none" viewBox="0 0 24 24" stroke="currentColor"
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -208,7 +208,7 @@ export function BriefingHistorySection({ channelName, channelId, initialBriefing
       {isOpen && (
         <div className="mt-4 space-y-2">
           {briefings.length === 0 ? (
-            <p className="text-sm text-slate-600 py-2">No briefings yet for this channel.</p>
+            <p className="text-sm text-warm-600 py-2">No briefings yet for this channel.</p>
           ) : (
             briefings.map((b) => {
               const isExpanded = expandedId === b.id
@@ -219,25 +219,25 @@ export function BriefingHistorySection({ channelName, channelId, initialBriefing
               return (
                 <div
                   key={b.id}
-                  className="bg-slate-800/40 border border-slate-700/40 rounded-xl overflow-hidden"
+                  className="bg-warm-800/40 border border-warm-700/40 rounded-xl overflow-hidden"
                 >
                   {/* Row header */}
                   <button
                     onClick={() => setExpandedId(isExpanded ? null : b.id)}
-                    className="w-full px-4 py-3 flex items-start gap-3 text-left hover:bg-slate-700/20 transition-colors"
+                    className="w-full px-4 py-3 flex items-start gap-3 text-left hover:bg-warm-700/20 transition-colors"
                   >
                     <svg
-                      className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-slate-500 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}
+                      className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-warm-500 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}
                       fill="none" viewBox="0 0 24 24" stroke="currentColor"
                     >
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
                     </svg>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs text-slate-500 mb-0.5">{formatDate(b.created_at)}</p>
-                      <p className="text-sm text-slate-300 truncate">{getFirstLine(b.content)}</p>
+                      <p className="text-xs text-warm-500 mb-0.5">{formatDate(b.created_at)}</p>
+                      <p className="text-sm text-warm-300 truncate">{getFirstLine(b.content)}</p>
                     </div>
                     {b.cost_usd != null && (
-                      <span className="flex-shrink-0 text-xs text-slate-600 ml-2">
+                      <span className="flex-shrink-0 text-xs text-warm-600 ml-2">
                         {formatCost(b.cost_usd)}
                       </span>
                     )}
@@ -247,11 +247,11 @@ export function BriefingHistorySection({ channelName, channelId, initialBriefing
                   {isExpanded && (
                     <div className="px-4 pb-4">
                       {/* Action buttons */}
-                      <div className="flex items-center gap-2 mb-4 pb-3 border-b border-slate-700/40">
+                      <div className="flex items-center gap-2 mb-4 pb-3 border-b border-warm-700/40">
                         <button
                           onClick={() => handleExportPdf(b)}
                           disabled={isThisExporting}
-                          className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 bg-slate-700/50 hover:bg-slate-700 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                          className="flex items-center gap-1.5 text-xs text-warm-400 hover:text-warm-200 bg-warm-700/50 hover:bg-warm-700 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
                         >
                           {isThisExporting ? (
                             <>
@@ -274,7 +274,7 @@ export function BriefingHistorySection({ channelName, channelId, initialBriefing
                         {!isConfirmingDelete ? (
                           <button
                             onClick={() => setConfirmDeleteId(b.id)}
-                            className="flex items-center gap-1.5 text-xs text-red-400/70 hover:text-red-300 bg-slate-700/50 hover:bg-red-950/40 px-3 py-1.5 rounded-lg transition-colors"
+                            className="flex items-center gap-1.5 text-xs text-red-400/70 hover:text-red-300 bg-warm-700/50 hover:bg-red-950/40 px-3 py-1.5 rounded-lg transition-colors"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -294,7 +294,7 @@ export function BriefingHistorySection({ channelName, channelId, initialBriefing
                             <button
                               onClick={() => setConfirmDeleteId(null)}
                               disabled={isThisDeleting}
-                              className="text-xs bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-slate-300 px-2.5 py-1 rounded-lg transition-colors"
+                              className="text-xs bg-warm-700 hover:bg-warm-600 disabled:opacity-50 text-warm-300 px-2.5 py-1 rounded-lg transition-colors"
                             >
                               Cancel
                             </button>
@@ -302,14 +302,14 @@ export function BriefingHistorySection({ channelName, channelId, initialBriefing
                         )}
 
                         {b.input_tokens != null && (
-                          <span className="ml-auto text-xs text-slate-600">
+                          <span className="ml-auto text-xs text-warm-600">
                             {b.input_tokens.toLocaleString()} in / {b.output_tokens?.toLocaleString()} out tokens
                           </span>
                         )}
                       </div>
 
                       {/* Briefing content */}
-                      <div className="prose prose-sm prose-invert max-w-none text-slate-300 [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_a]:text-indigo-400 [&_a]:no-underline hover:[&_a]:underline [&_ul]:list-disc [&_ol]:list-decimal">
+                      <div className="prose prose-sm prose-invert max-w-none text-warm-300 [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_a]:text-brand-400 [&_a]:no-underline hover:[&_a]:underline [&_ul]:list-disc [&_ol]:list-decimal">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
                           {b.content}
                         </ReactMarkdown>
@@ -317,17 +317,17 @@ export function BriefingHistorySection({ channelName, channelId, initialBriefing
 
                       {/* Sources */}
                       {b.sources && b.sources.length > 0 && (
-                        <div className="mt-4 pt-3 border-t border-slate-700/40">
-                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Sources</p>
+                        <div className="mt-4 pt-3 border-t border-warm-700/40">
+                          <p className="text-xs font-semibold text-warm-500 uppercase tracking-wider mb-2">Sources</p>
                           <ol className="space-y-1.5">
                             {(b.sources as Source[]).map((src, i) => (
                               <li key={i} className="flex gap-2 text-xs">
-                                <span className="text-slate-600 flex-shrink-0">{i + 1}.</span>
+                                <span className="text-warm-600 flex-shrink-0">{i + 1}.</span>
                                 <a
                                   href={src.url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-indigo-400 hover:text-indigo-300 hover:underline truncate"
+                                  className="text-brand-400 hover:text-brand-300 hover:underline truncate"
                                 >
                                   {src.title || src.url}
                                 </a>

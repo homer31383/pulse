@@ -46,14 +46,14 @@ export function BriefingHistoryClient({ briefings }: Props) {
   if (briefings.length === 0) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-20 text-center">
-        <div className="w-14 h-14 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
-          <svg className="w-7 h-7 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className="w-14 h-14 bg-warm-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <svg className="w-7 h-7 text-warm-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
               d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
         </div>
-        <p className="text-slate-400 font-medium mb-1">No briefings yet</p>
-        <p className="text-slate-600 text-sm">
+        <p className="text-warm-400 font-medium mb-1">No briefings yet</p>
+        <p className="text-warm-600 text-sm">
           Generate a briefing from the home screen to see it here.
         </p>
       </div>
@@ -65,7 +65,7 @@ export function BriefingHistoryClient({ briefings }: Props) {
       {/* Search */}
       <div className="relative">
         <svg
-          className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none"
+          className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-warm-500 pointer-events-none"
           fill="none" viewBox="0 0 24 24" stroke="currentColor"
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -76,13 +76,13 @@ export function BriefingHistoryClient({ briefings }: Props) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search briefings…"
-          className="w-full bg-slate-800/60 border border-slate-700/60 rounded-xl pl-10 pr-4 py-2.5 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 text-sm transition-colors"
+          className="w-full bg-warm-800/60 border border-warm-700/60 rounded-xl pl-10 pr-4 py-2.5 text-warm-100 placeholder-warm-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/50 text-sm transition-colors"
         />
       </div>
 
       {/* No results */}
       {filtered.length === 0 && (
-        <p className="text-center text-slate-500 text-sm py-8">
+        <p className="text-center text-warm-500 text-sm py-8">
           No briefings match &ldquo;{search}&rdquo;
         </p>
       )}
@@ -95,17 +95,17 @@ export function BriefingHistoryClient({ briefings }: Props) {
         return (
           <div
             key={briefing.id}
-            className="bg-slate-800/50 border border-slate-700/50 rounded-2xl overflow-hidden"
+            className="bg-warm-800/50 border border-warm-700/50 rounded-2xl overflow-hidden"
           >
             {/* Card header — always visible, click to expand */}
             <button
               onClick={() => setExpandedId(isExpanded ? null : briefing.id)}
-              className="w-full text-left px-4 py-4 flex items-start gap-3 hover:bg-slate-800/80 transition-colors"
+              className="w-full text-left px-4 py-4 flex items-start gap-3 hover:bg-warm-800/80 transition-colors"
             >
               {/* Expand icon */}
               <span className="flex-shrink-0 mt-0.5">
                 <svg
-                  className={`w-4 h-4 text-slate-500 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+                  className={`w-4 h-4 text-warm-500 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
                   fill="none" viewBox="0 0 24 24" stroke="currentColor"
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -115,22 +115,22 @@ export function BriefingHistoryClient({ briefings }: Props) {
               <div className="flex-1 min-w-0">
                 {/* Meta row */}
                 <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                  <span className="text-xs font-medium text-slate-300">
+                  <span className="text-xs font-medium text-warm-300">
                     {formatDate(briefing.created_at)}
                   </span>
                   {briefing.sources.length > 0 && (
-                    <span className="text-xs text-slate-500">
+                    <span className="text-xs text-warm-500">
                       · {briefing.sources.length} source{briefing.sources.length !== 1 ? 's' : ''}
                     </span>
                   )}
-                  <span className="text-xs text-slate-600 font-mono bg-slate-900/60 px-1.5 py-0.5 rounded">
+                  <span className="text-xs text-warm-600 font-mono bg-warm-900/60 px-1.5 py-0.5 rounded">
                     {briefing.model}
                   </span>
                 </div>
 
                 {/* Preview text — hidden when expanded */}
                 {!isExpanded && (
-                  <p className="text-sm text-slate-400 leading-relaxed line-clamp-3">
+                  <p className="text-sm text-warm-400 leading-relaxed line-clamp-3">
                     {preview}
                     {briefing.content.length > 220 ? '…' : ''}
                   </p>
@@ -140,9 +140,9 @@ export function BriefingHistoryClient({ briefings }: Props) {
 
             {/* Expanded content */}
             {isExpanded && (
-              <div className="border-t border-slate-700/50">
+              <div className="border-t border-warm-700/50">
                 {/* Markdown body */}
-                <div className="px-5 py-5 prose prose-invert prose-sm max-w-none prose-headings:font-semibold prose-headings:text-slate-100 prose-p:text-slate-300 prose-p:leading-relaxed prose-li:text-slate-300 prose-strong:text-slate-100 prose-a:text-indigo-400 prose-a:no-underline hover:prose-a:underline prose-hr:border-slate-700 prose-code:text-indigo-300 prose-code:bg-slate-900/60 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-blockquote:border-indigo-500/50 prose-blockquote:text-slate-400">
+                <div className="px-5 py-5 font-serif prose prose-invert prose-sm max-w-none prose-headings:font-semibold prose-headings:font-sans prose-headings:text-warm-100 prose-p:text-warm-300 prose-p:leading-relaxed prose-li:text-warm-300 prose-strong:text-warm-100 prose-a:text-brand-400 prose-a:no-underline hover:prose-a:underline prose-hr:border-warm-700 prose-code:text-brand-300 prose-code:bg-warm-900/60 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-blockquote:border-brand-500/50 prose-blockquote:text-warm-400">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {briefing.content}
                   </ReactMarkdown>
@@ -150,8 +150,8 @@ export function BriefingHistoryClient({ briefings }: Props) {
 
                 {/* Sources */}
                 {briefing.sources.length > 0 && (
-                  <div className="px-5 pb-5 border-t border-slate-700/40 pt-4">
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                  <div className="px-5 pb-5 border-t border-warm-700/40 pt-4">
+                    <p className="text-xs font-semibold text-warm-500 uppercase tracking-wider mb-2">
                       Sources
                     </p>
                     <div className="flex flex-col gap-1.5">
@@ -161,7 +161,7 @@ export function BriefingHistoryClient({ briefings }: Props) {
                           href={src.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-xs text-indigo-400/80 hover:text-indigo-300 truncate transition-colors"
+                          className="text-xs text-brand-400/80 hover:text-brand-300 truncate transition-colors"
                           onClick={(e) => e.stopPropagation()}
                         >
                           {src.title || src.url}

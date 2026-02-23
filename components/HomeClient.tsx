@@ -348,23 +348,23 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
     .reduce((sum, b) => sum + (b.usage?.costUsd ?? 0), 0)
 
   return (
-    <div className="min-h-screen bg-slate-900 pb-32">
+    <div className="min-h-screen bg-warm-900 pb-32">
       {/* ── Header ── */}
-      <header className="sticky top-0 z-20 bg-slate-900/95 backdrop-blur-sm border-b border-slate-800 px-4 py-3">
+      <header className="sticky top-0 z-20 bg-warm-900/95 backdrop-blur-sm border-b border-warm-800 px-4 py-3">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-indigo-600 rounded-lg flex items-center justify-center shadow shadow-indigo-500/30">
+            <div className="w-7 h-7 bg-brand-600 rounded-lg flex items-center justify-center shadow shadow-brand-500/30">
               <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </div>
-            <h1 className="text-xl font-bold text-white tracking-tight">Pulse</h1>
+            <h1 className="text-xl font-bold text-warm-100 tracking-tight">Pulse</h1>
           </div>
           <div className="flex items-center gap-3">
             {settings.highlights_enabled && (
               <Link
                 href="/notes"
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+                className="p-1.5 rounded-lg text-warm-400 hover:text-warm-200 hover:bg-warm-800 transition-colors"
                 aria-label="Saved notes"
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -376,7 +376,7 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
             {settings.digest_mode && (
               <Link
                 href="/digest-history"
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+                className="p-1.5 rounded-lg text-warm-400 hover:text-warm-200 hover:bg-warm-800 transition-colors"
                 aria-label="Digest history"
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -387,7 +387,7 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
             )}
             <Link
               href="/weekly-summary-history"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+              className="p-1.5 rounded-lg text-warm-400 hover:text-warm-200 hover:bg-warm-800 transition-colors"
               aria-label="Weekly summary history"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -397,7 +397,7 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
             </Link>
             <Link
               href="/settings"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+              className="p-1.5 rounded-lg text-warm-400 hover:text-warm-200 hover:bg-warm-800 transition-colors"
               aria-label="Settings"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -408,7 +408,7 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
             </Link>
             <Link
               href="/channels/new/config"
-              className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors font-medium"
+              className="text-sm text-brand-400 hover:text-brand-300 transition-colors font-medium"
             >
               + Channel
             </Link>
@@ -420,19 +420,19 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
         {/* ── Empty state ── */}
         {channels.length === 0 ? (
           <div className="text-center py-20">
-            <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-5">
-              <svg className="w-8 h-8 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="w-16 h-16 bg-warm-800 rounded-2xl flex items-center justify-center mx-auto mb-5">
+              <svg className="w-8 h-8 text-warm-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                   d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
             </div>
-            <h2 className="text-lg font-semibold text-slate-300 mb-2">No channels yet</h2>
-            <p className="text-slate-500 text-sm mb-6 max-w-xs mx-auto">
+            <h2 className="text-lg font-semibold text-warm-300 mb-2">No channels yet</h2>
+            <p className="text-warm-500 text-sm mb-6 max-w-xs mx-auto">
               Create an interest channel and Pulse will brief you daily using AI web search.
             </p>
             <Link
               href="/channels/new/config"
-              className="inline-block bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2.5 rounded-xl text-sm font-semibold transition-colors"
+              className="inline-block bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-xl text-sm font-semibold transition-colors"
             >
               Create your first channel
             </Link>
@@ -441,14 +441,14 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
           <>
             {/* ── Channel list header ── */}
             <div className="flex items-center justify-between mb-3">
-              <p className="text-sm text-slate-400">
+              <p className="text-sm text-warm-400">
                 {selectedCount > 0
                   ? `${selectedCount} of ${channels.length} selected`
                   : digestMode ? 'Select channels for digest' : 'Select channels to brief'}
               </p>
               <button
                 onClick={toggleAll}
-                className="text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors"
+                className="text-xs font-medium text-brand-400 hover:text-brand-300 transition-colors"
               >
                 {allSelected ? 'Deselect all' : 'Select all'}
               </button>
@@ -507,12 +507,12 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
                 onChange={(e) => setNewGroupName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && createGroup()}
                 placeholder="New group name…"
-                className="flex-1 bg-slate-800/40 border border-slate-700/40 rounded-lg px-3 py-1.5 text-xs text-slate-300 placeholder-slate-600 focus:outline-none focus:border-slate-600 transition-colors"
+                className="flex-1 bg-warm-800/40 border border-warm-700/40 rounded-lg px-3 py-1.5 text-xs text-warm-300 placeholder-warm-600 focus:outline-none focus:border-warm-600 transition-colors"
               />
               <button
                 onClick={createGroup}
                 disabled={!newGroupName.trim() || isCreatingGroup}
-                className="text-xs text-indigo-400 hover:text-indigo-300 disabled:text-slate-600 disabled:cursor-not-allowed px-2 py-1.5 transition-colors"
+                className="text-xs text-brand-400 hover:text-brand-300 disabled:text-warm-600 disabled:cursor-not-allowed px-2 py-1.5 transition-colors"
               >
                 + Group
               </button>
@@ -530,8 +530,8 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
                   className={[
                     'w-full flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-medium transition-colors',
                     isCrossChannelGenerating
-                      ? 'border-slate-700 text-slate-500 cursor-not-allowed'
-                      : 'border-slate-700 text-slate-400 hover:border-indigo-500/50 hover:text-indigo-400',
+                      ? 'border-warm-700 text-warm-500 cursor-not-allowed'
+                      : 'border-warm-700 text-warm-400 hover:border-brand-500/50 hover:text-brand-400',
                   ].join(' ')}
                 >
                   {isCrossChannelGenerating ? (
@@ -563,10 +563,10 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
                 className={[
                   'w-full flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-medium transition-colors',
                   isWeeklySummaryGenerating
-                    ? 'border-slate-700 text-slate-500 cursor-not-allowed'
+                    ? 'border-warm-700 text-warm-500 cursor-not-allowed'
                     : isSunday
                     ? 'border-violet-500/60 text-violet-300 hover:border-violet-400 hover:text-violet-200 bg-violet-900/10'
-                    : 'border-slate-700 text-slate-400 hover:border-violet-500/50 hover:text-violet-400',
+                    : 'border-warm-700 text-warm-400 hover:border-violet-500/50 hover:text-violet-400',
                 ].join(' ')}
               >
                 {isWeeklySummaryGenerating ? (
@@ -595,12 +595,12 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
         {hasBriefings && (
           <section className="mt-8 space-y-4">
             <div className="flex items-center gap-2">
-              <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-widest">
+              <h2 className="text-xs font-semibold text-warm-400 uppercase tracking-widest">
                 Briefings
               </h2>
-              <div className="flex-1 h-px bg-slate-800" />
+              <div className="flex-1 h-px bg-warm-800" />
               {sessionCost > 0 && (
-                <span className="text-xs text-slate-600" title="Session cost">
+                <span className="text-xs text-warm-600" title="Session cost">
                   {formatCost(sessionCost)}
                 </span>
               )}
@@ -624,7 +624,7 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
 
       {/* ── Fixed generate button ── */}
       {channels.length > 0 && (
-        <div className="fixed bottom-0 inset-x-0 px-4 pb-6 pt-10 bg-gradient-to-t from-slate-900 via-slate-900/90 to-transparent pointer-events-none">
+        <div className="fixed bottom-0 inset-x-0 px-4 pb-6 pt-10 bg-gradient-to-t from-warm-900 via-warm-900/90 to-transparent pointer-events-none">
           <div className="max-w-2xl mx-auto pointer-events-auto">
             <button
               onClick={digestMode ? generateDigest : generateBriefings}
@@ -633,8 +633,8 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
                 'w-full font-semibold py-4 rounded-2xl text-base transition-all duration-200',
                 'flex items-center justify-center gap-2',
                 selectedCount === 0 || isGenerating
-                  ? 'bg-slate-700/60 text-slate-500 cursor-not-allowed'
-                  : 'bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] text-white shadow-lg shadow-indigo-600/25',
+                  ? 'bg-warm-700/60 text-warm-500 cursor-not-allowed'
+                  : 'bg-brand-600 hover:bg-brand-500 active:scale-[0.98] text-white shadow-lg shadow-brand-600/25',
               ].join(' ')}
             >
               {isGenerating ? (

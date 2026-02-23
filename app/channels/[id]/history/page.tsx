@@ -26,13 +26,13 @@ export default async function BriefingHistoryPage({ params }: PageProps) {
   const briefings = (briefingsResult.data ?? []) as Briefing[]
 
   return (
-    <div className="min-h-screen bg-slate-900">
+    <div className="min-h-screen bg-warm-900">
       {/* Header */}
-      <header className="sticky top-0 z-20 bg-slate-900/95 backdrop-blur-sm border-b border-slate-800 px-4 py-3">
+      <header className="sticky top-0 z-20 bg-warm-900/95 backdrop-blur-sm border-b border-warm-800 px-4 py-3">
         <div className="max-w-2xl mx-auto flex items-center gap-3">
           <Link
             href={`/channels/${id}/config`}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors flex-shrink-0"
+            className="p-1.5 rounded-lg text-warm-400 hover:text-warm-200 hover:bg-warm-800 transition-colors flex-shrink-0"
             aria-label="Back to config"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -40,8 +40,8 @@ export default async function BriefingHistoryPage({ params }: PageProps) {
             </svg>
           </Link>
           <div className="flex-1 min-w-0">
-            <h1 className="text-lg font-semibold text-white truncate">{channel.name}</h1>
-            <p className="text-xs text-slate-500">
+            <h1 className="text-lg font-semibold text-warm-100 truncate">{channel.name}</h1>
+            <p className="text-xs text-warm-500">
               {briefings.length === 0
                 ? 'No briefings yet'
                 : `${briefings.length} briefing${briefings.length !== 1 ? 's' : ''}`}

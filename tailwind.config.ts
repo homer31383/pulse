@@ -40,7 +40,7 @@ const config: Config = {
         },
       },
       fontFamily: {
-        serif: ['Lora', 'Georgia', 'Cambria', 'serif'],
+        serif: ['var(--font-lora)', 'Georgia', 'Cambria', 'serif'],
       },
       animation: {
         'pulse-dot': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',

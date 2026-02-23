@@ -227,24 +227,24 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
       : 'Save changes'
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col">
+    <div className="min-h-screen bg-warm-900 flex flex-col">
       {/* ── Header ── */}
-      <header className="sticky top-0 z-20 bg-slate-900/95 backdrop-blur-sm border-b border-slate-800">
+      <header className="sticky top-0 z-20 bg-warm-900/95 backdrop-blur-sm border-b border-warm-800">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
           <Link
             href="/"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors flex-shrink-0"
+            className="p-1.5 rounded-lg text-warm-400 hover:text-warm-200 hover:bg-warm-800 transition-colors flex-shrink-0"
             aria-label="Back"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </Link>
-          <h1 className="text-lg font-semibold text-white truncate flex-1">{initialChannel.name}</h1>
+          <h1 className="text-lg font-semibold text-warm-100 truncate flex-1">{initialChannel.name}</h1>
           {/* History link */}
           <Link
             href={`/channels/${initialChannel.id}/history`}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors flex-shrink-0"
+            className="p-1.5 rounded-lg text-warm-400 hover:text-warm-200 hover:bg-warm-800 transition-colors flex-shrink-0"
             aria-label="View briefing history"
             title="Briefing history"
           >
@@ -257,7 +257,7 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
 
         {/* Tab bar */}
         <div className="max-w-2xl mx-auto px-4 pb-3">
-          <div className="flex gap-1 bg-slate-800/60 rounded-xl p-1">
+          <div className="flex gap-1 bg-warm-800/60 rounded-xl p-1">
             {(['settings', 'chat'] as const).map((t) => (
               <button
                 key={t}
@@ -265,8 +265,8 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
                 className={[
                   'flex-1 py-1.5 rounded-lg text-sm font-medium transition-all',
                   tab === t
-                    ? 'bg-slate-700 text-white shadow'
-                    : 'text-slate-400 hover:text-slate-200',
+                    ? 'bg-warm-700 text-white shadow'
+                    : 'text-warm-400 hover:text-warm-200',
                 ].join(' ')}
               >
                 {t === 'settings' ? 'Settings' : 'Chat with Claude'}
@@ -281,14 +281,14 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
         <main className="max-w-2xl mx-auto w-full px-4 pt-6 pb-32 space-y-6">
           {/* Name */}
           <div className="space-y-1.5">
-            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
+            <label className="block text-xs font-semibold text-warm-400 uppercase tracking-wider">
               Channel name
             </label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full bg-slate-800/60 border border-slate-700/60 rounded-xl px-4 py-3 text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 text-sm transition-colors"
+              className="w-full bg-warm-800/60 border border-warm-700/60 rounded-xl px-4 py-3 text-warm-100 placeholder-warm-600 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/50 text-sm transition-colors"
               placeholder="e.g. AI & Machine Learning"
             />
           </div>
@@ -296,13 +296,13 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
           {/* Group */}
           {groups.length > 0 && (
             <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                Group <span className="text-slate-600 normal-case font-normal">(optional)</span>
+              <label className="block text-xs font-semibold text-warm-400 uppercase tracking-wider">
+                Group <span className="text-warm-600 normal-case font-normal">(optional)</span>
               </label>
               <select
                 value={groupId ?? ''}
                 onChange={(e) => setGroupId(e.target.value || null)}
-                className="w-full bg-slate-800/60 border border-slate-700/60 rounded-xl px-4 py-3 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 text-sm transition-colors"
+                className="w-full bg-warm-800/60 border border-warm-700/60 rounded-xl px-4 py-3 text-warm-100 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/50 text-sm transition-colors"
               >
                 <option value="">No group</option>
                 {groups.map((g) => (
@@ -314,41 +314,41 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
 
           {/* Description */}
           <div className="space-y-1.5">
-            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
-              Description <span className="text-slate-600 normal-case font-normal">(optional)</span>
+            <label className="block text-xs font-semibold text-warm-400 uppercase tracking-wider">
+              Description <span className="text-warm-600 normal-case font-normal">(optional)</span>
             </label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
-              className="w-full bg-slate-800/60 border border-slate-700/60 rounded-xl px-4 py-3 text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 text-sm transition-colors resize-none"
+              className="w-full bg-warm-800/60 border border-warm-700/60 rounded-xl px-4 py-3 text-warm-100 placeholder-warm-600 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/50 text-sm transition-colors resize-none"
               placeholder="A short description of this channel"
             />
           </div>
 
           {/* Instructions */}
           <div className="space-y-1.5">
-            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
+            <label className="block text-xs font-semibold text-warm-400 uppercase tracking-wider">
               Instructions
             </label>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-warm-500">
               System prompt given to Claude when generating briefings. Use the Chat tab to develop these with AI assistance.
             </p>
             <textarea
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
               rows={7}
-              className="w-full bg-slate-800/60 border border-slate-700/60 rounded-xl px-4 py-3 text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 text-sm transition-colors resize-none font-mono"
+              className="w-full bg-warm-800/60 border border-warm-700/60 rounded-xl px-4 py-3 text-warm-100 placeholder-warm-600 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/50 text-sm transition-colors resize-none font-mono"
               placeholder="You are a research assistant. Search the web and provide a concise briefing about…"
             />
           </div>
 
           {/* Search queries */}
           <div className="space-y-2">
-            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
+            <label className="block text-xs font-semibold text-warm-400 uppercase tracking-wider">
               Search queries
             </label>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-warm-500">
               Keywords and phrases used to search the web during briefing generation.
             </p>
 
@@ -358,12 +358,12 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
                 {searchQueries.map((q, i) => (
                   <span
                     key={i}
-                    className="flex items-center gap-1.5 bg-indigo-900/40 border border-indigo-700/40 text-indigo-300 text-xs px-2.5 py-1 rounded-full"
+                    className="flex items-center gap-1.5 bg-brand-900/40 border border-brand-700/40 text-brand-300 text-xs px-2.5 py-1 rounded-full"
                   >
                     {q}
                     <button
                       onClick={() => removeQuery(i)}
-                      className="text-indigo-400/60 hover:text-indigo-200 transition-colors"
+                      className="text-brand-400/60 hover:text-brand-200 transition-colors"
                       aria-label={`Remove "${q}"`}
                     >
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -383,12 +383,12 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
                 onChange={(e) => setNewQuery(e.target.value)}
                 onKeyDown={handleQueryKeyDown}
                 placeholder="Add a search query…"
-                className="flex-1 bg-slate-800/60 border border-slate-700/60 rounded-xl px-4 py-2.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 text-sm transition-colors"
+                className="flex-1 bg-warm-800/60 border border-warm-700/60 rounded-xl px-4 py-2.5 text-warm-100 placeholder-warm-600 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/50 text-sm transition-colors"
               />
               <button
                 onClick={addQuery}
                 disabled={!newQuery.trim()}
-                className="px-4 py-2.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 text-sm font-medium rounded-xl transition-colors"
+                className="px-4 py-2.5 bg-warm-700 hover:bg-warm-600 disabled:opacity-40 disabled:cursor-not-allowed text-warm-200 text-sm font-medium rounded-xl transition-colors"
               >
                 Add
               </button>
@@ -403,8 +403,8 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
           />
 
           {/* ── Danger zone ── */}
-          <div className="mt-2 pt-6 border-t border-slate-800">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+          <div className="mt-2 pt-6 border-t border-warm-800">
+            <p className="text-xs font-semibold text-warm-500 uppercase tracking-wider mb-3">
               Danger zone
             </p>
 
@@ -433,7 +433,7 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
                   <button
                     onClick={() => setDeleteStep('idle')}
                     disabled={isDeleting}
-                    className="flex-1 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-slate-200 text-sm font-medium transition-colors"
+                    className="flex-1 py-2 rounded-lg bg-warm-700 hover:bg-warm-600 disabled:opacity-50 text-warm-200 text-sm font-medium transition-colors"
                   >
                     Cancel
                   </button>
@@ -450,14 +450,14 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
           {/* Message list */}
           <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4">
             {messages.length === 0 ? (
-              <div className="text-center py-12 text-slate-500 text-sm">
-                <div className="w-12 h-12 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                  <svg className="w-6 h-6 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="text-center py-12 text-warm-500 text-sm">
+                <div className="w-12 h-12 bg-warm-800 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                  <svg className="w-6 h-6 text-warm-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                   </svg>
                 </div>
-                <p className="font-medium text-slate-400 mb-1">Chat with Claude</p>
-                <p className="text-slate-600 text-xs max-w-xs mx-auto">
+                <p className="font-medium text-warm-400 mb-1">Chat with Claude</p>
+                <p className="text-warm-600 text-xs max-w-xs mx-auto">
                   Describe what you want to be briefed on and Claude will help you craft the perfect instructions and search queries.
                 </p>
               </div>
@@ -468,13 +468,13 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
                     className={[
                       'max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap',
                       msg.role === 'user'
-                        ? 'bg-indigo-600 text-white rounded-br-sm'
-                        : 'bg-slate-800 text-slate-200 rounded-bl-sm',
+                        ? 'bg-brand-600 text-white rounded-br-sm'
+                        : 'bg-warm-800 text-warm-200 rounded-bl-sm',
                       !msg.content && msg.role === 'assistant' ? 'opacity-50' : '',
                     ].join(' ')}
                   >
                     {msg.content || (
-                      <span className="flex items-center gap-1.5 text-slate-400">
+                      <span className="flex items-center gap-1.5 text-warm-400">
                         <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -515,7 +515,7 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
           )}
 
           {/* Input area */}
-          <div className="px-4 pb-6 pt-2 border-t border-slate-800">
+          <div className="px-4 pb-6 pt-2 border-t border-warm-800">
             <div className="flex gap-2 items-end">
               <textarea
                 value={input}
@@ -524,7 +524,7 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
                 disabled={isChatting}
                 rows={1}
                 placeholder="Describe what you want from this channel…"
-                className="flex-1 bg-slate-800/60 border border-slate-700/60 rounded-xl px-4 py-3 text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 text-sm transition-colors resize-none"
+                className="flex-1 bg-warm-800/60 border border-warm-700/60 rounded-xl px-4 py-3 text-warm-100 placeholder-warm-600 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/50 text-sm transition-colors resize-none"
                 style={{ maxHeight: '120px' }}
                 onInput={(e) => {
                   const el = e.currentTarget
@@ -535,7 +535,7 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
               <button
                 onClick={sendMessage}
                 disabled={!input.trim() || isChatting}
-                className="flex-shrink-0 w-10 h-10 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors"
+                className="flex-shrink-0 w-10 h-10 rounded-xl bg-brand-600 hover:bg-brand-500 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors"
                 aria-label="Send"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -543,14 +543,14 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
                 </svg>
               </button>
             </div>
-            <p className="text-xs text-slate-600 mt-1.5 pl-1">Enter to send · Shift+Enter for new line</p>
+            <p className="text-xs text-warm-600 mt-1.5 pl-1">Enter to send · Shift+Enter for new line</p>
           </div>
         </div>
       )}
 
       {/* ── Fixed save button (settings tab only) ── */}
       {tab === 'settings' && (
-        <div className="fixed bottom-0 inset-x-0 px-4 pb-6 pt-10 bg-gradient-to-t from-slate-900 via-slate-900/90 to-transparent pointer-events-none">
+        <div className="fixed bottom-0 inset-x-0 px-4 pb-6 pt-10 bg-gradient-to-t from-warm-900 via-warm-900/90 to-transparent pointer-events-none">
           <div className="max-w-2xl mx-auto pointer-events-auto">
             <button
               onClick={saveSettings}
@@ -561,7 +561,7 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
                   ? 'bg-emerald-600 text-white'
                   : saveStatus === 'error'
                   ? 'bg-red-700 text-white'
-                  : 'bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] text-white shadow-lg shadow-indigo-600/25',
+                  : 'bg-brand-600 hover:bg-brand-500 active:scale-[0.98] text-white shadow-lg shadow-brand-600/25',
               ].join(' ')}
             >
               {settingsSaveLabel}

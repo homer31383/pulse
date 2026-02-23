@@ -42,12 +42,12 @@ export default async function WeeklySummaryHistoryPage() {
   })
 
   return (
-    <div className="min-h-screen bg-slate-900">
-      <header className="sticky top-0 z-20 bg-slate-900/95 backdrop-blur-sm border-b border-slate-800 px-4 py-3">
+    <div className="min-h-screen bg-warm-900">
+      <header className="sticky top-0 z-20 bg-warm-900/95 backdrop-blur-sm border-b border-warm-800 px-4 py-3">
         <div className="max-w-2xl mx-auto flex items-center gap-3">
           <Link
             href="/"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors flex-shrink-0"
+            className="p-1.5 rounded-lg text-warm-400 hover:text-warm-200 hover:bg-warm-800 transition-colors flex-shrink-0"
             aria-label="Back"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -55,8 +55,8 @@ export default async function WeeklySummaryHistoryPage() {
             </svg>
           </Link>
           <div className="flex-1 min-w-0">
-            <h1 className="text-lg font-semibold text-white">Weekly Summary History</h1>
-            <p className="text-xs text-slate-500">
+            <h1 className="text-lg font-semibold text-warm-100">Weekly Summary History</h1>
+            <p className="text-xs text-warm-500">
               {summaries.length === 0
                 ? 'No summaries yet'
                 : `${summaries.length} summar${summaries.length !== 1 ? 'ies' : 'y'}`}

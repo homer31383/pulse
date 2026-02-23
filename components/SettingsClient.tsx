@@ -62,8 +62,8 @@ function ToggleRow({
   return (
     <div className="flex items-start justify-between gap-4 py-3.5">
       <div className="flex-1">
-        <p className="text-sm text-slate-200">{label}</p>
-        {description && <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{description}</p>}
+        <p className="text-sm text-warm-200">{label}</p>
+        {description && <p className="text-xs text-warm-500 mt-0.5 leading-relaxed">{description}</p>}
       </div>
       <button
         role="switch"
@@ -71,7 +71,7 @@ function ToggleRow({
         onClick={() => onChange(!checked)}
         className={[
           'flex-shrink-0 mt-0.5 w-10 h-6 rounded-full transition-colors duration-200 relative',
-          checked ? 'bg-indigo-600' : 'bg-slate-700',
+          checked ? 'bg-brand-600' : 'bg-warm-700',
         ].join(' ')}
       >
         <span
@@ -183,7 +183,7 @@ export function SettingsClient({ initialSettings }: Props) {
     <main className="max-w-2xl mx-auto px-4 pt-6 pb-16 space-y-10">
       {/* Save indicator */}
       <div className={`text-right text-xs transition-opacity duration-300 ${saveState !== 'idle' ? 'opacity-100' : 'opacity-0'}`}>
-        <span className={saveState === 'saved' ? 'text-emerald-400' : saveState === 'error' ? 'text-red-400' : 'text-slate-500'}>
+        <span className={saveState === 'saved' ? 'text-emerald-400' : saveState === 'error' ? 'text-red-400' : 'text-warm-500'}>
           {saveState === 'saving' ? 'Saving…' : saveState === 'error' ? '✗ Save failed' : '✓ Saved'}
         </span>
       </div>
@@ -191,8 +191,8 @@ export function SettingsClient({ initialSettings }: Props) {
       {/* ── Usage ── */}
       <section className="space-y-4">
         <div>
-          <h2 className="text-sm font-semibold text-slate-200">Usage &amp; cost</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h2 className="text-sm font-semibold text-warm-200">Usage &amp; cost</h2>
+          <p className="text-xs text-warm-500 mt-0.5">
             Estimated costs based on Anthropic API pricing.
           </p>
         </div>
@@ -210,10 +210,10 @@ export function SettingsClient({ initialSettings }: Props) {
               ].map(({ label, value }) => (
                 <div
                   key={label}
-                  className="bg-slate-800/50 border border-slate-700/50 rounded-xl px-3 py-3 text-center"
+                  className="bg-warm-800/50 border border-warm-700/50 rounded-xl px-3 py-3 text-center"
                 >
-                  <p className="text-xs text-slate-500 mb-1 truncate">{label}</p>
-                  <p className="text-sm font-semibold text-slate-100 tabular-nums">
+                  <p className="text-xs text-warm-500 mb-1 truncate">{label}</p>
+                  <p className="text-sm font-semibold text-warm-100 tabular-nums">
                     {formatCost(value)}
                   </p>
                 </div>
@@ -221,10 +221,10 @@ export function SettingsClient({ initialSettings }: Props) {
             </div>
 
             {/* Daily bar chart — last 30 days */}
-            <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 space-y-2">
-              <p className="text-xs font-medium text-slate-400">Daily spend — last 30 days</p>
+            <div className="bg-warm-800/50 border border-warm-700/50 rounded-xl p-4 space-y-2">
+              <p className="text-xs font-medium text-warm-400">Daily spend — last 30 days</p>
               {usage.daily.every((d) => d.cost === 0) ? (
-                <p className="text-xs text-slate-600 py-4 text-center">No usage in the last 30 days.</p>
+                <p className="text-xs text-warm-600 py-4 text-center">No usage in the last 30 days.</p>
               ) : (
                 <>
                   <div className="flex items-end gap-px h-14">
@@ -237,14 +237,14 @@ export function SettingsClient({ initialSettings }: Props) {
                           title={`${date}: ${formatCost(cost)}`}
                         >
                           <div
-                            className="rounded-sm bg-indigo-600/70 hover:bg-indigo-500/80 transition-colors min-h-px"
+                            className="rounded-sm bg-brand-600/70 hover:bg-brand-500/80 transition-colors min-h-px"
                             style={{ height: `${Math.max((cost / maxCost) * 100, cost > 0 ? 4 : 0).toFixed(1)}%` }}
                           />
                         </div>
                       ))
                     })()}
                   </div>
-                  <div className="flex justify-between text-xs text-slate-600">
+                  <div className="flex justify-between text-xs text-warm-600">
                     <span>{usage.daily[0]?.date.slice(5)}</span>
                     <span>{usage.daily[usage.daily.length - 1]?.date.slice(5)}</span>
                   </div>
@@ -254,15 +254,15 @@ export function SettingsClient({ initialSettings }: Props) {
 
             {/* Per-channel breakdown */}
             {usage.byChannel.length > 0 && (
-              <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl divide-y divide-slate-700/40">
-                <p className="px-4 py-2.5 text-xs font-medium text-slate-400">By channel</p>
+              <div className="bg-warm-800/50 border border-warm-700/50 rounded-xl divide-y divide-warm-700/40">
+                <p className="px-4 py-2.5 text-xs font-medium text-warm-400">By channel</p>
                 {usage.byChannel.map(({ channelName, cost, calls }) => (
                   <div key={channelName} className="flex items-center justify-between px-4 py-2.5">
                     <div>
-                      <p className="text-sm text-slate-300">{channelName}</p>
-                      <p className="text-xs text-slate-600">{calls} call{calls !== 1 ? 's' : ''}</p>
+                      <p className="text-sm text-warm-300">{channelName}</p>
+                      <p className="text-xs text-warm-600">{calls} call{calls !== 1 ? 's' : ''}</p>
                     </div>
-                    <span className="text-sm font-medium text-slate-300 tabular-nums">
+                    <span className="text-sm font-medium text-warm-300 tabular-nums">
                       {formatCost(cost)}
                     </span>
                   </div>
@@ -271,8 +271,8 @@ export function SettingsClient({ initialSettings }: Props) {
             )}
           </>
         ) : (
-          <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl px-4 py-8 text-center">
-            <p className="text-xs text-slate-600">Loading usage data…</p>
+          <div className="bg-warm-800/50 border border-warm-700/50 rounded-xl px-4 py-8 text-center">
+            <p className="text-xs text-warm-600">Loading usage data…</p>
           </div>
         )}
       </section>
@@ -280,8 +280,8 @@ export function SettingsClient({ initialSettings }: Props) {
       {/* ── Model ── */}
       <section className="space-y-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-200">Model</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h2 className="text-sm font-semibold text-warm-200">Model</h2>
+          <p className="text-xs text-warm-500 mt-0.5">
             Used for all briefing generation. Takes effect on the next briefing.
           </p>
         </div>
@@ -295,26 +295,26 @@ export function SettingsClient({ initialSettings }: Props) {
                 className={[
                   'w-full text-left p-4 rounded-2xl border transition-all duration-150',
                   selected
-                    ? 'bg-indigo-950/60 border-indigo-500/60 shadow-sm shadow-indigo-500/10'
-                    : 'bg-slate-800/50 border-slate-700/50 hover:border-slate-600',
+                    ? 'bg-brand-950/60 border-brand-500/60 shadow-sm shadow-brand-500/10'
+                    : 'bg-warm-800/50 border-warm-700/50 hover:border-warm-600',
                 ].join(' ')}
               >
                 <div className="flex items-center gap-2 mb-1">
                   <span className={[
                     'flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all',
-                    selected ? 'border-indigo-400 bg-indigo-400' : 'border-slate-600',
+                    selected ? 'border-brand-400 bg-brand-400' : 'border-warm-600',
                   ].join(' ')}>
                     {selected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
                   </span>
-                  <span className="font-medium text-sm text-slate-100">{m.label}</span>
+                  <span className="font-medium text-sm text-warm-100">{m.label}</span>
                   <span className={[
                     'text-xs px-2 py-0.5 rounded-full font-medium',
-                    selected ? 'bg-indigo-500/20 text-indigo-300' : 'bg-slate-700 text-slate-400',
+                    selected ? 'bg-brand-500/20 text-brand-300' : 'bg-warm-700 text-warm-400',
                   ].join(' ')}>
                     {m.badge}
                   </span>
                 </div>
-                <p className="text-xs text-slate-400 pl-6">{m.description}</p>
+                <p className="text-xs text-warm-400 pl-6">{m.description}</p>
               </button>
             )
           })}
@@ -324,8 +324,8 @@ export function SettingsClient({ initialSettings }: Props) {
       {/* ── Briefing depth ── */}
       <section className="space-y-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-200">Briefing depth</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h2 className="text-sm font-semibold text-warm-200">Briefing depth</h2>
+          <p className="text-xs text-warm-500 mt-0.5">
             Controls how detailed and long briefings are. Applies across all channels.
           </p>
         </div>
@@ -339,20 +339,20 @@ export function SettingsClient({ initialSettings }: Props) {
                 className={[
                   'w-full text-left p-4 rounded-2xl border transition-all duration-150',
                   selected
-                    ? 'bg-indigo-950/60 border-indigo-500/60 shadow-sm shadow-indigo-500/10'
-                    : 'bg-slate-800/50 border-slate-700/50 hover:border-slate-600',
+                    ? 'bg-brand-950/60 border-brand-500/60 shadow-sm shadow-brand-500/10'
+                    : 'bg-warm-800/50 border-warm-700/50 hover:border-warm-600',
                 ].join(' ')}
               >
                 <div className="flex items-center gap-2 mb-1">
                   <span className={[
                     'flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all',
-                    selected ? 'border-indigo-400 bg-indigo-400' : 'border-slate-600',
+                    selected ? 'border-brand-400 bg-brand-400' : 'border-warm-600',
                   ].join(' ')}>
                     {selected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
                   </span>
-                  <span className="font-medium text-sm text-slate-100">{d.label}</span>
+                  <span className="font-medium text-sm text-warm-100">{d.label}</span>
                 </div>
-                <p className="text-xs text-slate-400 pl-6">{d.description}</p>
+                <p className="text-xs text-warm-400 pl-6">{d.description}</p>
               </button>
             )
           })}
@@ -362,10 +362,10 @@ export function SettingsClient({ initialSettings }: Props) {
       {/* ── Briefing format ── */}
       <section className="space-y-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-200">Briefing format</h2>
-          <p className="text-xs text-slate-500 mt-0.5">Change how briefings are generated and presented.</p>
+          <h2 className="text-sm font-semibold text-warm-200">Briefing format</h2>
+          <p className="text-xs text-warm-500 mt-0.5">Change how briefings are generated and presented.</p>
         </div>
-        <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl px-4 divide-y divide-slate-700/40">
+        <div className="bg-warm-800/50 border border-warm-700/50 rounded-2xl px-4 divide-y divide-warm-700/40">
           <ToggleRow
             label="Daily digest mode"
             description="Combine all selected channels into a single morning read instead of individual briefings."
@@ -378,16 +378,16 @@ export function SettingsClient({ initialSettings }: Props) {
       {/* ── History ── */}
       <section className="space-y-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-200">History</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h2 className="text-sm font-semibold text-warm-200">History</h2>
+          <p className="text-xs text-warm-500 mt-0.5">
             Automatically delete briefings older than a set age when the app loads.
           </p>
         </div>
-        <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl px-4 py-3.5">
+        <div className="bg-warm-800/50 border border-warm-700/50 rounded-2xl px-4 py-3.5">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-sm text-slate-200">Auto-delete old briefings</p>
-              <p className="text-xs text-slate-500 mt-0.5">Keeps storage tidy. Deletions happen on home page load.</p>
+              <p className="text-sm text-warm-200">Auto-delete old briefings</p>
+              <p className="text-xs text-warm-500 mt-0.5">Keeps storage tidy. Deletions happen on home page load.</p>
             </div>
             <select
               value={retentionDays ?? ''}
@@ -396,7 +396,7 @@ export function SettingsClient({ initialSettings }: Props) {
                 setRetentionDays(val)
                 save({ briefing_retention_days: val })
               }}
-              className="flex-shrink-0 bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500/60 cursor-pointer"
+              className="flex-shrink-0 bg-warm-700 border border-warm-600 rounded-xl px-3 py-2 text-sm text-warm-200 focus:outline-none focus:border-brand-500/60 cursor-pointer"
             >
               <option value="">Off</option>
               <option value="30">30 days</option>
@@ -410,20 +410,20 @@ export function SettingsClient({ initialSettings }: Props) {
         {digestMode && (
           <Link
             href="/digest-history"
-            className="flex items-center justify-between w-full px-4 py-3 bg-slate-800/30 border border-slate-700/40 rounded-xl hover:border-slate-600 transition-colors"
+            className="flex items-center justify-between w-full px-4 py-3 bg-warm-800/30 border border-warm-700/40 rounded-xl hover:border-warm-600 transition-colors"
           >
-            <span className="text-sm text-slate-300">View digest history</span>
-            <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span className="text-sm text-warm-300">View digest history</span>
+            <svg className="w-4 h-4 text-warm-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
           </Link>
         )}
         <Link
           href="/weekly-summary-history"
-          className="flex items-center justify-between w-full px-4 py-3 bg-slate-800/30 border border-slate-700/40 rounded-xl hover:border-slate-600 transition-colors"
+          className="flex items-center justify-between w-full px-4 py-3 bg-warm-800/30 border border-warm-700/40 rounded-xl hover:border-warm-600 transition-colors"
         >
-          <span className="text-sm text-slate-300">View weekly summary history</span>
-          <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <span className="text-sm text-warm-300">View weekly summary history</span>
+          <svg className="w-4 h-4 text-warm-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
         </Link>
@@ -432,10 +432,10 @@ export function SettingsClient({ initialSettings }: Props) {
       {/* ── Content tools ── */}
       <section className="space-y-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-200">Content tools</h2>
-          <p className="text-xs text-slate-500 mt-0.5">Interactive features that appear on briefings.</p>
+          <h2 className="text-sm font-semibold text-warm-200">Content tools</h2>
+          <p className="text-xs text-warm-500 mt-0.5">Interactive features that appear on briefings.</p>
         </div>
-        <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl px-4 divide-y divide-slate-700/40">
+        <div className="bg-warm-800/50 border border-warm-700/50 rounded-2xl px-4 divide-y divide-warm-700/40">
           <ToggleRow
             label="Highlight &amp; save"
             description="Select any text in a briefing to clip it to your personal notes."
@@ -464,10 +464,10 @@ export function SettingsClient({ initialSettings }: Props) {
         {highlightsEnabled && (
           <Link
             href="/notes"
-            className="flex items-center justify-between w-full px-4 py-3 bg-slate-800/30 border border-slate-700/40 rounded-xl hover:border-slate-600 transition-colors"
+            className="flex items-center justify-between w-full px-4 py-3 bg-warm-800/30 border border-warm-700/40 rounded-xl hover:border-warm-600 transition-colors"
           >
-            <span className="text-sm text-slate-300">View saved notes</span>
-            <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span className="text-sm text-warm-300">View saved notes</span>
+            <svg className="w-4 h-4 text-warm-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
           </Link>
@@ -477,10 +477,10 @@ export function SettingsClient({ initialSettings }: Props) {
       {/* ── Intelligence ── */}
       <section className="space-y-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-200">Intelligence</h2>
-          <p className="text-xs text-slate-500 mt-0.5">Features that look across channels and topics.</p>
+          <h2 className="text-sm font-semibold text-warm-200">Intelligence</h2>
+          <p className="text-xs text-warm-500 mt-0.5">Features that look across channels and topics.</p>
         </div>
-        <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl px-4 divide-y divide-slate-700/40">
+        <div className="bg-warm-800/50 border border-warm-700/50 rounded-2xl px-4 divide-y divide-warm-700/40">
           <ToggleRow
             label="Cross-channel connections"
             description="Adds a weekly analysis button that surfaces thematic links and trends across all your channels."
@@ -502,12 +502,12 @@ export function SettingsClient({ initialSettings }: Props) {
                     onChange={(e) => setNewTerm(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTerm() } }}
                     placeholder="Company, person, or topic…"
-                    className="flex-1 bg-slate-900/60 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500/60"
+                    className="flex-1 bg-warm-900/60 border border-warm-700 rounded-xl px-3 py-2 text-sm text-warm-200 placeholder:text-warm-600 focus:outline-none focus:border-brand-500/60"
                   />
                   <button
                     onClick={addTerm}
                     disabled={!newTerm.trim()}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-xl transition-colors"
+                    className="px-4 py-2 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-xl transition-colors"
                   >
                     Add
                   </button>
@@ -517,12 +517,12 @@ export function SettingsClient({ initialSettings }: Props) {
                     {watchlistTerms.map((term, i) => (
                       <span
                         key={i}
-                        className="flex items-center gap-1.5 bg-slate-700/60 border border-slate-600/50 text-slate-300 text-xs px-2.5 py-1 rounded-full"
+                        className="flex items-center gap-1.5 bg-warm-700/60 border border-warm-600/50 text-warm-300 text-xs px-2.5 py-1 rounded-full"
                       >
                         {term}
                         <button
                           onClick={() => removeTerm(i)}
-                          className="text-slate-500 hover:text-red-400 transition-colors leading-none"
+                          className="text-warm-500 hover:text-red-400 transition-colors leading-none"
                           aria-label={`Remove ${term}`}
                         >
                           ×
@@ -532,7 +532,7 @@ export function SettingsClient({ initialSettings }: Props) {
                   </div>
                 )}
                 {watchlistTerms.length === 0 && (
-                  <p className="text-xs text-slate-600">No terms yet. Add companies, people, or topics above.</p>
+                  <p className="text-xs text-warm-600">No terms yet. Add companies, people, or topics above.</p>
                 )}
               </div>
             )}
@@ -543,10 +543,10 @@ export function SettingsClient({ initialSettings }: Props) {
       {/* ── Audio ── */}
       <section className="space-y-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-200">Audio</h2>
-          <p className="text-xs text-slate-500 mt-0.5">Listen to briefings with sentence-level highlighting. Uses your browser&apos;s built-in speech engine — no extra cost.</p>
+          <h2 className="text-sm font-semibold text-warm-200">Audio</h2>
+          <p className="text-xs text-warm-500 mt-0.5">Listen to briefings with sentence-level highlighting. Uses your browser&apos;s built-in speech engine — no extra cost.</p>
         </div>
-        <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl px-4 divide-y divide-slate-700/40">
+        <div className="bg-warm-800/50 border border-warm-700/50 rounded-2xl px-4 divide-y divide-warm-700/40">
           <ToggleRow
             label="Text-to-speech"
             description="Play any completed briefing as audio with sentence highlighting."
@@ -557,7 +557,7 @@ export function SettingsClient({ initialSettings }: Props) {
             <div className="py-4 space-y-4">
               {/* Voice selector */}
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-400">Voice</label>
+                <label className="text-xs font-medium text-warm-400">Voice</label>
                 <select
                   value={ttsVoice ?? ''}
                   onChange={(e) => {
@@ -565,7 +565,7 @@ export function SettingsClient({ initialSettings }: Props) {
                     setTtsVoice(val)
                     save({ tts_voice: val })
                   }}
-                  className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500/60 cursor-pointer"
+                  className="w-full bg-warm-700 border border-warm-600 rounded-xl px-3 py-2 text-sm text-warm-200 focus:outline-none focus:border-brand-500/60 cursor-pointer"
                 >
                   <option value="">Browser default</option>
                   {voices.map((v) => (
@@ -575,13 +575,13 @@ export function SettingsClient({ initialSettings }: Props) {
                   ))}
                 </select>
                 {voices.length === 0 && (
-                  <p className="text-xs text-slate-600">Voices loading… (may take a moment on first visit)</p>
+                  <p className="text-xs text-warm-600">Voices loading… (may take a moment on first visit)</p>
                 )}
               </div>
 
               {/* Speed selector */}
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-400">Speed</label>
+                <label className="text-xs font-medium text-warm-400">Speed</label>
                 <div className="flex gap-2">
                   {TTS_SPEEDS.map((s) => (
                     <button
@@ -590,8 +590,8 @@ export function SettingsClient({ initialSettings }: Props) {
                       className={[
                         'flex-1 py-1.5 text-xs rounded-lg border transition-colors',
                         ttsSpeed === s
-                          ? 'border-indigo-500/60 bg-indigo-950/60 text-indigo-300'
-                          : 'border-slate-700 text-slate-500 hover:border-slate-600 hover:text-slate-300',
+                          ? 'border-brand-500/60 bg-brand-950/60 text-brand-300'
+                          : 'border-warm-700 text-warm-500 hover:border-warm-600 hover:text-warm-300',
                       ].join(' ')}
                     >
                       {s}×
@@ -607,10 +607,10 @@ export function SettingsClient({ initialSettings }: Props) {
       {/* ── Delivery ── */}
       <section className="space-y-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-200">Delivery</h2>
-          <p className="text-xs text-slate-500 mt-0.5">How and when you receive your briefings.</p>
+          <h2 className="text-sm font-semibold text-warm-200">Delivery</h2>
+          <p className="text-xs text-warm-500 mt-0.5">How and when you receive your briefings.</p>
         </div>
-        <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl px-4 divide-y divide-slate-700/40">
+        <div className="bg-warm-800/50 border border-warm-700/50 rounded-2xl px-4 divide-y divide-warm-700/40">
           {/* Email */}
           <div>
             <ToggleRow
@@ -627,9 +627,9 @@ export function SettingsClient({ initialSettings }: Props) {
                   onChange={(e) => setEmailAddress(e.target.value)}
                   onBlur={() => save({ email_address: emailAddress || null })}
                   placeholder="you@example.com"
-                  className="w-full bg-slate-900/60 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500/60"
+                  className="w-full bg-warm-900/60 border border-warm-700 rounded-xl px-3 py-2 text-sm text-warm-200 placeholder:text-warm-600 focus:outline-none focus:border-brand-500/60"
                 />
-                <p className="text-xs text-slate-600">
+                <p className="text-xs text-warm-600">
                   Email sending is not yet connected. Your address is saved for when it is.
                 </p>
               </div>
@@ -647,16 +647,16 @@ export function SettingsClient({ initialSettings }: Props) {
             {notificationsEnabled && (
               <div className="pb-4 space-y-2">
                 <div className="flex items-center gap-3">
-                  <label className="text-xs text-slate-400">Reminder time</label>
+                  <label className="text-xs text-warm-400">Reminder time</label>
                   <input
                     type="time"
                     value={notificationTime}
                     onChange={(e) => setNotificationTime(e.target.value)}
                     onBlur={() => save({ notification_time: notificationTime })}
-                    className="bg-slate-900/60 border border-slate-700 rounded-lg px-2 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500/60"
+                    className="bg-warm-900/60 border border-warm-700 rounded-lg px-2 py-1.5 text-sm text-warm-200 focus:outline-none focus:border-brand-500/60"
                   />
                 </div>
-                <p className="text-xs text-slate-600">
+                <p className="text-xs text-warm-600">
                   Push notifications are not yet connected. Your preference is saved for when they are.
                 </p>
               </div>

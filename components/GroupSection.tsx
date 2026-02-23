@@ -66,7 +66,7 @@ export function GroupSection({
         <button
           {...attributes}
           {...listeners}
-          className="touch-none p-1 text-slate-700 hover:text-slate-500 cursor-grab active:cursor-grabbing flex-shrink-0"
+          className="touch-none p-1 text-warm-700 hover:text-warm-500 cursor-grab active:cursor-grabbing flex-shrink-0"
           tabIndex={-1}
           aria-label="Drag to reorder group"
           suppressHydrationWarning
@@ -82,7 +82,7 @@ export function GroupSection({
           className="flex items-center gap-1 flex-1 min-w-0"
         >
           <svg
-            className={`w-3 h-3 text-slate-600 flex-shrink-0 transition-transform duration-150 ${collapsed ? '' : 'rotate-90'}`}
+            className={`w-3 h-3 text-warm-600 flex-shrink-0 transition-transform duration-150 ${collapsed ? '' : 'rotate-90'}`}
             fill="none" viewBox="0 0 24 24" stroke="currentColor"
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
@@ -99,14 +99,14 @@ export function GroupSection({
                 e.stopPropagation()
               }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-xs font-semibold text-slate-200 outline-none focus:border-indigo-500 min-w-0 w-36"
+              className="bg-warm-800 border border-warm-600 rounded px-1.5 py-0.5 text-xs font-semibold text-warm-200 outline-none focus:border-brand-500 min-w-0 w-36"
             />
           ) : (
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider truncate">
+            <span className="text-xs font-semibold text-warm-500 uppercase tracking-wider truncate">
               {group.name}
             </span>
           )}
-          <span className="text-xs text-slate-700 flex-shrink-0 ml-1">
+          <span className="text-xs text-warm-700 flex-shrink-0 ml-1">
             {channels.length}
           </span>
         </button>
@@ -116,7 +116,7 @@ export function GroupSection({
           <div className="flex items-center gap-1 opacity-0 group-hover/hdr:opacity-100 transition-opacity">
             <button
               onClick={() => { setIsRenaming(true); setDraftName(group.name) }}
-              className="p-1 text-slate-600 hover:text-slate-300 transition-colors"
+              className="p-1 text-warm-600 hover:text-warm-300 transition-colors"
               title="Rename group"
             >
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -126,7 +126,7 @@ export function GroupSection({
             </button>
             <button
               onClick={() => setConfirmDelete(true)}
-              className="p-1 text-slate-600 hover:text-red-400 transition-colors"
+              className="p-1 text-warm-600 hover:text-red-400 transition-colors"
               title="Delete group"
             >
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -147,7 +147,7 @@ export function GroupSection({
             </button>
             <button
               onClick={() => setConfirmDelete(false)}
-              className="text-[10px] text-slate-400 hover:text-slate-200 px-1.5 py-0.5 rounded transition-colors"
+              className="text-[10px] text-warm-400 hover:text-warm-200 px-1.5 py-0.5 rounded transition-colors"
             >
               Cancel
             </button>
@@ -161,9 +161,9 @@ export function GroupSection({
           items={channels.map((c) => c.id)}
           strategy={verticalListSortingStrategy}
         >
-          <div className="space-y-2 pl-4 border-l border-slate-800">
+          <div className="space-y-2 pl-4 border-l border-warm-800">
             {channels.length === 0 ? (
-              <p className="text-xs text-slate-700 py-1 italic">No channels in this group</p>
+              <p className="text-xs text-warm-700 py-1 italic">No channels in this group</p>
             ) : (
               channels.map((channel) => (
                 <ChannelCard
