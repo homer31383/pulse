@@ -2,12 +2,24 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import { SpeechProviderWrapper } from '@/components/SpeechProviderWrapper'
 // eslint-disable-next-line @next/next/no-page-custom-font
-import { Lora } from 'next/font/google'
+import { Lora, Playfair_Display, Inter } from 'next/font/google'
 
 const lora = Lora({
   subsets: ['latin'],
   display: 'swap',
   variable: '--font-lora',
+})
+
+const playfair = Playfair_Display({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-playfair',
+})
+
+const inter = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-inter',
 })
 
 export const metadata: Metadata = {
@@ -36,7 +48,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={`${lora.variable} bg-warm-900 text-warm-200 antialiased`}>
+      <body className={`${lora.variable} ${playfair.variable} ${inter.variable} bg-cream-200 text-ink-300 antialiased font-sans`}>
         <SpeechProviderWrapper>
           {children}
         </SpeechProviderWrapper>

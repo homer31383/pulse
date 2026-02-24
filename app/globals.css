@@ -3,16 +3,16 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 html {
-  /* Warm dark background — prevents white flash on iOS rubber-band scroll */
-  background-color: #1a1714;
+  /* Warm parchment — prevents white flash on iOS rubber-band scroll */
+  background-color: #f5f0e8;
 }
 
 body {
-  background-color: #1a1714;
+  background-color: #f5f0e8;
 }
 
 /* Thin warm scrollbar */
@@ -24,7 +24,7 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #3a342f;
+  background: #c9bfb3;
   border-radius: 3px;
 }
 
@@ -37,3 +37,9 @@ body {
 .prose-serif {
   font-family: 'Lora', Georgia, Cambria, serif;
 }
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+.animate-slide-up { animation: slideUp 300ms ease-out forwards; }

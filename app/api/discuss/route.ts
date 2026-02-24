@@ -58,22 +58,26 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // ── Capture usage ─────────────────────────────────────────────────
-        const finalMsg     = await messageStream.finalMessage()
-        const inputTokens  = finalMsg.usage.input_tokens
-        const outputTokens = finalMsg.usage.output_tokens
-        const costUsd      = calculateCost(model, inputTokens, outputTokens)
-
-        logUsage({
-          callType:    'discuss',
-          channelName,
-          model,
-          inputTokens,
-          outputTokens,
-          costUsd,
-        }).catch(() => {})
-
+        // Signal completion before usage logging so a logging failure
+        // can never prevent the client from receiving the done event.
         send({ type: 'done' })
+
+        // ── Capture usage (best-effort) ────────────────────────────────────
+        try {
+          const finalMsg     = await messageStream.finalMessage()
+          const inputTokens  = finalMsg.usage.input_tokens
+          const outputTokens = finalMsg.usage.output_tokens
+          const costUsd      = calculateCost(model, inputTokens, outputTokens)
+
+          logUsage({
+            callType:    'discuss',
+            channelName,
+            model,
+            inputTokens,
+            outputTokens,
+            costUsd,
+          }).catch(() => {})
+        } catch { /* non-critical — don't let this affect the response */ }
       } catch (err) {
         send({
           type: 'error',

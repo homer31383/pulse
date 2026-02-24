@@ -21,21 +21,21 @@ export default function NotesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-warm-900">
-      <header className="sticky top-0 z-20 bg-warm-900/95 backdrop-blur-sm border-b border-warm-800 px-4 py-3">
+    <div className="min-h-screen bg-cream-200">
+      <header className="sticky top-0 z-20 bg-cream-200/95 backdrop-blur-sm border-b border-cream-300/60 px-4 py-3">
         <div className="max-w-2xl mx-auto flex items-center gap-3">
           <Link
             href="/"
-            className="p-1.5 rounded-lg text-warm-400 hover:text-warm-200 hover:bg-warm-800 transition-colors"
+            className="p-1.5 rounded-lg text-ink-100 hover:text-ink-300 hover:bg-cream-300 transition-colors"
             aria-label="Back"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </Link>
-          <h1 className="text-lg font-semibold text-warm-100">Saved Notes</h1>
+          <h1 className="font-display text-lg font-normal text-ink-300">Saved Notes</h1>
           {notes.length > 0 && (
-            <span className="text-xs bg-warm-800 text-warm-400 px-2 py-0.5 rounded-full border border-warm-700 ml-auto">
+            <span className="text-xs bg-cream-300 text-ink-100 px-2 py-0.5 rounded-full border border-cream-400 ml-auto">
               {notes.length}
             </span>
           )}
@@ -46,19 +46,19 @@ export default function NotesPage() {
         {loading ? (
           <div className="space-y-3 py-4">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-20 bg-warm-800/50 rounded-2xl animate-pulse" />
+              <div key={i} className="h-20 bg-cream-300/60 rounded-2xl animate-pulse" />
             ))}
           </div>
         ) : notes.length === 0 ? (
           <div className="text-center py-20">
-            <div className="w-14 h-14 bg-warm-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <svg className="w-7 h-7 text-warm-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="w-14 h-14 bg-cream-300 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <svg className="w-7 h-7 text-ink-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                   d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
               </svg>
             </div>
-            <p className="text-warm-500 text-sm">No saved notes yet.</p>
-            <p className="text-warm-600 text-xs mt-1">
+            <p className="text-ink-100 text-sm">No saved notes yet.</p>
+            <p className="text-ink-50 text-xs mt-1">
               Select text in any briefing to clip it here.
             </p>
           </div>
@@ -66,15 +66,15 @@ export default function NotesPage() {
           notes.map((note) => (
             <div
               key={note.id}
-              className="bg-warm-800/50 border border-warm-700/50 rounded-2xl px-4 py-3 group"
+              className="bg-cream-50 border border-cream-300/60 rounded-2xl px-4 py-3 group shadow-[0_1px_4px_rgba(0,0,0,0.06)]"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   {note.channel_name && (
-                    <p className="text-xs font-medium text-brand-400/80 mb-1">{note.channel_name}</p>
+                    <p className="text-xs font-medium text-brand-600 mb-1">{note.channel_name}</p>
                   )}
-                  <p className="text-sm text-warm-300 leading-relaxed">{note.content}</p>
-                  <p className="text-xs text-warm-600 mt-2">
+                  <p className="text-sm text-ink-200 leading-relaxed">{note.content}</p>
+                  <p className="text-xs text-ink-50 mt-2">
                     {new Date(note.created_at).toLocaleDateString('en-US', {
                       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
                     })}
@@ -82,7 +82,7 @@ export default function NotesPage() {
                 </div>
                 <button
                   onClick={() => deleteNote(note.id)}
-                  className="flex-shrink-0 p-1.5 rounded-lg text-warm-600 hover:text-red-400 hover:bg-red-400/10 transition-colors opacity-0 group-hover:opacity-100"
+                  className="flex-shrink-0 p-1.5 rounded-lg text-ink-50 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
                   aria-label="Delete note"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

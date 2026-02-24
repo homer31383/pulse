@@ -38,9 +38,27 @@ const config: Config = {
           900: '#2c2455',
           950: '#1c1637',
         },
+        // Cream — card backgrounds and paper surfaces
+        cream: {
+          50:  '#fdfbf7',
+          100: '#f9f4ec',
+          200: '#f5f0e8',
+          300: '#ede8df',
+          400: '#e0d8ce',
+          500: '#c9bfb3',
+        },
+        // Ink — dark text on cream surfaces
+        ink: {
+          50:  '#9b8880',
+          100: '#7d6e68',
+          200: '#574840',
+          300: '#2c2420',
+        },
       },
       fontFamily: {
         serif: ['var(--font-lora)', 'Georgia', 'Cambria', 'serif'],
+        display: ['var(--font-playfair)', 'Georgia', 'serif'],
+        sans: ['var(--font-inter)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
       animation: {
         'pulse-dot': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',

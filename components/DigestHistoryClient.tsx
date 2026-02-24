@@ -187,14 +187,14 @@ export function DigestHistoryClient({ digests: initialDigests }: Props) {
   if (digests.length === 0) {
     return (
       <main className="max-w-2xl mx-auto px-4 py-16 text-center">
-        <div className="w-14 h-14 bg-warm-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
-          <svg className="w-7 h-7 text-warm-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className="w-14 h-14 bg-cream-300 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <svg className="w-7 h-7 text-ink-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
               d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9.5a2 2 0 00-2-2h-2" />
           </svg>
         </div>
-        <p className="text-warm-400 font-medium mb-1">No digests yet</p>
-        <p className="text-warm-600 text-sm">Generate a Morning Digest from the home screen to see history here.</p>
+        <p className="text-ink-300 font-medium mb-1">No digests yet</p>
+        <p className="text-ink-100 text-sm">Generate a Morning Digest from the home screen to see history here.</p>
       </main>
     )
   }
@@ -210,36 +210,36 @@ export function DigestHistoryClient({ digests: initialDigests }: Props) {
         return (
           <div
             key={d.id}
-            className="bg-warm-800/40 border border-warm-700/40 rounded-xl overflow-hidden"
+            className="bg-cream-50 border border-cream-300/60 rounded-xl overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)]"
           >
             {/* Row header */}
             <button
               onClick={() => setExpandedId(isExpanded ? null : d.id)}
-              className="w-full px-4 py-3 flex items-start gap-3 text-left hover:bg-warm-700/20 transition-colors"
+              className="w-full px-4 py-3 flex items-start gap-3 text-left hover:bg-cream-100 transition-colors"
             >
               <svg
-                className={`w-3.5 h-3.5 mt-1 flex-shrink-0 text-warm-500 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}
+                className={`w-3.5 h-3.5 mt-1 flex-shrink-0 text-ink-50 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}
                 fill="none" viewBox="0 0 24 24" stroke="currentColor"
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
               </svg>
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-warm-500 mb-1">{formatDate(d.created_at)} · {readingTime(d.content)}</p>
+                <p className="text-xs text-ink-50 mb-1">{formatDate(d.created_at)} · {readingTime(d.content)}</p>
                 {/* Channel tags */}
                 <div className="flex flex-wrap gap-1 mb-1.5">
                   {d.channel_names.map((name) => (
                     <span
                       key={name}
-                      className="text-[10px] px-1.5 py-0.5 bg-brand-900/40 border border-brand-700/40 text-brand-400 rounded-full leading-none"
+                      className="text-[10px] px-1.5 py-0.5 bg-brand-50 border border-brand-300/50 text-brand-700 rounded-full leading-none"
                     >
                       {name}
                     </span>
                   ))}
                 </div>
-                <p className="text-sm text-warm-300 truncate">{getFirstLine(d.content)}</p>
+                <p className="text-sm text-ink-200 truncate">{getFirstLine(d.content)}</p>
               </div>
               {d.cost_usd != null && (
-                <span className="flex-shrink-0 text-xs text-warm-600 ml-2 mt-1">
+                <span className="flex-shrink-0 text-xs text-ink-50 ml-2 mt-1">
                   {formatCost(d.cost_usd)}
                 </span>
               )}
@@ -249,11 +249,11 @@ export function DigestHistoryClient({ digests: initialDigests }: Props) {
             {isExpanded && (
               <div className="px-4 pb-4">
                 {/* Action bar */}
-                <div className="flex items-center gap-2 mb-4 pb-3 border-b border-warm-700/40">
+                <div className="flex items-center gap-2 mb-4 pb-3 border-b border-cream-300/60">
                   <button
                     onClick={() => handleExportPdf(d)}
                     disabled={isThisExporting}
-                    className="flex items-center gap-1.5 text-xs text-warm-400 hover:text-warm-200 bg-warm-700/50 hover:bg-warm-700 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                    className="flex items-center gap-1.5 text-xs text-ink-100 hover:text-ink-300 bg-cream-200 hover:bg-cream-300 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
                   >
                     {isThisExporting ? (
                       <>
@@ -276,7 +276,7 @@ export function DigestHistoryClient({ digests: initialDigests }: Props) {
                   {!isConfirmingDelete ? (
                     <button
                       onClick={() => setConfirmDeleteId(d.id)}
-                      className="flex items-center gap-1.5 text-xs text-red-400/70 hover:text-red-300 bg-warm-700/50 hover:bg-red-950/40 px-3 py-1.5 rounded-lg transition-colors"
+                      className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-600 bg-cream-200 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors"
                     >
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -285,18 +285,18 @@ export function DigestHistoryClient({ digests: initialDigests }: Props) {
                     </button>
                   ) : (
                     <div className="flex items-center gap-1.5">
-                      <span className="text-xs text-red-400">Delete this digest?</span>
+                      <span className="text-xs text-red-600">Delete this digest?</span>
                       <button
                         onClick={() => handleDelete(d.id)}
                         disabled={isThisDeleting}
-                        className="text-xs bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white px-2.5 py-1 rounded-lg transition-colors"
+                        className="text-xs bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-2.5 py-1 rounded-lg transition-colors"
                       >
                         {isThisDeleting ? 'Deleting…' : 'Confirm'}
                       </button>
                       <button
                         onClick={() => setConfirmDeleteId(null)}
                         disabled={isThisDeleting}
-                        className="text-xs bg-warm-700 hover:bg-warm-600 disabled:opacity-50 text-warm-300 px-2.5 py-1 rounded-lg transition-colors"
+                        className="text-xs bg-cream-200 hover:bg-cream-300 disabled:opacity-50 text-ink-200 px-2.5 py-1 rounded-lg transition-colors"
                       >
                         Cancel
                       </button>
@@ -304,14 +304,14 @@ export function DigestHistoryClient({ digests: initialDigests }: Props) {
                   )}
 
                   {d.input_tokens != null && (
-                    <span className="ml-auto text-xs text-warm-600">
+                    <span className="ml-auto text-xs text-ink-50">
                       {d.input_tokens.toLocaleString()} in / {d.output_tokens?.toLocaleString()} out tokens
                     </span>
                   )}
                 </div>
 
                 {/* Content */}
-                <div className="font-serif prose prose-sm prose-invert max-w-none text-warm-300 [&_h1]:text-base [&_h1]:font-sans [&_h2]:text-sm [&_h2]:font-sans [&_h3]:text-sm [&_h3]:font-sans [&_a]:text-brand-400 [&_a]:no-underline hover:[&_a]:underline [&_ul]:list-disc [&_ol]:list-decimal">
+                <div className="font-serif prose prose-sm max-w-none prose-p:text-ink-200 prose-headings:font-sans prose-headings:text-ink-300 prose-a:text-brand-600 prose-a:no-underline hover:prose-a:underline prose-strong:text-ink-300 prose-ul:list-disc prose-ol:list-decimal">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {d.content}
                   </ReactMarkdown>
@@ -319,17 +319,17 @@ export function DigestHistoryClient({ digests: initialDigests }: Props) {
 
                 {/* Sources */}
                 {d.sources && d.sources.length > 0 && (
-                  <div className="mt-4 pt-3 border-t border-warm-700/40">
-                    <p className="text-xs font-semibold text-warm-500 uppercase tracking-wider mb-2">Sources</p>
+                  <div className="mt-4 pt-3 border-t border-cream-300/40">
+                    <p className="text-xs font-semibold text-ink-50 uppercase tracking-wider mb-2">Sources</p>
                     <ol className="space-y-1.5">
                       {(d.sources as Source[]).map((src, i) => (
                         <li key={i} className="flex gap-2 text-xs">
-                          <span className="text-warm-600 flex-shrink-0">{i + 1}.</span>
+                          <span className="text-ink-50 flex-shrink-0">{i + 1}.</span>
                           <a
                             href={src.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-brand-400 hover:text-brand-300 hover:underline truncate"
+                            className="text-brand-600 hover:text-brand-700 hover:underline truncate"
                           >
                             {src.title || src.url}
                           </a>

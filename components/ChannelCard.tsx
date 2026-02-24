@@ -10,9 +10,10 @@ interface ChannelCardProps {
   isSelected: boolean
   onToggle: (id: string) => void
   groupId?: string | null
+  hasBriefing?: boolean
 }
 
-export function ChannelCard({ channel, isSelected, onToggle, groupId }: ChannelCardProps) {
+export function ChannelCard({ channel, isSelected, onToggle, groupId, hasBriefing = false }: ChannelCardProps) {
   const {
     attributes,
     listeners,
@@ -44,69 +45,66 @@ export function ChannelCard({ channel, isSelected, onToggle, groupId }: ChannelC
         onKeyDown={(e) => (e.key === ' ' || e.key === 'Enter') && onToggle(channel.id)}
         onClick={() => onToggle(channel.id)}
         className={[
-          'relative flex items-center gap-2 p-4 rounded-2xl border cursor-pointer',
-          'transition-all duration-150 select-none',
+          'group relative p-4 rounded-2xl cursor-pointer select-none',
+          'transition-all duration-200 ease-out',
           isDragging
-            ? 'bg-warm-700/80 border-warm-600 shadow-xl scale-[1.02]'
+            ? 'bg-cream-100 shadow-[0_8px_30px_rgba(0,0,0,0.14)] scale-[1.02]'
             : isSelected
-            ? 'bg-brand-950/60 border-brand-500/50 shadow-sm shadow-brand-500/10'
-            : 'bg-warm-800/50 border-warm-700/50 hover:border-warm-600 active:scale-[0.99]',
+            ? 'bg-cream-50 ring-2 ring-brand-500/70 shadow-[0_4px_20px_rgba(124,111,205,0.12)] -translate-y-0.5'
+            : 'bg-cream-50 shadow-[0_2px_12px_rgba(0,0,0,0.07)] hover:-translate-y-0.5 hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)]',
         ].join(' ')}
       >
-        {/* Drag handle */}
+        {/* Drag handle — top-left, hover-reveal */}
         <button
           {...attributes}
           {...listeners}
           onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.stopPropagation()}
-          className="touch-none flex-shrink-0 p-1 -ml-1 text-warm-600 hover:text-warm-400 cursor-grab active:cursor-grabbing"
+          className="touch-none absolute top-2 left-2 p-1 text-ink-50/40 hover:text-ink-200 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing transition-all duration-150"
           tabIndex={-1}
           aria-label="Drag to reorder"
           suppressHydrationWarning
         >
-          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
             <path d="M8 6a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm8 0a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM8 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm8 0a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM8 22a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm8 0a2 2 0 1 0 0-4 2 2 0 0 0 0 4z" />
           </svg>
         </button>
 
-        {/* Circular checkbox */}
-        <div
-          className={[
-            'flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-150',
-            isSelected ? 'bg-brand-500 border-brand-500' : 'border-warm-600',
-          ].join(' ')}
-        >
-          {isSelected && (
-            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-            </svg>
+        {/* Briefing indicator dot + config gear — top-right */}
+        <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
+          {hasBriefing && (
+            <span className="w-1.5 h-1.5 bg-brand-500 rounded-full flex-shrink-0" />
           )}
+          <Link
+            href={`/channels/${channel.id}/config`}
+            onClick={(e) => e.stopPropagation()}
+            className="p-1 text-ink-50/50 hover:text-ink-300 opacity-0 group-hover:opacity-100 transition-all duration-150 rounded"
+            aria-label={`Configure ${channel.name}`}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </Link>
         </div>
 
-        {/* Text */}
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm text-warm-100 truncate">{channel.name}</p>
+        {/* Text content */}
+        <div className="pr-6 pt-1">
+          <p className="font-display text-lg font-normal tracking-wide text-ink-300 leading-snug">
+            {channel.name}
+          </p>
           {channel.description && (
-            <p className="text-xs text-warm-500 mt-0.5 truncate">{channel.description}</p>
+            <p className="font-sans font-light text-sm text-ink-100 mt-1 leading-snug">
+              {channel.description}
+            </p>
           )}
           {lastBriefed && (
-            <p className="text-xs text-warm-600 mt-1">Last briefed {lastBriefed}</p>
+            <p className="font-sans text-xs text-ink-50 mt-3">
+              {lastBriefed}
+            </p>
           )}
         </div>
-
-        {/* Config gear */}
-        <Link
-          href={`/channels/${channel.id}/config`}
-          onClick={(e) => e.stopPropagation()}
-          className="flex-shrink-0 p-1.5 rounded-lg text-warm-600 hover:text-warm-300 hover:bg-warm-700/50 transition-colors"
-          aria-label={`Configure ${channel.name}`}
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-        </Link>
       </div>
     </div>
   )

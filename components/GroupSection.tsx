@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { useSortable, SortableContext, rectSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { ChannelCard } from './ChannelCard'
 import type { Channel, ChannelGroup } from '@/lib/types'
@@ -13,6 +13,7 @@ interface GroupSectionProps {
   onToggle: (id: string) => void
   onRename: (groupId: string, name: string) => void
   onDelete: (groupId: string) => void
+  briefings?: Map<string, unknown>
 }
 
 export function GroupSection({
@@ -22,6 +23,7 @@ export function GroupSection({
   onToggle,
   onRename,
   onDelete,
+  briefings,
 }: GroupSectionProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [isRenaming, setIsRenaming] = useState(false)
@@ -39,7 +41,6 @@ export function GroupSection({
     isDragging,
   } = useSortable({ id: sortableId, data: { type: 'group' } })
 
-  // Focus input when renaming starts
   useEffect(() => {
     if (isRenaming) inputRef.current?.focus()
   }, [isRenaming])
@@ -61,12 +62,12 @@ export function GroupSection({
       className={isDragging ? 'z-50 relative opacity-80' : ''}
     >
       {/* Group header */}
-      <div className="flex items-center gap-1.5 mb-1.5 mt-3 group/hdr">
+      <div className="flex items-center gap-1.5 mb-1.5 mt-5 group/hdr">
         {/* Drag handle for group */}
         <button
           {...attributes}
           {...listeners}
-          className="touch-none p-1 text-warm-700 hover:text-warm-500 cursor-grab active:cursor-grabbing flex-shrink-0"
+          className="touch-none p-1 text-ink-50/40 hover:text-ink-200 cursor-grab active:cursor-grabbing flex-shrink-0 transition-colors"
           tabIndex={-1}
           aria-label="Drag to reorder group"
           suppressHydrationWarning
@@ -82,7 +83,7 @@ export function GroupSection({
           className="flex items-center gap-1 flex-1 min-w-0"
         >
           <svg
-            className={`w-3 h-3 text-warm-600 flex-shrink-0 transition-transform duration-150 ${collapsed ? '' : 'rotate-90'}`}
+            className={`w-3 h-3 text-ink-50 flex-shrink-0 transition-transform duration-150 ${collapsed ? '' : 'rotate-90'}`}
             fill="none" viewBox="0 0 24 24" stroke="currentColor"
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
@@ -99,14 +100,14 @@ export function GroupSection({
                 e.stopPropagation()
               }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-warm-800 border border-warm-600 rounded px-1.5 py-0.5 text-xs font-semibold text-warm-200 outline-none focus:border-brand-500 min-w-0 w-36"
+              className="bg-cream-100 border border-cream-400 rounded px-1.5 py-0.5 text-xs font-sans font-medium text-ink-300 outline-none focus:border-brand-500 min-w-0 w-36"
             />
           ) : (
-            <span className="text-xs font-semibold text-warm-500 uppercase tracking-wider truncate">
+            <span className="text-xs font-sans font-medium text-ink-50 uppercase tracking-widest truncate">
               {group.name}
             </span>
           )}
-          <span className="text-xs text-warm-700 flex-shrink-0 ml-1">
+          <span className="text-xs text-ink-50/50 flex-shrink-0 ml-1">
             {channels.length}
           </span>
         </button>
@@ -116,7 +117,7 @@ export function GroupSection({
           <div className="flex items-center gap-1 opacity-0 group-hover/hdr:opacity-100 transition-opacity">
             <button
               onClick={() => { setIsRenaming(true); setDraftName(group.name) }}
-              className="p-1 text-warm-600 hover:text-warm-300 transition-colors"
+              className="p-1 text-ink-50 hover:text-ink-300 transition-colors"
               title="Rename group"
             >
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -126,7 +127,7 @@ export function GroupSection({
             </button>
             <button
               onClick={() => setConfirmDelete(true)}
-              className="p-1 text-warm-600 hover:text-red-400 transition-colors"
+              className="p-1 text-ink-50 hover:text-red-600 transition-colors"
               title="Delete group"
             >
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -138,16 +139,16 @@ export function GroupSection({
         )}
         {confirmDelete && (
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-red-400">Delete group?</span>
+            <span className="text-[10px] text-red-600">Delete group?</span>
             <button
               onClick={() => onDelete(group.id)}
-              className="text-[10px] text-white bg-red-700 hover:bg-red-600 px-1.5 py-0.5 rounded transition-colors"
+              className="text-[10px] text-white bg-red-600 hover:bg-red-700 px-1.5 py-0.5 rounded transition-colors"
             >
               Delete
             </button>
             <button
               onClick={() => setConfirmDelete(false)}
-              className="text-[10px] text-warm-400 hover:text-warm-200 px-1.5 py-0.5 rounded transition-colors"
+              className="text-[10px] text-ink-100 hover:text-ink-300 px-1.5 py-0.5 rounded transition-colors"
             >
               Cancel
             </button>
@@ -159,23 +160,24 @@ export function GroupSection({
       {!collapsed && (
         <SortableContext
           items={channels.map((c) => c.id)}
-          strategy={verticalListSortingStrategy}
+          strategy={rectSortingStrategy}
         >
-          <div className="space-y-2 pl-4 border-l border-warm-800">
-            {channels.length === 0 ? (
-              <p className="text-xs text-warm-700 py-1 italic">No channels in this group</p>
-            ) : (
-              channels.map((channel) => (
+          {channels.length === 0 ? (
+            <p className="text-xs text-ink-50 py-1 italic mt-2">No channels in this group</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 mt-2">
+              {channels.map((channel) => (
                 <ChannelCard
                   key={channel.id}
                   channel={channel}
                   isSelected={selectedIds.has(channel.id)}
                   onToggle={onToggle}
                   groupId={group.id}
+                  hasBriefing={briefings?.has(channel.id) ?? false}
                 />
-              ))
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </SortableContext>
       )}
     </div>
