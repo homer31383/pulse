@@ -44,6 +44,7 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
   const [isCrossChannelGenerating, setIsCrossChannelGenerating] = useState(false)
   const [isWeeklySummaryGenerating, setIsWeeklySummaryGenerating] = useState(false)
   const [openSheets, setOpenSheets] = useState<string[]>([])
+  const [activeSheetId, setActiveSheetId] = useState<string>('')
   const [menuOpen, setMenuOpen] = useState(false)
   const [digestModeActive, setDigestModeActive] = useState(settings.digest_mode)
   const [profileOpen, setProfileOpen] = useState(false)
@@ -57,6 +58,15 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
     document.cookie = `profile_id=${currentProfileId}; path=/; max-age=31536000; SameSite=Lax`
     localStorage.setItem('pulse_profile_id', currentProfileId)
   }, [currentProfileId])
+
+  // Keep activeSheetId pointing to a valid open sheet
+  useEffect(() => {
+    setActiveSheetId((cur) => {
+      if (openSheets.length === 0) return ''
+      if (openSheets.includes(cur)) return cur
+      return openSheets[0]
+    })
+  }, [openSheets])
 
   // Close menu on outside click
   useEffect(() => {
@@ -300,8 +310,8 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
     setIsGenerating(true)
     setBriefings(new Map())
     const selected = channels.filter((c) => selectedIds.has(c.id))
-    // Open sheets immediately for all selected channels
     setOpenSheets(selected.map((c) => c.id))
+    setActiveSheetId(selected[0].id)
     await Promise.allSettled(selected.map(streamBriefing))
     setIsGenerating(false)
   }
@@ -322,6 +332,7 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
       }]
     ]))
     setOpenSheets(['digest'])
+    setActiveSheetId('digest')
     try {
       const res = await fetch('/api/digest', {
         method: 'POST',
@@ -356,6 +367,7 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
       })
     )
     setOpenSheets((prev) => [...prev.filter((s) => s !== 'weekly-summary'), 'weekly-summary'])
+    setActiveSheetId('weekly-summary')
     try {
       const res = await fetch('/api/weekly-summary', { method: 'POST' })
       await readStream('weekly-summary', res)
@@ -386,6 +398,7 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
       })
     )
     setOpenSheets((prev) => [...prev.filter((s) => s !== 'cross-channel'), 'cross-channel'])
+    setActiveSheetId('cross-channel')
     try {
       const res = await fetch('/api/cross-channel', { method: 'POST' })
       await readStream('cross-channel', res)
@@ -781,27 +794,23 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
         )}
       </main>
 
-      {/* ── Briefing sheets overlay ── */}
-      {openSheets.map((id, i) => {
-        const depthFromTop = openSheets.length - 1 - i
-        const briefing = briefings.get(id)
-        if (!briefing) return null
-        return (
-          <BriefingSheet
-            key={id}
-            briefing={briefing}
-            depthFromTop={depthFromTop}
-            onClose={() => setOpenSheets((prev) => prev.filter((s) => s !== id))}
-            highlightsEnabled={settings.highlights_enabled}
-            sharingEnabled={settings.sharing_enabled}
-            feedbackEnabled={settings.feedback_enabled}
-            discussEnabled={settings.discuss_enabled}
-            ttsEnabled={settings.tts_enabled}
-            defaultVoice={settings.tts_voice}
-            defaultSpeed={settings.tts_speed}
-          />
-        )
-      })}
+      {/* ── Briefing sheet overlay (tab bar navigation) ── */}
+      {openSheets.length > 0 && (
+        <BriefingSheet
+          openIds={openSheets}
+          briefings={briefings}
+          activeId={activeSheetId}
+          onTabClick={setActiveSheetId}
+          onClose={() => setOpenSheets([])}
+          highlightsEnabled={settings.highlights_enabled}
+          sharingEnabled={settings.sharing_enabled}
+          feedbackEnabled={settings.feedback_enabled}
+          discussEnabled={settings.discuss_enabled}
+          ttsEnabled={settings.tts_enabled}
+          defaultVoice={settings.tts_voice}
+          defaultSpeed={settings.tts_speed}
+        />
+      )}
 
       {/* ── Fixed generate bar ── */}
       {channels.length > 0 && (
