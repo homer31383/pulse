@@ -32,12 +32,13 @@ export const metadata: Metadata = {
     title: 'Pulse',
   },
   icons: {
-    apple: '/icons/icon-192.png',
+    icon: [{ url: '/icons/icon.svg', type: 'image/svg+xml' }],
+    apple: '/icons/icon.svg',
   },
 }
 
 export const viewport: Viewport = {
-  themeColor: '#6366f1',
+  themeColor: '#7c6fcd',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,

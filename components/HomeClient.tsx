@@ -41,6 +41,7 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
   const [isWeeklySummaryGenerating, setIsWeeklySummaryGenerating] = useState(false)
   const [openSheets, setOpenSheets] = useState<string[]>([])
   const [menuOpen, setMenuOpen] = useState(false)
+  const [digestModeActive, setDigestModeActive] = useState(settings.digest_mode)
   const menuRef = useRef<HTMLDivElement>(null)
 
   // Close menu on outside click
@@ -358,7 +359,6 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
   // ── Derived state ─────────────────────────────────────────────────────────
   const allSelected = channels.length > 0 && selectedIds.size === channels.length
   const selectedCount = selectedIds.size
-  const digestMode = settings.digest_mode
   const isSunday = new Date().getDay() === 0
   const ungrouped = channels.filter((c) => c.group_id == null)
   const ungroupedIds = ungrouped.map((c) => c.id)
@@ -370,11 +370,12 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
         <div className="max-w-screen-xl mx-auto flex items-center justify-between">
           {/* Logo */}
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-brand-600 rounded-lg flex items-center justify-center shadow shadow-brand-500/30">
-              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
+            <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="#7c6fcd" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+              <line x1="5" y1="17" x2="20" y2="17"/>
+              <g transform="rotate(-45, 5, 17)">
+                <polyline points="5,17 10,17 11,10 12,20 14,17 20,17"/>
+              </g>
+            </svg>
             <h1 className="font-display text-xl font-normal text-ink-300 tracking-wide">Pulse</h1>
           </div>
 
@@ -464,7 +465,7 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
                     Notes
                   </Link>
                 )}
-                {settings.digest_mode && (
+                {digestModeActive && (
                   <Link
                     href="/digest-history"
                     onClick={() => setMenuOpen(false)}
@@ -529,12 +530,40 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
           </div>
         ) : (
           <>
+            {/* ── Mode toggle ── */}
+            <div className="flex justify-center mb-5 mt-1">
+              <div className="inline-flex items-center bg-cream-100 border border-cream-300/60 rounded-full p-0.5">
+                <button
+                  onClick={() => setDigestModeActive(false)}
+                  className={[
+                    'px-3.5 py-1 rounded-full text-xs font-sans font-medium transition-all duration-150',
+                    !digestModeActive
+                      ? 'bg-cream-300 text-ink-300 shadow-sm'
+                      : 'text-ink-100 hover:text-ink-200',
+                  ].join(' ')}
+                >
+                  Briefings
+                </button>
+                <button
+                  onClick={() => setDigestModeActive(true)}
+                  className={[
+                    'px-3.5 py-1 rounded-full text-xs font-sans font-medium transition-all duration-150',
+                    digestModeActive
+                      ? 'bg-cream-300 text-ink-300 shadow-sm'
+                      : 'text-ink-100 hover:text-ink-200',
+                  ].join(' ')}
+                >
+                  Digest
+                </button>
+              </div>
+            </div>
+
             {/* ── Selection bar ── */}
             <div className="flex items-center justify-between mb-4">
               <p className="text-sm font-sans text-ink-50">
                 {selectedCount > 0
                   ? `${selectedCount} selected`
-                  : digestMode ? 'Select channels for digest' : 'Select channels to brief'}
+                  : digestModeActive ? 'Select channels for digest' : 'Select channels to brief'}
               </p>
               <div className="flex items-center gap-3">
                 <button
@@ -650,7 +679,7 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
         <div className="fixed bottom-0 inset-x-0 bg-cream-200/95 backdrop-blur-sm border-t border-cream-300/60 px-4 py-3">
           <div className="max-w-screen-xl mx-auto flex items-center gap-3">
             <button
-              onClick={digestMode ? generateDigest : generateBriefings}
+              onClick={digestModeActive ? generateDigest : generateBriefings}
               disabled={selectedCount === 0 || isGenerating}
               className={[
                 'flex-1 font-semibold py-3 rounded-2xl text-sm transition-all duration-200',
@@ -666,7 +695,7 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
-                  {digestMode ? 'Generating digest…' : `Generating ${selectedCount} briefing${selectedCount !== 1 ? 's' : ''}…`}
+                  {digestModeActive ? 'Generating digest…' : `Generating ${selectedCount} briefing${selectedCount !== 1 ? 's' : ''}…`}
                 </>
               ) : (
                 <>
@@ -675,7 +704,7 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
                   </svg>
                   {selectedCount === 0
                     ? 'Select channels above'
-                    : digestMode
+                    : digestModeActive
                     ? `Generate Morning Digest (${selectedCount})`
                     : `Generate ${selectedCount} Briefing${selectedCount !== 1 ? 's' : ''}`}
                 </>

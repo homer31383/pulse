@@ -1,19 +1,27 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="96" fill="#4f46e5"/>
-  <!-- Lightning bolt (Pulse icon) -->
-  <path
-    d="M296 80L160 272h96v160l160-192h-96z"
-    fill="white"
-    stroke="none"
-  />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <!--
+    Pulse mark — two elements radiating from focal point (107, 369):
+      1. Horizontal straight line  (0°)
+      2. EKG/heartbeat pulse line  (45°, rotated counter-clockwise)
+    Composition center: (256, 256). Transparent background; #7c6fcd stroke only.
+
+    To regenerate PNG icons from this SVG:
+      npx sharp-cli -i public/icons/icon.svg -o public/icons/icon-192.png --resize 192
+      npx sharp-cli -i public/icons/icon.svg -o public/icons/icon-512.png --resize 512
+
+    For the maskable variant (requires a solid background in the safe zone):
+      Use https://maskable.app/editor — paste this SVG, add a #f5f0e8 background fill.
+  -->
+
+  <g fill="none" stroke="#7c6fcd" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+
+    <!-- Horizontal line (0°) -->
+    <line x1="107" y1="369" x2="427" y2="369"/>
+
+    <!-- EKG/heartbeat line (45° — rotated counter-clockwise from horizontal) -->
+    <g transform="rotate(-45, 107, 369)">
+      <polyline points="107,369 212,369 232,214 262,424 292,369 427,369"/>
+    </g>
+
+  </g>
 </svg>
-
-<!--
-  To generate PNG icons from this SVG, run:
-    npx sharp-cli -i public/icons/icon.svg -o public/icons/icon-192.png --resize 192
-    npx sharp-cli -i public/icons/icon.svg -o public/icons/icon-512.png --resize 512
-    npx sharp-cli -i public/icons/icon.svg -o public/icons/icon-maskable-512.png --resize 512
-
-  Or use https://maskable.app/editor to create the maskable variant.
-  Or use https://realfavicongenerator.net to generate a full icon set.
--->
