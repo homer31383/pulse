@@ -29,6 +29,7 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
   )
   const [newQuery, setNewQuery] = useState('')
   const [groupId, setGroupId] = useState<string | null>(initialChannel.group_id ?? null)
+  const [serendipityMode, setSerendipityMode] = useState(initialChannel.serendipity_mode ?? false)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
 
   // ── Chat state ───────────────────────────────────────────────────────────────
@@ -61,6 +62,7 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
           instructions: instructions.trim(),
           search_queries: searchQueries.filter((q) => q.trim()),
           group_id: groupId,
+          serendipity_mode: serendipityMode,
         }),
       })
       if (!res.ok) throw new Error()
@@ -393,6 +395,39 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
                 Add
               </button>
             </div>
+          </div>
+
+          {/* ── Serendipity Mode ── */}
+          <div className="pt-2">
+            <label className="block text-xs font-sans font-medium text-ink-100 uppercase tracking-wider mb-3">
+              Behaviour
+            </label>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={serendipityMode}
+              onClick={() => setSerendipityMode((v) => !v)}
+              className="w-full flex items-start justify-between gap-4 text-left group"
+            >
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-ink-200 group-hover:text-ink-300 transition-colors">
+                  Serendipity Mode
+                </p>
+                <p className="text-xs text-ink-50 mt-0.5 leading-relaxed">
+                  Automatically excludes your other channel topics to ensure this briefing always surprises you.
+                </p>
+              </div>
+              {/* Toggle pill */}
+              <div className={[
+                'flex-shrink-0 w-10 h-6 rounded-full transition-colors duration-200 mt-0.5',
+                serendipityMode ? 'bg-brand-600' : 'bg-cream-400',
+              ].join(' ')}>
+                <div className={[
+                  'w-4 h-4 rounded-full bg-white shadow-sm m-1 transition-transform duration-200',
+                  serendipityMode ? 'translate-x-4' : 'translate-x-0',
+                ].join(' ')} />
+              </div>
+            </button>
           </div>
 
           {/* ── Briefing history ── */}

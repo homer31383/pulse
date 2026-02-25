@@ -31,8 +31,8 @@ export async function POST(req: NextRequest, { params }: Params) {
       }
 
       try {
-        // ── Fetch previous briefing + app settings in parallel ────────────
-        const [prevResult, settingsResult] = await Promise.all([
+        // ── Fetch previous briefing, app settings, and (if serendipity) other channels ──
+        const [prevResult, settingsResult, otherChannelsResult] = await Promise.all([
           supabase
             .from('briefings')
             .select('content, created_at')
@@ -45,6 +45,13 @@ export async function POST(req: NextRequest, { params }: Params) {
             .select('*')
             .eq('id', 'default')
             .single(),
+          channel.serendipity_mode
+            ? supabase
+                .from('channels')
+                .select('name, description')
+                .neq('id', channelId)
+                .order('position', { ascending: true })
+            : Promise.resolve({ data: null }),
         ])
 
         const previousBriefing = prevResult.data
@@ -61,6 +68,22 @@ export async function POST(req: NextRequest, { params }: Params) {
         const densityInstruction = DENSITY_INSTRUCTIONS[density]
         if (densityInstruction) {
           systemPrompt += `\n\n${densityInstruction}`
+        }
+
+        // Inject serendipity mode exclusions
+        if (channel.serendipity_mode) {
+          const otherChannels = otherChannelsResult.data
+          if (otherChannels && otherChannels.length > 0) {
+            const exclusionList = otherChannels
+              .map((c: { name: string; description: string | null }) =>
+                `- ${c.name}${c.description ? `: ${c.description}` : ''}`)
+              .join('\n')
+            systemPrompt +=
+              `\n\nSERENDIPITY MODE — This briefing must NOT overlap with the topics covered by the user's other channels listed below. ` +
+              `Do not cover these subjects — they are already handled elsewhere. ` +
+              `Instead, actively seek out surprising, unexpected, or serendipitous content that the user would not encounter through their regular channels.\n\n` +
+              `EXCLUDED TOPICS (covered by other channels):\n${exclusionList}`
+          }
         }
 
         // Inject watchlist terms

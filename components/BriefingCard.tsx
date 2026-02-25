@@ -164,6 +164,7 @@ export function BriefingCard({
   const [discussInput, setDiscussInput] = useState('')
   const [streamingText, setStreamingText] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
+  const [searchingQuery, setSearchingQuery] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -187,6 +188,7 @@ export function BriefingCard({
     setDiscussMessages(nextMessages)
     setIsStreaming(true)
     setStreamingText('')
+    setSearchingQuery(null)
 
     let accumulated = ''
 
@@ -218,6 +220,9 @@ export function BriefingCard({
             if (event.type === 'text_delta') {
               accumulated += event.text
               setStreamingText(accumulated)
+              setSearchingQuery(null) // clear search indicator once text starts
+            } else if (event.type === 'searching') {
+              setSearchingQuery(event.query as string)
             }
           } catch { /* skip malformed lines */ }
         }
@@ -235,6 +240,7 @@ export function BriefingCard({
       ])
     } finally {
       setStreamingText('')
+      setSearchingQuery(null)
       setIsStreaming(false)
     }
   }
@@ -591,6 +597,15 @@ export function BriefingCard({
                       <div className="prose prose-sm max-w-none prose-p:text-ink-200 prose-p:leading-relaxed prose-li:text-ink-200 prose-strong:text-ink-300 prose-headings:text-ink-300 prose-headings:text-sm prose-a:text-brand-600 prose-code:text-ink-300 prose-code:bg-cream-300 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-p:my-1 prose-ul:my-1 prose-li:my-0">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingText}</ReactMarkdown>
                       </div>
+                    ) : searchingQuery ? (
+                      /* Searching indicator */
+                      <div className="flex items-center gap-2 py-2 text-xs text-ink-100">
+                        <svg className="w-3.5 h-3.5 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        <span>Searching for &ldquo;{searchingQuery}&rdquo;…</span>
+                      </div>
                     ) : (
                       /* Dots while waiting for first token */
                       <div className="flex items-center gap-1 py-2">
@@ -619,7 +634,7 @@ export function BriefingCard({
                     sendDiscussMessage()
                   }
                 }}
-                placeholder="Ask a question about this briefing…"
+                placeholder="Ask a question — Claude can search the web for more…"
                 disabled={isStreaming}
                 className="flex-1 bg-cream-100 border border-cream-300 rounded-xl px-3 py-2 text-sm text-ink-300 placeholder-ink-50 focus:outline-none focus:border-brand-500/50 focus:ring-1 focus:ring-brand-500/30 disabled:opacity-50 transition-colors"
               />

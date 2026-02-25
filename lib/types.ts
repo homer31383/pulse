@@ -15,6 +15,7 @@ export interface Channel {
   last_briefed_at: string | null
   position: number
   group_id: string | null
+  serendipity_mode: boolean
   created_at: string
   updated_at: string
 }

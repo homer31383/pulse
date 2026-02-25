@@ -1,0 +1,2 @@
+ALTER TABLE channels
+  ADD COLUMN IF NOT EXISTS serendipity_mode BOOLEAN NOT NULL DEFAULT false;

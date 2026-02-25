@@ -3,7 +3,7 @@ import { anthropic, DEFAULT_MODEL } from '@/lib/anthropic'
 import { supabase } from '@/lib/supabase'
 import { calculateCost } from '@/lib/cost'
 import { logUsage } from '@/lib/usage'
-import type { ConversationMessage } from '@/lib/types'
+import type { ConversationMessage, Source } from '@/lib/types'
 
 export async function POST(req: NextRequest) {
   const {
@@ -36,25 +36,66 @@ export async function POST(req: NextRequest) {
         const ellipsis = briefingContent.length > 8000 ? '\n\n[…content truncated…]' : ''
 
         const systemPrompt =
-          `You are a knowledgeable assistant who has just written a briefing about "${channelName}". ` +
-          `You know this briefing inside out and can answer questions about it — explaining concepts, ` +
-          `going deeper on specific points, comparing to historical context, exploring implications, ` +
-          `or clarifying anything confusing. Be conversational, direct, and concise.\n\n` +
-          `THE BRIEFING YOU WROTE:\n\n${truncated}${ellipsis}`
+          `You are a knowledgeable research assistant. You have access to a briefing about "${channelName}" ` +
+          `that you can reference, and you also have the ability to search the web for additional information. ` +
+          `Use your judgment about when to search — for questions that go beyond the briefing, need updated information, ` +
+          `require deeper explanation of concepts, or ask about related topics, search the web to give a comprehensive answer. ` +
+          `Be conversational, direct, and concise.\n\n` +
+          `THE BRIEFING (for reference):\n\n${truncated}${ellipsis}`
 
-        const messageStream = anthropic.messages.stream({
-          model,
-          max_tokens: 1024,
-          system: systemPrompt,
-          messages: messages.map((m) => ({ role: m.role, content: m.content })),
-        })
+        let currentBlockType = ''
+        let currentInputJson = ''
+
+        const messageStream = anthropic.messages.stream(
+          {
+            model,
+            max_tokens: 2048,
+            system: systemPrompt,
+            messages: messages.map((m) => ({ role: m.role, content: m.content })),
+            tools: [{ type: 'web_search_20250305', name: 'web_search' }] as any,
+          },
+          { headers: { 'anthropic-beta': 'web-search-2025-03-05' } },
+        )
 
         for await (const event of messageStream) {
-          if (
-            event.type === 'content_block_delta' &&
-            event.delta.type === 'text_delta'
-          ) {
-            send({ type: 'text_delta', text: event.delta.text })
+          switch (event.type) {
+            case 'content_block_start': {
+              const block = event.content_block as any
+              currentBlockType = block.type ?? ''
+              currentInputJson = ''
+              if (block.type === 'web_search_tool_result') {
+                const results: unknown[] = Array.isArray(block.content) ? block.content : []
+                for (const r of results) {
+                  const result = r as any
+                  if (result.type === 'web_search_result' && result.url) {
+                    const source: Source = { title: result.title || result.url, url: result.url }
+                    send({ type: 'source', source })
+                  }
+                }
+              }
+              break
+            }
+            case 'content_block_delta': {
+              const delta = event.delta
+              if (delta.type === 'text_delta') {
+                send({ type: 'text_delta', text: delta.text })
+              }
+              if (delta.type === 'input_json_delta' && currentBlockType === 'server_tool_use') {
+                currentInputJson += (delta as any).partial_json ?? ''
+              }
+              break
+            }
+            case 'content_block_stop': {
+              if (currentBlockType === 'server_tool_use' && currentInputJson) {
+                try {
+                  const input = JSON.parse(currentInputJson) as { query?: string }
+                  if (input.query) send({ type: 'searching', query: input.query })
+                } catch { /* malformed JSON — skip */ }
+              }
+              currentBlockType = ''
+              currentInputJson = ''
+              break
+            }
           }
         }
 
