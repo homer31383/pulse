@@ -1,3 +1,4 @@
+import { cookies } from 'next/headers'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { WeeklySummaryHistoryClient } from '@/components/WeeklySummaryHistoryClient'
@@ -5,11 +6,17 @@ import type { WeeklySummaryWithCost } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
+const DEFAULT_PROFILE_ID = '00000000-0000-0000-0000-000000000001'
+
 export default async function WeeklySummaryHistoryPage() {
+  const cookieStore = await cookies()
+  const profileId = cookieStore.get('profile_id')?.value ?? DEFAULT_PROFILE_ID
+
   const [summariesResult, usageResult] = await Promise.all([
     supabase
       .from('weekly_summaries')
       .select('id, content, channel_names, model, week_start, created_at')
+      .eq('profile_id', profileId)
       .order('created_at', { ascending: false })
       .limit(52),
     supabase

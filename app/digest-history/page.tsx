@@ -1,3 +1,4 @@
+import { cookies } from 'next/headers'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { DigestHistoryClient } from '@/components/DigestHistoryClient'
@@ -5,11 +6,17 @@ import type { DigestWithCost, Source } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
+const DEFAULT_PROFILE_ID = '00000000-0000-0000-0000-000000000001'
+
 export default async function DigestHistoryPage() {
+  const cookieStore = await cookies()
+  const profileId = cookieStore.get('profile_id')?.value ?? DEFAULT_PROFILE_ID
+
   const [digestsResult, usageResult] = await Promise.all([
     supabase
       .from('digests')
       .select('id, content, sources, channel_ids, channel_names, model, created_at')
+      .eq('profile_id', profileId)
       .order('created_at', { ascending: false })
       .limit(100),
     supabase

@@ -1,6 +1,14 @@
 import { NextRequest } from 'next/server'
+import { cookies } from 'next/headers'
 import { supabase } from '@/lib/supabase'
 import type { AppSettings } from '@/lib/types'
+
+const DEFAULT_PROFILE_ID = '00000000-0000-0000-0000-000000000001'
+
+async function getProfileId(): Promise<string> {
+  const cookieStore = await cookies()
+  return cookieStore.get('profile_id')?.value ?? DEFAULT_PROFILE_ID
+}
 
 export const SETTINGS_DEFAULTS: AppSettings = {
   model: 'claude-sonnet-4-6',
@@ -37,16 +45,19 @@ const ALLOWED_FIELDS = [
 ] as const
 
 export async function GET() {
+  const profileId = await getProfileId()
+
   const { data } = await supabase
     .from('settings')
     .select('*')
-    .eq('id', 'default')
+    .eq('id', profileId)
     .single()
 
   return Response.json(data ?? SETTINGS_DEFAULTS)
 }
 
 export async function PATCH(req: NextRequest) {
+  const profileId = await getProfileId()
   const body = await req.json()
 
   const updates: Record<string, unknown> = {}
@@ -63,7 +74,7 @@ export async function PATCH(req: NextRequest) {
   const { error } = await supabase
     .from('settings')
     .upsert(
-      { id: 'default', ...updates, updated_at: new Date().toISOString() },
+      { id: profileId, ...updates, updated_at: new Date().toISOString() },
       { onConflict: 'id' }
     )
 

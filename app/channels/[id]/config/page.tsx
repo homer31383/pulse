@@ -1,8 +1,11 @@
+import { cookies } from 'next/headers'
 import { supabase } from '@/lib/supabase'
 import { notFound } from 'next/navigation'
 import { ChannelConfigClient } from '@/components/ChannelConfigClient'
 import { NewChannelClient } from '@/components/NewChannelClient'
-import type { Channel, ChannelGroup, ConversationMessage, BriefingWithCost } from '@/lib/types'
+import type { Channel, ChannelGroup, ConversationMessage, BriefingWithCost, Profile } from '@/lib/types'
+
+const DEFAULT_PROFILE_ID = '00000000-0000-0000-0000-000000000001'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -16,8 +19,11 @@ export default async function ChannelConfigPage({ params }: PageProps) {
     return <NewChannelClient />
   }
 
-  // Fetch channel, config conversation, briefings, usage logs, and groups in parallel
-  const [channelResult, conversationResult, briefingsResult, usageResult, groupsResult] = await Promise.all([
+  const cookieStore = await cookies()
+  const currentProfileId = cookieStore.get('profile_id')?.value ?? DEFAULT_PROFILE_ID
+
+  // Fetch channel, config conversation, briefings, usage logs, groups, and profiles in parallel
+  const [channelResult, conversationResult, briefingsResult, usageResult, groupsResult, profilesResult] = await Promise.all([
     supabase.from('channels').select('*').eq('id', id).single(),
     supabase.from('config_conversations').select('messages').eq('channel_id', id).single(),
     supabase
@@ -34,6 +40,7 @@ export default async function ChannelConfigPage({ params }: PageProps) {
       .order('created_at', { ascending: false })
       .limit(50),
     supabase.from('channel_groups').select('*').order('position', { ascending: true }),
+    supabase.from('profiles').select('*').order('created_at', { ascending: true }),
   ])
 
   if (!channelResult.data) notFound()
@@ -67,6 +74,7 @@ export default async function ChannelConfigPage({ params }: PageProps) {
   })
 
   const groups = (groupsResult.data ?? []) as ChannelGroup[]
+  const profiles = (profilesResult.data ?? []) as Profile[]
 
   return (
     <ChannelConfigClient
@@ -74,6 +82,8 @@ export default async function ChannelConfigPage({ params }: PageProps) {
       initialMessages={initialMessages}
       initialBriefings={initialBriefings}
       groups={groups}
+      profiles={profiles}
+      currentProfileId={currentProfileId}
     />
   )
 }

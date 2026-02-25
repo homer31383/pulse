@@ -1,3 +1,9 @@
+export interface Profile {
+  id: string
+  name: string
+  created_at: string
+}
+
 export interface ChannelGroup {
   id: string
   name: string

@@ -1,10 +1,16 @@
 import { NextRequest } from 'next/server'
+import { cookies } from 'next/headers'
 import { anthropic, DEFAULT_MODEL } from '@/lib/anthropic'
 import { supabase } from '@/lib/supabase'
 import { calculateCost } from '@/lib/cost'
 import { logUsage } from '@/lib/usage'
 
+const DEFAULT_PROFILE_ID = '00000000-0000-0000-0000-000000000001'
+
 export async function POST(_req: NextRequest) {
+  const cookieStore = await cookies()
+  const profileId = cookieStore.get('profile_id')?.value ?? DEFAULT_PROFILE_ID
+
   const encoder = new TextEncoder()
 
   const stream = new ReadableStream({
@@ -14,16 +20,31 @@ export async function POST(_req: NextRequest) {
       }
 
       try {
-        // ── Fetch settings + last 7 days of briefings in parallel ────────
+        // ── Fetch settings ────────────────────────────────────────────────
         const weekStart = new Date()
         weekStart.setDate(weekStart.getDate() - 7)
         const weekStartIso = weekStart.toISOString()
 
+        // Get profile's channel IDs to scope briefings
+        const { data: profileChannels } = await supabase
+          .from('channels')
+          .select('id')
+          .eq('profile_id', profileId)
+
+        const profileChannelIds = (profileChannels ?? []).map((c) => c.id)
+
+        if (profileChannelIds.length === 0) {
+          send({ type: 'error', error: 'No channels in this profile. Create some channels first.' })
+          controller.close()
+          return
+        }
+
         const [settingsResult, briefingsResult] = await Promise.all([
-          supabase.from('settings').select('*').eq('id', 'default').single(),
+          supabase.from('settings').select('*').eq('id', profileId).single(),
           supabase
             .from('briefings')
             .select('channel_id, content, created_at, channels(name)')
+            .in('channel_id', profileChannelIds)
             .gte('created_at', weekStartIso)
             .order('created_at', { ascending: false }),
         ])
@@ -119,6 +140,7 @@ export async function POST(_req: NextRequest) {
             channel_names: channelNames,
             model,
             week_start:    weekStartDate,
+            profile_id:    profileId,
           })
           .select('id')
           .single()

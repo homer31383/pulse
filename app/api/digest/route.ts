@@ -1,9 +1,12 @@
 import { NextRequest } from 'next/server'
+import { cookies } from 'next/headers'
 import { anthropic, DEFAULT_MODEL } from '@/lib/anthropic'
 import { supabase } from '@/lib/supabase'
 import { calculateCost } from '@/lib/cost'
 import { logUsage } from '@/lib/usage'
 import type { Channel, Source } from '@/lib/types'
+
+const DEFAULT_PROFILE_ID = '00000000-0000-0000-0000-000000000001'
 
 const DENSITY_INSTRUCTIONS: Record<string, string> = {
   dense: 'Write in dense, information-rich style: include all significant data points, statistics, percentages, names, dates, and technical detail.',
@@ -18,6 +21,9 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'No channels provided' }, { status: 400 })
   }
 
+  const cookieStore = await cookies()
+  const profileId = cookieStore.get('profile_id')?.value ?? DEFAULT_PROFILE_ID
+
   const encoder = new TextEncoder()
 
   const stream = new ReadableStream({
@@ -30,7 +36,7 @@ export async function POST(req: NextRequest) {
         const { data: settings } = await supabase
           .from('settings')
           .select('*')
-          .eq('id', 'default')
+          .eq('id', profileId)
           .single()
 
         const model = settings?.model ?? DEFAULT_MODEL
@@ -144,6 +150,7 @@ export async function POST(req: NextRequest) {
             channel_ids:   channels.map((c) => c.id),
             channel_names: channels.map((c) => c.name),
             model,
+            profile_id:    profileId,
           })
           .select('id')
           .single()

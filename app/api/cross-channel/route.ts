@@ -1,9 +1,15 @@
+import { cookies } from 'next/headers'
 import { anthropic, DEFAULT_MODEL } from '@/lib/anthropic'
 import { supabase } from '@/lib/supabase'
 import { calculateCost } from '@/lib/cost'
 import { logUsage } from '@/lib/usage'
 
+const DEFAULT_PROFILE_ID = '00000000-0000-0000-0000-000000000001'
+
 export async function POST() {
+  const cookieStore = await cookies()
+  const profileId = cookieStore.get('profile_id')?.value ?? DEFAULT_PROFILE_ID
+
   const encoder = new TextEncoder()
 
   const stream = new ReadableStream({
@@ -16,16 +22,31 @@ export async function POST() {
         const { data: settings } = await supabase
           .from('settings')
           .select('model')
-          .eq('id', 'default')
+          .eq('id', profileId)
           .single()
 
         const model = settings?.model ?? DEFAULT_MODEL
 
-        // Fetch briefings from the past 7 days
+        // Get profile's channel IDs to scope briefings
+        const { data: profileChannels } = await supabase
+          .from('channels')
+          .select('id')
+          .eq('profile_id', profileId)
+
+        const profileChannelIds = (profileChannels ?? []).map((c) => c.id)
+
+        if (profileChannelIds.length === 0) {
+          send({ type: 'error', error: 'No channels in this profile.' })
+          controller.close()
+          return
+        }
+
+        // Fetch briefings from the past 7 days, scoped to this profile's channels
         const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
         const { data: briefings } = await supabase
           .from('briefings')
           .select('content, created_at, channel_id')
+          .in('channel_id', profileChannelIds)
           .gte('created_at', since)
           .order('created_at', { ascending: false })
           .limit(20)

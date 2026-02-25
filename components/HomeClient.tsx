@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   DndContext,
   closestCenter,
@@ -20,15 +21,18 @@ import {
 import { ChannelCard } from './ChannelCard'
 import { BriefingSheet } from './BriefingSheet'
 import { GroupSection } from './GroupSection'
-import type { Channel, ChannelGroup, BriefingState, BriefingStreamEvent, AppSettings } from '@/lib/types'
+import type { Channel, ChannelGroup, BriefingState, BriefingStreamEvent, AppSettings, Profile } from '@/lib/types'
 
 interface HomeClientProps {
   channels: Channel[]
   settings: AppSettings
   groups: ChannelGroup[]
+  profiles: Profile[]
+  currentProfileId: string
 }
 
-export function HomeClient({ channels: initialChannels, settings, groups: initialGroups }: HomeClientProps) {
+export function HomeClient({ channels: initialChannels, settings, groups: initialGroups, profiles, currentProfileId }: HomeClientProps) {
+  const router = useRouter()
   const [channels, setChannels] = useState<Channel[]>(initialChannels)
   const [groups, setGroups] = useState<ChannelGroup[]>(initialGroups)
   const [newGroupName, setNewGroupName] = useState('')
@@ -42,7 +46,17 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
   const [openSheets, setOpenSheets] = useState<string[]>([])
   const [menuOpen, setMenuOpen] = useState(false)
   const [digestModeActive, setDigestModeActive] = useState(settings.digest_mode)
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [addProfileName, setAddProfileName] = useState('')
+  const [isAddingProfile, setIsAddingProfile] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const profileRef = useRef<HTMLDivElement>(null)
+
+  // Set cookie + localStorage on mount so API routes always have a profile_id
+  useEffect(() => {
+    document.cookie = `profile_id=${currentProfileId}; path=/; max-age=31536000; SameSite=Lax`
+    localStorage.setItem('pulse_profile_id', currentProfileId)
+  }, [currentProfileId])
 
   // Close menu on outside click
   useEffect(() => {
@@ -50,12 +64,42 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpen(false)
       }
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setProfileOpen(false)
+        setIsAddingProfile(false)
+        setAddProfileName('')
+      }
     }
-    if (menuOpen) {
+    if (menuOpen || profileOpen) {
       document.addEventListener('mousedown', handleClick)
       return () => document.removeEventListener('mousedown', handleClick)
     }
-  }, [menuOpen])
+  }, [menuOpen, profileOpen])
+
+  function switchProfile(id: string) {
+    document.cookie = `profile_id=${id}; path=/; max-age=31536000; SameSite=Lax`
+    localStorage.setItem('pulse_profile_id', id)
+    setProfileOpen(false)
+    setIsAddingProfile(false)
+    setAddProfileName('')
+    window.location.reload()
+  }
+
+  async function confirmAddProfile() {
+    const name = addProfileName.trim()
+    if (!name) return
+    try {
+      const res = await fetch('/api/profiles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      if (res.ok) {
+        const newProfile = await res.json() as Profile
+        switchProfile(newProfile.id)
+      }
+    } catch { /* silently fail */ }
+  }
 
   // ── DnD sensors ───────────────────────────────────────────────────────────
   const sensors = useSensors(
@@ -367,9 +411,9 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
     <div className="min-h-screen bg-cream-200 pb-32">
       {/* ── Header ── */}
       <header className="sticky top-0 z-20 bg-cream-200/95 backdrop-blur-sm border-b border-cream-300/60 px-4 py-3">
-        <div className="max-w-screen-xl mx-auto flex items-center justify-between">
+        <div className="max-w-screen-xl mx-auto flex items-center gap-3">
           {/* Logo */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="#7c6fcd" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
               <line x1="5" y1="17" x2="20" y2="17"/>
               <g transform="rotate(-45, 5, 17)">
@@ -379,8 +423,93 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
             <h1 className="font-display text-xl font-normal text-ink-300 tracking-wide">Pulse</h1>
           </div>
 
+          {/* Profile selector */}
+          {profiles.length > 0 && (
+            <div ref={profileRef} className="relative flex-1">
+              <button
+                onClick={() => setProfileOpen((o) => !o)}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-sm font-sans text-ink-100 hover:text-ink-300 hover:bg-cream-300 transition-colors"
+              >
+                <span className="font-medium text-ink-200">
+                  {profiles.find((p) => p.id === currentProfileId)?.name ?? 'Profile'}
+                </span>
+                <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {profileOpen && (
+                <div className="absolute left-0 top-full mt-1.5 w-44 bg-cream-50 rounded-2xl shadow-xl border border-cream-300/60 p-2 z-50">
+                  {profiles.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => switchProfile(p.id)}
+                      className={[
+                        'w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm transition-colors text-left',
+                        p.id === currentProfileId
+                          ? 'bg-cream-300 text-ink-300 font-medium'
+                          : 'text-ink-200 hover:bg-cream-200',
+                      ].join(' ')}
+                    >
+                      {p.id === currentProfileId ? (
+                        <svg className="w-3 h-3 flex-shrink-0 text-brand-500" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      ) : (
+                        <span className="w-3 flex-shrink-0" />
+                      )}
+                      {p.name}
+                    </button>
+                  ))}
+
+                  <div className="h-px bg-cream-300/60 my-1.5 mx-2" />
+
+                  {isAddingProfile ? (
+                    <div className="px-2 py-1.5">
+                      <input
+                        autoFocus
+                        value={addProfileName}
+                        onChange={(e) => setAddProfileName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') confirmAddProfile()
+                          if (e.key === 'Escape') { setIsAddingProfile(false); setAddProfileName('') }
+                        }}
+                        placeholder="Profile name…"
+                        className="w-full bg-cream-100 border border-cream-300 rounded-lg px-2.5 py-1 text-xs font-sans text-ink-200 placeholder-ink-50 focus:outline-none focus:border-cream-400"
+                      />
+                      <div className="flex gap-1.5 mt-1.5">
+                        <button
+                          onClick={confirmAddProfile}
+                          className="flex-1 text-xs font-medium text-brand-600 hover:text-brand-500 py-1 transition-colors"
+                        >
+                          Add
+                        </button>
+                        <button
+                          onClick={() => { setIsAddingProfile(false); setAddProfileName('') }}
+                          className="flex-1 text-xs text-ink-100 hover:text-ink-200 py-1 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setIsAddingProfile(true)}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-ink-100 hover:bg-cream-200 hover:text-ink-200 transition-colors"
+                    >
+                      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Add profile
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Hamburger menu */}
-          <div ref={menuRef} className="relative">
+          <div ref={menuRef} className="relative flex-shrink-0">
             <button
               onClick={() => setMenuOpen((o) => !o)}
               className="p-2 text-ink-100 hover:text-ink-300 hover:bg-cream-300 rounded-lg transition-colors"
@@ -686,7 +815,7 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
                 'flex items-center justify-center gap-2',
                 selectedCount === 0 || isGenerating
                   ? 'bg-cream-300 text-ink-50 cursor-not-allowed'
-                  : 'bg-ink-300 hover:bg-ink-200 active:scale-[0.98] text-cream-50 shadow-lg shadow-ink-300/25',
+                  : 'bg-brand-500 hover:bg-brand-600 active:scale-[0.98] text-white shadow-lg shadow-brand-500/25',
               ].join(' ')}
             >
               {isGenerating ? (

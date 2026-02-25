@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import type { Channel, ChannelGroup, ConversationMessage, ConfigChatStreamEvent, BriefingWithCost } from '@/lib/types'
+import type { Channel, ChannelGroup, ConversationMessage, ConfigChatStreamEvent, BriefingWithCost, Profile } from '@/lib/types'
 import { BriefingHistorySection } from '@/components/BriefingHistorySection'
 
 type Tab = 'settings' | 'chat'
@@ -14,9 +14,11 @@ interface Props {
   initialMessages: ConversationMessage[]
   initialBriefings: BriefingWithCost[]
   groups: ChannelGroup[]
+  profiles: Profile[]
+  currentProfileId: string
 }
 
-export function ChannelConfigClient({ channel: initialChannel, initialMessages, initialBriefings, groups }: Props) {
+export function ChannelConfigClient({ channel: initialChannel, initialMessages, initialBriefings, groups, profiles, currentProfileId }: Props) {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('settings')
 
@@ -43,6 +45,12 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
   // ── Delete state ─────────────────────────────────────────────────────────────
   const [deleteStep, setDeleteStep] = useState<'idle' | 'confirm'>('idle')
   const [isDeleting, setIsDeleting] = useState(false)
+
+  // ── Copy to profile state ─────────────────────────────────────────────────
+  const otherProfiles = profiles.filter((p) => p.id !== currentProfileId)
+  const [copyTargetId, setCopyTargetId] = useState<string>(otherProfiles[0]?.id ?? '')
+  const [isCopying, setIsCopying] = useState(false)
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'success' | 'error'>('idle')
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -184,6 +192,28 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
     } catch {
       setIsDeleting(false)
       setDeleteStep('idle')
+    }
+  }
+
+  // ── Copy to profile ───────────────────────────────────────────────────────────
+  async function copyToProfile() {
+    if (isCopying || !copyTargetId) return
+    setIsCopying(true)
+    setCopyStatus('idle')
+    try {
+      const res = await fetch(`/api/channels/${initialChannel.id}/copy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target_profile_id: copyTargetId }),
+      })
+      if (!res.ok) throw new Error()
+      setCopyStatus('success')
+      setTimeout(() => setCopyStatus('idle'), 3000)
+    } catch {
+      setCopyStatus('error')
+      setTimeout(() => setCopyStatus('idle'), 3000)
+    } finally {
+      setIsCopying(false)
     }
   }
 
@@ -436,6 +466,50 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
             channelId={initialChannel.id}
             initialBriefings={initialBriefings}
           />
+
+          {/* ── Copy to profile ── */}
+          {otherProfiles.length > 0 && (
+            <div className="pt-2 border-t border-cream-300">
+              <p className="text-xs font-sans font-medium text-ink-100 uppercase tracking-wider mb-3">
+                Copy to profile
+              </p>
+              <p className="text-xs text-ink-50 mb-3">
+                Duplicate this channel's name, description, instructions, and search queries to another profile.
+              </p>
+              <div className="flex gap-2">
+                <select
+                  value={copyTargetId}
+                  onChange={(e) => setCopyTargetId(e.target.value)}
+                  disabled={isCopying}
+                  className="flex-1 bg-cream-100 border border-cream-300 rounded-xl px-4 py-2.5 text-ink-300 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/50 text-sm transition-colors"
+                >
+                  {otherProfiles.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={copyToProfile}
+                  disabled={isCopying || !copyTargetId}
+                  className={[
+                    'px-4 py-2.5 rounded-xl text-sm font-medium transition-colors whitespace-nowrap',
+                    copyStatus === 'success'
+                      ? 'bg-emerald-600 text-white'
+                      : copyStatus === 'error'
+                      ? 'bg-red-600 text-white'
+                      : 'bg-cream-300 hover:bg-cream-400 disabled:opacity-40 disabled:cursor-not-allowed text-ink-200',
+                  ].join(' ')}
+                >
+                  {isCopying
+                    ? 'Copying…'
+                    : copyStatus === 'success'
+                    ? 'Copied!'
+                    : copyStatus === 'error'
+                    ? 'Failed'
+                    : 'Copy'}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* ── Danger zone ── */}
           <div className="mt-2 pt-6 border-t border-cream-300">
