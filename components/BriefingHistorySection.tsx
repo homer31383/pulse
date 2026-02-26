@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { MARKDOWN_COMPONENTS } from './MarkdownRenderer'
 import type { BriefingWithCost, Source } from '@/lib/types'
 import { formatCost } from '@/lib/cost'
 
@@ -310,7 +311,7 @@ export function BriefingHistorySection({ channelName, channelId, initialBriefing
 
                       {/* Briefing content */}
                       <div className="font-serif prose prose-sm max-w-none prose-p:text-ink-200 prose-headings:font-sans prose-headings:text-ink-300 prose-a:text-brand-600 prose-a:no-underline hover:prose-a:underline prose-strong:text-ink-300 prose-ul:list-disc prose-ol:list-decimal">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
                           {b.content}
                         </ReactMarkdown>
                       </div>

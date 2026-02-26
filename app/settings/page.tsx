@@ -1,14 +1,22 @@
+import { cookies } from 'next/headers'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { SettingsClient } from '@/components/SettingsClient'
 import { SETTINGS_DEFAULTS } from '@/app/api/settings/route'
 import type { AppSettings } from '@/lib/types'
 
+export const dynamic = 'force-dynamic'
+
+const DEFAULT_PROFILE_ID = '00000000-0000-0000-0000-000000000001'
+
 export default async function SettingsPage() {
+  const cookieStore = await cookies()
+  const profileId = cookieStore.get('profile_id')?.value ?? DEFAULT_PROFILE_ID
+
   const { data } = await supabase
     .from('settings')
     .select('*')
-    .eq('id', 'default')
+    .eq('id', profileId)
     .single()
 
   const settings = (data as AppSettings | null) ?? SETTINGS_DEFAULTS

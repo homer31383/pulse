@@ -1,9 +1,31 @@
 import { NextRequest } from 'next/server'
+import { cookies } from 'next/headers'
 import { anthropic, DEFAULT_MODEL } from '@/lib/anthropic'
 import { supabase } from '@/lib/supabase'
 import { calculateCost } from '@/lib/cost'
 import { logUsage } from '@/lib/usage'
 import type { ConversationMessage, Source } from '@/lib/types'
+
+const DEFAULT_PROFILE_ID = '00000000-0000-0000-0000-000000000001'
+
+function friendlyError(err: unknown): string {
+  if (!(err instanceof Error)) return 'Failed to generate response'
+  const msg = err.message
+  // Anthropic SDK errors surface status codes in the message
+  if (msg.includes('429') || /rate.?limit/i.test(msg)) {
+    return 'Rate limit reached — please wait a moment and try again.'
+  }
+  if (/credit|billing|payment/i.test(msg)) {
+    return 'API credits exhausted. Please check your Anthropic account billing.'
+  }
+  if (msg.includes('529') || /overload/i.test(msg)) {
+    return 'The AI service is temporarily overloaded. Please try again in a moment.'
+  }
+  if (msg.includes('401') || /auth|api.?key/i.test(msg)) {
+    return 'Authentication failed — check that ANTHROPIC_API_KEY is set correctly.'
+  }
+  return msg
+}
 
 export async function POST(req: NextRequest) {
   const {
@@ -15,6 +37,9 @@ export async function POST(req: NextRequest) {
     briefingContent: string
     channelName: string
   } = await req.json()
+
+  const cookieStore = await cookies()
+  const profileId = cookieStore.get('profile_id')?.value ?? DEFAULT_PROFILE_ID
 
   const encoder = new TextEncoder()
 
@@ -28,7 +53,7 @@ export async function POST(req: NextRequest) {
         const { data: settings } = await supabase
           .from('settings')
           .select('model')
-          .eq('id', 'default')
+          .eq('id', profileId)
           .single()
         const model = settings?.model ?? DEFAULT_MODEL
 
@@ -122,7 +147,7 @@ export async function POST(req: NextRequest) {
       } catch (err) {
         send({
           type: 'error',
-          error: err instanceof Error ? err.message : 'Failed to generate response',
+          error: friendlyError(err),
         })
       } finally {
         controller.close()
