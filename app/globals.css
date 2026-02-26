@@ -43,3 +43,10 @@ body {
   to   { transform: translateY(0); }
 }
 .animate-slide-up { animation: slideUp 300ms ease-out forwards; }
+
+/* Keyboard-aware sheet height: dvh shrinks when iOS soft keyboard appears.
+   Falls back to vh for older browsers (Safari < 15.4). */
+.h-sheet {
+  height: 90vh;
+  height: 90dvh;
+}

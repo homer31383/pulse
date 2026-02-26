@@ -78,7 +78,7 @@ export function ChannelCard({ channel, isSelected, onToggle, groupId, hasBriefin
           <Link
             href={`/channels/${channel.id}/config`}
             onClick={(e) => e.stopPropagation()}
-            className="p-1 text-ink-50/50 hover:text-ink-300 opacity-0 group-hover:opacity-100 transition-all duration-150 rounded"
+            className="p-2 text-ink-50/50 hover:text-ink-300 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-all duration-150 rounded"
             aria-label={`Configure ${channel.name}`}
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

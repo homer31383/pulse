@@ -1,9 +1,12 @@
 import { NextRequest } from 'next/server'
+import { cookies } from 'next/headers'
 import { anthropic, DEFAULT_MODEL } from '@/lib/anthropic'
 import { supabase } from '@/lib/supabase'
 import { calculateCost } from '@/lib/cost'
 import { logUsage } from '@/lib/usage'
 import type { Channel, Source } from '@/lib/types'
+
+const DEFAULT_PROFILE_ID = '00000000-0000-0000-0000-000000000001'
 
 const DENSITY_INSTRUCTIONS: Record<string, string> = {
   dense:
@@ -21,6 +24,8 @@ interface Params {
 export async function POST(req: NextRequest, { params }: Params) {
   const { channelId } = await params
   const { channel }: { channel: Channel } = await req.json()
+  const cookieStore = await cookies()
+  const profileId = cookieStore.get('profile_id')?.value ?? DEFAULT_PROFILE_ID
 
   const encoder = new TextEncoder()
 
@@ -30,7 +35,12 @@ export async function POST(req: NextRequest, { params }: Params) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
       }
 
-      try {
+      function sleep(ms: number): Promise<void> {
+        return new Promise((resolve) => setTimeout(resolve, ms))
+      }
+
+      // ── Core generation logic (called once, retried once on 429) ──────
+      async function runGeneration() {
         // ── Fetch previous briefing, app settings, and (if serendipity) other channels ──
         const [prevResult, settingsResult, otherChannelsResult] = await Promise.all([
           supabase
@@ -43,7 +53,7 @@ export async function POST(req: NextRequest, { params }: Params) {
           supabase
             .from('settings')
             .select('*')
-            .eq('id', 'default')
+            .eq('id', profileId)
             .single(),
           channel.serendipity_mode
             ? supabase
@@ -113,7 +123,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         let fullContent = ''
         const sources: Source[] = []
 
-        // ── Stream with web search tool ───────────────────────────────────
+        // ── Stream with web search tool ─────────────────────────────────
         const messageStream = anthropic.messages.stream(
           {
             model,
@@ -192,13 +202,13 @@ export async function POST(req: NextRequest, { params }: Params) {
           }
         }
 
-        // ── Capture usage ─────────────────────────────────────────────────
+        // ── Capture usage ───────────────────────────────────────────────
         const finalMsg     = await messageStream.finalMessage()
         const inputTokens  = finalMsg.usage.input_tokens
         const outputTokens = finalMsg.usage.output_tokens
         const costUsd      = calculateCost(model, inputTokens, outputTokens)
 
-        // ── Persist to Supabase ───────────────────────────────────────────
+        // ── Persist to Supabase ─────────────────────────────────────────
         const [briefingResult] = await Promise.all([
           supabase
             .from('briefings')
@@ -211,7 +221,7 @@ export async function POST(req: NextRequest, { params }: Params) {
             .eq('id', channelId),
         ])
 
-        // ── Log usage (fire-and-forget) ───────────────────────────────────
+        // ── Log usage (fire-and-forget) ─────────────────────────────────
         logUsage({
           callType:    'briefing',
           channelId,
@@ -227,11 +237,31 @@ export async function POST(req: NextRequest, { params }: Params) {
           briefingId: briefingResult.data?.id,
           usage:      { inputTokens, outputTokens, costUsd },
         })
+      }
+
+      // ── Run with one automatic retry on 429 ──────────────────────────
+      try {
+        await runGeneration()
       } catch (err) {
-        send({
-          type: 'error',
-          error: err instanceof Error ? err.message : 'Briefing generation failed',
-        })
+        const isRateLimit = err instanceof Error && 'status' in err && (err as { status?: number }).status === 429
+        if (isRateLimit) {
+          const retryIn = 65
+          send({ type: 'rate_limited', retryIn })
+          await sleep(retryIn * 1000)
+          try {
+            await runGeneration()
+          } catch (retryErr) {
+            send({
+              type: 'error',
+              error: retryErr instanceof Error ? retryErr.message : 'Briefing generation failed',
+            })
+          }
+        } else {
+          send({
+            type: 'error',
+            error: err instanceof Error ? err.message : 'Briefing generation failed',
+          })
+        }
       } finally {
         controller.close()
       }

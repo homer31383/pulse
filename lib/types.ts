@@ -108,7 +108,8 @@ export interface UsageInfo {
 export type BriefingStreamEvent =
   | { type: 'text_delta'; text: string }
   | { type: 'source'; source: Source }
-  | { type: 'searching'; query: string }   // Claude initiated a web search
+  | { type: 'searching'; query: string }         // Claude initiated a web search
+  | { type: 'rate_limited'; retryIn: number }    // 429 — waiting retryIn seconds before retry
   | { type: 'done'; briefingId?: string; usage?: UsageInfo }
   | { type: 'error'; error: string }
 
@@ -142,7 +143,9 @@ export interface BriefingState {
   content: string
   sources: Source[]
   searchQueries: string[]   // queries Claude ran during generation
-  status: 'streaming' | 'done' | 'error'
+  status: 'queued' | 'streaming' | 'done' | 'error'
+  queuedStartTime?: number  // epoch ms when generation will start (used for countdown)
+  rateLimitedUntil?: number // epoch ms when retry will fire after a 429
   error?: string
   briefingId?: string       // set in done event for persisted briefings
   usage?: UsageInfo

@@ -78,8 +78,8 @@ export function BriefingSheet({
 
       {/* Sheet */}
       <div
-        className="fixed bottom-0 inset-x-0 rounded-t-3xl bg-cream-50 shadow-[0_-8px_40px_rgba(44,36,32,0.12)] animate-slide-up flex flex-col"
-        style={{ zIndex: 40, height: '90vh' }}
+        className="fixed bottom-0 inset-x-0 rounded-t-3xl bg-cream-50 shadow-[0_-8px_40px_rgba(44,36,32,0.12)] animate-slide-up flex flex-col h-sheet"
+        style={{ zIndex: 40 }}
       >
         {/* ── Tab bar header ── */}
         <div className="flex-shrink-0 rounded-t-3xl bg-cream-50">
@@ -106,7 +106,7 @@ export function BriefingSheet({
                     data-active={isActive}
                     onClick={() => onTabClick(id)}
                     className={[
-                      'flex items-center gap-1.5 px-3.5 py-2.5 text-sm whitespace-nowrap flex-shrink-0',
+                      'flex items-center gap-1.5 px-3.5 min-h-[44px] text-sm whitespace-nowrap flex-shrink-0',
                       'border-b-2 -mb-px transition-colors duration-150 focus:outline-none',
                       isActive
                         ? 'border-[#7c6fcd] text-[#7c6fcd] font-medium'
@@ -124,7 +124,7 @@ export function BriefingSheet({
             <div className="flex-shrink-0 flex items-center pl-1 pr-1">
               <button
                 onClick={onClose}
-                className="p-2 text-ink-100 hover:text-ink-300 hover:bg-cream-300 rounded-lg transition-colors"
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-100 hover:text-ink-300 hover:bg-cream-300 rounded-lg transition-colors"
                 aria-label="Close briefings"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -136,19 +136,24 @@ export function BriefingSheet({
         </div>
 
         {/* Scrollable briefing content — key forces remount on tab switch */}
-        <div className="flex-1 overflow-y-auto min-h-0">
-          <BriefingCard
-            key={activeId}
-            briefing={activeBriefing}
-            sheetMode
-            highlightsEnabled={highlightsEnabled}
-            sharingEnabled={sharingEnabled}
-            feedbackEnabled={feedbackEnabled}
-            discussEnabled={discussEnabled}
-            ttsEnabled={ttsEnabled}
-            defaultVoice={defaultVoice}
-            defaultSpeed={defaultSpeed}
-          />
+        <div
+          className="flex-1 overflow-y-auto min-h-0"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        >
+          <div className="md:max-w-3xl md:mx-auto">
+            <BriefingCard
+              key={activeId}
+              briefing={activeBriefing}
+              sheetMode
+              highlightsEnabled={highlightsEnabled}
+              sharingEnabled={sharingEnabled}
+              feedbackEnabled={feedbackEnabled}
+              discussEnabled={discussEnabled}
+              ttsEnabled={ttsEnabled}
+              defaultVoice={defaultVoice}
+              defaultSpeed={defaultSpeed}
+            />
+          </div>
         </div>
       </div>
     </>

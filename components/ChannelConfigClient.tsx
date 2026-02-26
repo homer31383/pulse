@@ -659,7 +659,10 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
 
       {/* ── Fixed save button (settings tab only) ── */}
       {tab === 'settings' && (
-        <div className="fixed bottom-0 inset-x-0 px-4 pb-6 pt-10 bg-gradient-to-t from-cream-200 via-cream-200/90 to-transparent pointer-events-none">
+        <div
+          className="fixed bottom-0 inset-x-0 px-4 pt-10 bg-gradient-to-t from-cream-200 via-cream-200/90 to-transparent pointer-events-none"
+          style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
+        >
           <div className="max-w-2xl mx-auto pointer-events-auto">
             <button
               onClick={saveSettings}

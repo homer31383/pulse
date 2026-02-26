@@ -114,10 +114,10 @@ export function GroupSection({
 
         {/* Group actions */}
         {!isRenaming && !confirmDelete && (
-          <div className="flex items-center gap-1 opacity-0 group-hover/hdr:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1 opacity-0 group-hover/hdr:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">
             <button
               onClick={() => { setIsRenaming(true); setDraftName(group.name) }}
-              className="p-1 text-ink-50 hover:text-ink-300 transition-colors"
+              className="p-2 text-ink-50 hover:text-ink-300 transition-colors"
               title="Rename group"
             >
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -127,7 +127,7 @@ export function GroupSection({
             </button>
             <button
               onClick={() => setConfirmDelete(true)}
-              className="p-1 text-ink-50 hover:text-red-600 transition-colors"
+              className="p-2 text-ink-50 hover:text-red-600 transition-colors"
               title="Delete group"
             >
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">

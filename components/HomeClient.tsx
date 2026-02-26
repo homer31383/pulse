@@ -237,13 +237,24 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
 
       switch (event.type) {
         case 'text_delta':
-          next.set(stateKey, { ...cur, content: cur.content + event.text })
+          // Clear rateLimitedUntil on first text delta after a retry
+          next.set(stateKey, { ...cur, content: cur.content + event.text, rateLimitedUntil: undefined })
           break
         case 'source':
           next.set(stateKey, { ...cur, sources: [...cur.sources, event.source] })
           break
         case 'searching':
           next.set(stateKey, { ...cur, searchQueries: [...cur.searchQueries, event.query] })
+          break
+        case 'rate_limited':
+          // Reset accumulated content/sources for the retry, show countdown
+          next.set(stateKey, {
+            ...cur,
+            content: '',
+            sources: [],
+            searchQueries: [],
+            rateLimitedUntil: Date.now() + event.retryIn * 1000,
+          })
           break
         case 'done':
           next.set(stateKey, { ...cur, status: 'done', briefingId: event.briefingId, usage: event.usage })
@@ -304,15 +315,44 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Generate all selected briefings in parallel ───────────────────────────
+  // ── Generate all selected briefings, staggered 15 s apart ───────────────
   async function generateBriefings() {
     if (selectedIds.size === 0 || isGenerating) return
     setIsGenerating(true)
-    setBriefings(new Map())
+
     const selected = channels.filter((c) => selectedIds.has(c.id))
+    const now = Date.now()
+    const STAGGER_MS = 15_000
+
+    // Pre-populate the briefings map so all sheets open immediately
+    const initialBriefings = new Map<string, BriefingState>()
+    selected.forEach((channel, i) => {
+      initialBriefings.set(channel.id, {
+        channelId: channel.id,
+        channelName: channel.name,
+        content: '',
+        sources: [],
+        searchQueries: [],
+        status: i === 0 ? 'streaming' : 'queued',
+        queuedStartTime: i === 0 ? undefined : now + i * STAGGER_MS,
+      })
+    })
+    setBriefings(initialBriefings)
     setOpenSheets(selected.map((c) => c.id))
     setActiveSheetId(selected[0].id)
-    await Promise.allSettled(selected.map(streamBriefing))
+
+    // Stagger each channel start by STAGGER_MS * index
+    await Promise.allSettled(
+      selected.map(
+        (channel, i) =>
+          new Promise<void>((resolve) => {
+            setTimeout(async () => {
+              await streamBriefing(channel)
+              resolve()
+            }, i * STAGGER_MS)
+          }),
+      ),
+    )
     setIsGenerating(false)
   }
 
@@ -814,7 +854,10 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
 
       {/* ── Fixed generate bar ── */}
       {channels.length > 0 && (
-        <div className="fixed bottom-0 inset-x-0 bg-cream-200/95 backdrop-blur-sm border-t border-cream-300/60 px-4 py-3">
+        <div
+          className="fixed bottom-0 inset-x-0 bg-cream-200/95 backdrop-blur-sm border-t border-cream-300/60 px-4 pt-3"
+          style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+        >
           <div className="max-w-screen-xl mx-auto flex items-center gap-3">
             <button
               onClick={digestModeActive ? generateDigest : generateBriefings}

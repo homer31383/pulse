@@ -108,7 +108,10 @@ export function NewChannelClient() {
       </main>
 
       {/* Fixed create button */}
-      <div className="fixed bottom-0 inset-x-0 bg-cream-200/95 backdrop-blur-sm border-t border-cream-300/60 px-4 py-3 pointer-events-none">
+      <div
+        className="fixed bottom-0 inset-x-0 bg-cream-200/95 backdrop-blur-sm border-t border-cream-300/60 px-4 pt-3 pointer-events-none"
+        style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+      >
         <div className="max-w-2xl mx-auto pointer-events-auto">
           <button
             onClick={handleCreate}

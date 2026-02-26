@@ -7,6 +7,7 @@ import { formatCost, formatTokens } from '@/lib/cost'
 import { stripMarkdown } from '@/lib/speech'
 import { useSpeech } from '@/contexts/SpeechContext'
 import type { BriefingState, ConversationMessage } from '@/lib/types'
+import { MARKDOWN_COMPONENTS } from './MarkdownRenderer'
 
 const TTS_SPEEDS = [0.75, 1, 1.25, 1.5, 2] as const
 
@@ -49,6 +50,26 @@ export function BriefingCard({
   const activeSentenceRef = useRef<HTMLSpanElement>(null)
   const isDone = briefing.status === 'done'
   const hasId = !!briefing.briefingId
+
+  // ── Queued countdown ─────────────────────────────────────────────────────
+  const [queuedSecsLeft, setQueuedSecsLeft] = useState(0)
+  useEffect(() => {
+    if (briefing.status !== 'queued' || !briefing.queuedStartTime) return
+    const update = () => setQueuedSecsLeft(Math.max(0, Math.ceil((briefing.queuedStartTime! - Date.now()) / 1000)))
+    update()
+    const id = setInterval(update, 500)
+    return () => clearInterval(id)
+  }, [briefing.status, briefing.queuedStartTime])
+
+  // ── Rate-limit retry countdown ────────────────────────────────────────────
+  const [rateLimitSecsLeft, setRateLimitSecsLeft] = useState(0)
+  useEffect(() => {
+    if (!briefing.rateLimitedUntil) return
+    const update = () => setRateLimitSecsLeft(Math.max(0, Math.ceil((briefing.rateLimitedUntil! - Date.now()) / 1000)))
+    update()
+    const id = setInterval(update, 500)
+    return () => clearInterval(id)
+  }, [briefing.rateLimitedUntil])
 
   // ── TTS ───────────────────────────────────────────────────────────────────
   const speech = useSpeech()
@@ -223,6 +244,8 @@ export function BriefingCard({
               setSearchingQuery(null) // clear search indicator once text starts
             } else if (event.type === 'searching') {
               setSearchingQuery(event.query as string)
+            } else if (event.type === 'error') {
+              accumulated = `⚠️ ${event.error as string}`
             }
           } catch { /* skip malformed lines */ }
         }
@@ -231,7 +254,7 @@ export function BriefingCard({
       // Commit whatever was accumulated when the stream ends
       setDiscussMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: accumulated || '(no response received)' },
+        { role: 'assistant', content: accumulated || '⚠️ No response received — the connection may have dropped. Please try again.' },
       ])
     } catch {
       setDiscussMessages((prev) => [
@@ -329,7 +352,11 @@ export function BriefingCard({
               </button>
             )}
             <span className="text-xs text-ink-100">
-              {briefing.status === 'streaming'
+              {briefing.status === 'queued'
+                ? `Starting in ${queuedSecsLeft}s…`
+                : briefing.rateLimitedUntil
+                ? `Rate limited, retrying in ${rateLimitSecsLeft}s…`
+                : briefing.status === 'streaming'
                 ? briefing.searchQueries.length > 0
                   ? `${briefing.searchQueries.length} search${briefing.searchQueries.length !== 1 ? 'es' : ''}…`
                   : 'Generating…'
@@ -381,6 +408,10 @@ export function BriefingCard({
             <p className="text-red-700 text-sm">
               {briefing.error || 'Failed to generate briefing.'}
             </p>
+          ) : briefing.status === 'queued' ? (
+            <p className="text-sm text-ink-50 italic">
+              Waiting to start in {queuedSecsLeft}s…
+            </p>
           ) : briefing.content ? (
             <div
               ref={contentRef}
@@ -408,11 +439,11 @@ export function BriefingCard({
                 /* ── Normal markdown view ── */
                 sheetMode ? (
                   <div className="font-serif prose prose-sm max-w-none prose-headings:font-display prose-headings:font-normal prose-headings:text-ink-300 prose-p:text-ink-200 prose-p:leading-relaxed prose-li:text-ink-200 prose-strong:text-ink-300 prose-a:text-brand-600 prose-a:no-underline hover:prose-a:underline prose-hr:border-ink-50/30 prose-code:text-ink-300 prose-code:bg-cream-300 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-blockquote:border-brand-500/50 prose-blockquote:text-ink-200">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{briefing.content}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>{briefing.content}</ReactMarkdown>
                   </div>
                 ) : (
                   <div className="font-serif prose prose-sm max-w-none prose-headings:font-sans prose-headings:font-semibold prose-headings:text-ink-300 prose-p:text-ink-200 prose-p:leading-relaxed prose-li:text-ink-200 prose-strong:text-ink-300 prose-a:text-brand-600 prose-a:no-underline hover:prose-a:underline prose-hr:border-cream-300 prose-code:text-ink-300 prose-code:bg-cream-300 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-blockquote:border-brand-500/50 prose-blockquote:text-ink-200">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{briefing.content}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>{briefing.content}</ReactMarkdown>
                   </div>
                 )
               )}
@@ -582,7 +613,7 @@ export function BriefingCard({
                   ) : (
                     <div className="max-w-[90%]">
                       <div className="prose prose-sm max-w-none prose-p:text-ink-200 prose-p:leading-relaxed prose-li:text-ink-200 prose-strong:text-ink-300 prose-headings:text-ink-300 prose-headings:text-sm prose-a:text-brand-600 prose-code:text-ink-300 prose-code:bg-cream-300 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-p:my-1 prose-ul:my-1 prose-li:my-0">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>{msg.content}</ReactMarkdown>
                       </div>
                     </div>
                   )}
@@ -595,7 +626,7 @@ export function BriefingCard({
                   <div className="max-w-[90%]">
                     {streamingText ? (
                       <div className="prose prose-sm max-w-none prose-p:text-ink-200 prose-p:leading-relaxed prose-li:text-ink-200 prose-strong:text-ink-300 prose-headings:text-ink-300 prose-headings:text-sm prose-a:text-brand-600 prose-code:text-ink-300 prose-code:bg-cream-300 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-p:my-1 prose-ul:my-1 prose-li:my-0">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingText}</ReactMarkdown>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>{streamingText}</ReactMarkdown>
                       </div>
                     ) : searchingQuery ? (
                       /* Searching indicator */
@@ -658,6 +689,9 @@ export function BriefingCard({
 }
 
 function StatusDot({ status }: { status: BriefingState['status'] }) {
+  if (status === 'queued') {
+    return <span className="h-2 w-2 rounded-full bg-ink-50/60 flex-shrink-0" />
+  }
   if (status === 'streaming') {
     return (
       <span className="relative flex h-2 w-2 flex-shrink-0">
