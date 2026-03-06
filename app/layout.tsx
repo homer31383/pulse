@@ -32,8 +32,8 @@ export const metadata: Metadata = {
     title: 'Pulse',
   },
   icons: {
-    icon: [{ url: '/icons/icon.svg', type: 'image/svg+xml' }],
-    apple: '/icons/icon.svg',
+    icon: [{ url: '/pulse-icon-192.png', type: 'image/png', sizes: '192x192' }],
+    apple: '/pulse-icon-192.png',
   },
 }
 

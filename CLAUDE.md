@@ -214,3 +214,15 @@ Per-channel toggle. When enabled:
 7. **Settings migration**: Settings `id` was `'default'`, now uses profile UUID — migration 011 handles conversion
 8. **Web search beta**: Uses `anthropic-beta: web-search-2025-03-05` header — may change when GA
 9. **Supabase server-only**: Never import `lib/supabase.ts` in client components — will leak service role key
+
+## Unimplemented / Stub Features
+
+These settings exist in the UI but have **no backend implementation**:
+- **Email delivery** (`email_enabled`, `email_address`) — toggle and input exist, no sending logic
+- **Push notifications** (`notifications_enabled`, `notification_time`) — toggle exists, no subscription/push logic
+- **Briefing retention cleanup** runs in `app/page.tsx` on every page load — works but would be better as a cron/edge function
+
+## Companion Files
+
+- **`PULSE_REBUILD_PROMPT.md`** — Self-contained prompt to rebuild the entire app from scratch. Includes full schema SQL, design system, all features, and build order. Use if the codebase is lost.
+- **`DisasterRecovery/`** — Older recovery notes (predates PULSE_REBUILD_PROMPT.md, may be redundant)
