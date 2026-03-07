@@ -18,7 +18,7 @@ export async function logUsage({
   outputTokens: number
   costUsd: number
 }) {
-  await supabase.from('usage_logs').insert({
+  const { error } = await supabase.from('usage_logs').insert({
     call_type:     callType,
     channel_id:    channelId    ?? null,
     channel_name:  channelName  ?? null,
@@ -27,4 +27,8 @@ export async function logUsage({
     output_tokens: outputTokens,
     cost_usd:      costUsd,
   })
+
+  if (error) {
+    console.error('[logUsage] Failed to insert usage_logs:', error.message)
+  }
 }
