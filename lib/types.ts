@@ -32,6 +32,7 @@ export interface Briefing {
   content: string
   sources: Source[]
   model: string
+  scheduled?: boolean
   created_at: string
 }
 
@@ -48,6 +49,7 @@ export interface Digest {
   channel_ids: string[]
   channel_names: string[]
   model: string
+  scheduled?: boolean
   created_at: string
 }
 
@@ -135,6 +137,21 @@ export interface AppSettings {
   tts_enabled: boolean
   tts_voice: string | null
   tts_speed: number
+  // Scheduled briefings (Vercel Cron)
+  schedule_enabled: boolean
+  schedule_time: string           // 'HH:MM' Eastern Time; generation runs on the hour
+  schedule_channel_ids: string[]  // empty = all channels
+  schedule_output: ScheduleOutput
+  ticker_items: TickerItem[]
+}
+
+export type ScheduleOutput = 'briefings' | 'digest' | 'both'
+
+// A figure shown in the broadsheet ticker bar (values maintained in settings)
+export interface TickerItem {
+  label: string
+  value: string
+  change: 'up' | 'down' | 'flat'
 }
 
 export interface BriefingState {
@@ -149,6 +166,15 @@ export interface BriefingState {
   error?: string
   briefingId?: string       // set in done event for persisted briefings
   usage?: UsageInfo
+}
+
+export interface PinnedInsight {
+  id: string
+  content: string
+  channel_name: string | null
+  source_date: string
+  profile_id: string | null
+  created_at: string
 }
 
 export interface Note {

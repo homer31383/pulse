@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { SettingsClient } from '@/components/SettingsClient'
 import { SETTINGS_DEFAULTS } from '@/app/api/settings/route'
-import type { AppSettings } from '@/lib/types'
+import type { AppSettings, Channel } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,13 +13,17 @@ export default async function SettingsPage() {
   const cookieStore = await cookies()
   const profileId = cookieStore.get('profile_id')?.value ?? DEFAULT_PROFILE_ID
 
-  const { data } = await supabase
-    .from('settings')
-    .select('*')
-    .eq('id', profileId)
-    .single()
+  const [{ data }, { data: channelData }] = await Promise.all([
+    supabase.from('settings').select('*').eq('id', profileId).single(),
+    supabase
+      .from('channels')
+      .select('*')
+      .eq('profile_id', profileId)
+      .order('position', { ascending: true }),
+  ])
 
-  const settings = (data as AppSettings | null) ?? SETTINGS_DEFAULTS
+  const settings: AppSettings = { ...SETTINGS_DEFAULTS, ...((data as AppSettings | null) ?? {}) }
+  const channels = (channelData ?? []) as Channel[]
 
   return (
     <div className="min-h-screen bg-cream-200">
@@ -38,7 +42,7 @@ export default async function SettingsPage() {
         </div>
       </header>
 
-      <SettingsClient initialSettings={settings} />
+      <SettingsClient initialSettings={settings} channels={channels} />
     </div>
   )
 }

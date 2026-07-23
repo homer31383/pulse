@@ -54,11 +54,26 @@ const config: Config = {
           200: '#574840',
           300: '#2c2420',
         },
+        // Press — broadsheet newspaper palette (lavender paper + indigo accent)
+        press: {
+          paper:  '#F0ECF4',
+          accent: '#6B5CA5',
+          ink:    '#2C2522',
+          body:   '#48404A',
+          muted:  '#7A7070',
+          faint:  '#9A9098',
+          pin:    '#B8B0C0',
+          up:     '#1D6E56',
+          down:   '#993C1D',
+          hair:   'rgba(44, 37, 54, 0.1)',
+        },
       },
       fontFamily: {
         serif: ['var(--font-lora)', 'Georgia', 'Cambria', 'serif'],
         display: ['var(--font-playfair)', 'Georgia', 'serif'],
         sans: ['var(--font-inter)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        georgia: ['Georgia', 'Cambria', 'Times New Roman', 'serif'],
+        chrome: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
       },
       animation: {
         'pulse-dot': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',

@@ -1,0 +1,375 @@
+// Server-side briefing/digest generation shared by the SSE streaming routes
+// and the scheduled-briefings cron route. Never import in 'use client' files.
+import { anthropic, DEFAULT_MODEL } from '@/lib/anthropic'
+import { supabase } from '@/lib/supabase'
+import { calculateCost } from '@/lib/cost'
+import { logUsage } from '@/lib/usage'
+import type { Channel, Source } from '@/lib/types'
+
+export const BRIEFING_DENSITY_INSTRUCTIONS: Record<string, string> = {
+  dense:
+    'Write in dense, information-rich style: include all significant data points, statistics, percentages, names, dates, and technical detail. Prioritise completeness over brevity.',
+  balanced:
+    'Write in a balanced style: cover key developments with enough context to understand their significance. Include the most important data points but avoid exhaustive detail.',
+  narrative:
+    'Write in flowing narrative prose. Focus on the 3–5 most impactful stories. Summarise supporting details into clear, readable paragraphs rather than bullet lists.',
+}
+
+export const DIGEST_DENSITY_INSTRUCTIONS: Record<string, string> = {
+  dense: 'Write in dense, information-rich style: include all significant data points, statistics, percentages, names, dates, and technical detail.',
+  balanced: 'Write in a balanced style: cover key developments with enough context to understand their significance.',
+  narrative: 'Write in flowing narrative prose. Focus on the most impactful stories per channel. Summarise supporting details into clear, readable paragraphs.',
+}
+
+export type GenerationEvent =
+  | { type: 'searching'; query: string }
+  | { type: 'source'; source: Source }
+  | { type: 'text_delta'; text: string }
+  | { type: 'rate_limited'; retryIn: number }
+
+export interface GenerationUsage {
+  inputTokens: number
+  outputTokens: number
+  costUsd: number
+}
+
+export interface GenerationResult {
+  id?: string
+  content: string
+  sources: Source[]
+  usage: GenerationUsage
+}
+
+type OnEvent = (event: GenerationEvent) => void
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+// Run fn, retrying once after 65s on a 429 (mirrors the original SSE routes)
+async function withRateLimitRetry<T>(fn: () => Promise<T>, onEvent?: OnEvent): Promise<T> {
+  try {
+    return await fn()
+  } catch (err) {
+    const isRateLimit = err instanceof Error && 'status' in err && (err as { status?: number }).status === 429
+    if (!isRateLimit) throw err
+    const retryIn = 65
+    onEvent?.({ type: 'rate_limited', retryIn })
+    await sleep(retryIn * 1000)
+    return await fn()
+  }
+}
+
+// Stream a web-search message and collect content, sources, and usage
+async function runWebSearchStream(params: {
+  model: string
+  maxTokens: number
+  system: string
+  userMessage: string
+  onEvent?: OnEvent
+}): Promise<{ content: string; sources: Source[]; inputTokens: number; outputTokens: number }> {
+  const { model, maxTokens, system, userMessage, onEvent } = params
+
+  let content = ''
+  const sources: Source[] = []
+  let currentBlockType = ''
+  let currentInputJson = ''
+
+  const messageStream = anthropic.messages.stream(
+    {
+      model,
+      max_tokens: maxTokens,
+      system,
+      messages: [{ role: 'user', content: userMessage }],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tools: [{ type: 'web_search_20250305', name: 'web_search' }] as any,
+    },
+    { headers: { 'anthropic-beta': 'web-search-2025-03-05' } },
+  )
+
+  for await (const event of messageStream) {
+    switch (event.type) {
+      case 'content_block_start': {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const block = event.content_block as any
+        currentBlockType = block.type ?? ''
+        currentInputJson = ''
+
+        if (block.type === 'web_search_tool_result') {
+          const results: unknown[] = Array.isArray(block.content) ? block.content : []
+          for (const r of results) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const result = r as any
+            if (result.type === 'web_search_result' && result.url) {
+              const source: Source = {
+                title: result.title || result.url,
+                url: result.url,
+                snippet: result.encrypted_content ? undefined : result.snippet,
+              }
+              sources.push(source)
+              onEvent?.({ type: 'source', source })
+            }
+          }
+        }
+        break
+      }
+
+      case 'content_block_delta': {
+        const delta = event.delta
+        if (delta.type === 'text_delta') {
+          content += delta.text
+          onEvent?.({ type: 'text_delta', text: delta.text })
+        }
+        if (delta.type === 'input_json_delta' && currentBlockType === 'server_tool_use') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          currentInputJson += (delta as any).partial_json ?? ''
+        }
+        break
+      }
+
+      case 'content_block_stop': {
+        if (currentBlockType === 'server_tool_use' && currentInputJson) {
+          try {
+            const input = JSON.parse(currentInputJson) as { query?: string }
+            if (input.query) onEvent?.({ type: 'searching', query: input.query })
+          } catch {
+            // malformed JSON — skip
+          }
+        }
+        currentBlockType = ''
+        currentInputJson = ''
+        break
+      }
+    }
+  }
+
+  const finalMsg = await messageStream.finalMessage()
+  return {
+    content,
+    sources,
+    inputTokens: finalMsg.usage.input_tokens,
+    outputTokens: finalMsg.usage.output_tokens,
+  }
+}
+
+// ── Single-channel briefing ───────────────────────────────────────────────────
+export async function generateChannelBriefing(opts: {
+  channel: Channel
+  profileId: string
+  scheduled?: boolean
+  onEvent?: OnEvent
+}): Promise<GenerationResult> {
+  const { channel, profileId, scheduled = false, onEvent } = opts
+  const channelId = channel.id
+
+  return withRateLimitRetry(async () => {
+    // ── Fetch previous briefing, app settings, and (if serendipity) other channels ──
+    const [prevResult, settingsResult, otherChannelsResult] = await Promise.all([
+      supabase
+        .from('briefings')
+        .select('content, created_at')
+        .eq('channel_id', channelId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single(),
+      supabase.from('settings').select('*').eq('id', profileId).single(),
+      channel.serendipity_mode
+        ? supabase
+            .from('channels')
+            .select('name, description')
+            .neq('id', channelId)
+            .order('position', { ascending: true })
+        : Promise.resolve({ data: null }),
+    ])
+
+    const previousBriefing = prevResult.data
+    const settings = settingsResult.data
+    const model = settings?.model ?? DEFAULT_MODEL
+    const density = settings?.briefing_density ?? 'balanced'
+
+    const queries = channel.search_queries?.join(', ') || channel.name
+    let systemPrompt = channel.instructions?.trim()
+      ? channel.instructions
+      : `You are a research assistant. Search the web and provide a concise, well-structured briefing about: ${channel.name}`
+
+    const densityInstruction = BRIEFING_DENSITY_INSTRUCTIONS[density]
+    if (densityInstruction) {
+      systemPrompt += `\n\n${densityInstruction}`
+    }
+
+    // Inject serendipity mode exclusions
+    if (channel.serendipity_mode) {
+      const otherChannels = otherChannelsResult.data
+      if (otherChannels && otherChannels.length > 0) {
+        const exclusionList = otherChannels
+          .map((c: { name: string; description: string | null }) =>
+            `- ${c.name}${c.description ? `: ${c.description}` : ''}`)
+          .join('\n')
+        systemPrompt +=
+          `\n\nSERENDIPITY MODE — This briefing must NOT overlap with the topics covered by the user's other channels listed below. ` +
+          `Do not cover these subjects — they are already handled elsewhere. ` +
+          `Instead, actively seek out surprising, unexpected, or serendipitous content that the user would not encounter through their regular channels.\n\n` +
+          `EXCLUDED TOPICS (covered by other channels):\n${exclusionList}`
+      }
+    }
+
+    // Inject watchlist terms
+    if (settings?.watchlist_enabled && settings?.watchlist_terms?.length > 0) {
+      const terms = settings.watchlist_terms.join(', ')
+      systemPrompt += `\n\nAlways surface any relevant information about these watchlist items: ${terms}`
+    }
+
+    // Build user message — include previous briefing context when available
+    let previousContext = ''
+    if (previousBriefing?.content) {
+      const prevDate = new Date(previousBriefing.created_at).toDateString()
+      const truncated = previousBriefing.content.slice(0, 5000)
+      const ellipsis = previousBriefing.content.length > 5000 ? '\n\n[…truncated…]' : ''
+      previousContext =
+        `\n\n---\nPREVIOUS BRIEFING (${prevDate}):\n${truncated}${ellipsis}\n---\n\n` +
+        `Where relevant, note what has changed, developed further, or dropped off since the previous briefing above.`
+    }
+
+    const userMessage =
+      `Search queries to use: ${queries}\n\n` +
+      `Please search the web for the latest information and produce a comprehensive briefing as well-formatted Markdown.\n` +
+      `Include a short "## Key Takeaways" section at the top, then detailed sections below.\n` +
+      `Today's date: ${new Date().toDateString()}` +
+      previousContext
+
+    const { content, sources, inputTokens, outputTokens } = await runWebSearchStream({
+      model,
+      maxTokens: 4096,
+      system: systemPrompt,
+      userMessage,
+      onEvent,
+    })
+
+    const costUsd = calculateCost(model, inputTokens, outputTokens)
+
+    // ── Persist to Supabase ─────────────────────────────────────────────────
+    const [briefingResult] = await Promise.all([
+      supabase
+        .from('briefings')
+        .insert({
+          channel_id: channelId,
+          content,
+          sources,
+          model,
+          ...(scheduled ? { scheduled: true } : {}),
+        })
+        .select('id')
+        .single(),
+      supabase
+        .from('channels')
+        .update({ last_briefed_at: new Date().toISOString() })
+        .eq('id', channelId),
+    ])
+
+    logUsage({
+      callType: 'briefing',
+      channelId,
+      channelName: channel.name,
+      model,
+      inputTokens,
+      outputTokens,
+      costUsd,
+    }).catch(() => {})
+
+    return {
+      id: briefingResult.data?.id,
+      content,
+      sources,
+      usage: { inputTokens, outputTokens, costUsd },
+    }
+  }, onEvent)
+}
+
+// ── Cross-channel digest ──────────────────────────────────────────────────────
+export async function generateProfileDigest(opts: {
+  channels: Channel[]
+  profileId: string
+  scheduled?: boolean
+  onEvent?: OnEvent
+}): Promise<GenerationResult> {
+  const { channels, profileId, scheduled = false, onEvent } = opts
+
+  return withRateLimitRetry(async () => {
+    const { data: settings } = await supabase
+      .from('settings')
+      .select('*')
+      .eq('id', profileId)
+      .single()
+
+    const model = settings?.model ?? DEFAULT_MODEL
+    const density = settings?.briefing_density ?? 'balanced'
+
+    const channelList = channels
+      .map((c) => `- **${c.name}**: ${c.search_queries?.join(', ') || c.name}`)
+      .join('\n')
+
+    let systemPrompt =
+      `You are a research assistant generating a morning digest across multiple interest channels.\n` +
+      `Search the web for the latest information on all topics and produce a single, unified briefing.\n\n` +
+      `Structure:\n` +
+      `1. ## Key Takeaways — 4-6 cross-cutting insights across all channels\n` +
+      `2. One ## [Channel Name] section per channel with its key updates\n\n` +
+      `Channels covered:\n${channelList}`
+
+    const densityInstruction = DIGEST_DENSITY_INSTRUCTIONS[density]
+    if (densityInstruction) systemPrompt += `\n\n${densityInstruction}`
+
+    if (settings?.watchlist_enabled && settings?.watchlist_terms?.length > 0) {
+      systemPrompt += `\n\nAlways surface relevant information about these watchlist items: ${settings.watchlist_terms.join(', ')}`
+    }
+
+    const allQueries = channels
+      .flatMap((c) => c.search_queries ?? [c.name])
+      .slice(0, 12)
+      .join(', ')
+
+    const userMessage =
+      `Generate a morning digest covering all channels.\n` +
+      `Suggested search queries: ${allQueries}\n` +
+      `Today's date: ${new Date().toDateString()}`
+
+    const { content, sources, inputTokens, outputTokens } = await runWebSearchStream({
+      model,
+      maxTokens: 6000,
+      system: systemPrompt,
+      userMessage,
+      onEvent,
+    })
+
+    const costUsd = calculateCost(model, inputTokens, outputTokens)
+
+    const { data: digestRow } = await supabase
+      .from('digests')
+      .insert({
+        content,
+        sources,
+        channel_ids: channels.map((c) => c.id),
+        channel_names: channels.map((c) => c.name),
+        model,
+        profile_id: profileId,
+        ...(scheduled ? { scheduled: true } : {}),
+      })
+      .select('id')
+      .single()
+
+    logUsage({
+      callType: 'digest',
+      model,
+      inputTokens,
+      outputTokens,
+      costUsd,
+    }).catch(() => {})
+
+    return {
+      id: digestRow?.id,
+      content,
+      sources,
+      usage: { inputTokens, outputTokens, costUsd },
+    }
+  }, onEvent)
+}

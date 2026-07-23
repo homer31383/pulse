@@ -6,8 +6,9 @@ import remarkGfm from 'remark-gfm'
 import { formatCost, formatTokens } from '@/lib/cost'
 import { stripMarkdown } from '@/lib/speech'
 import { useSpeech } from '@/contexts/SpeechContext'
-import type { BriefingState, ConversationMessage } from '@/lib/types'
+import type { BriefingState, ConversationMessage, Source } from '@/lib/types'
 import { MARKDOWN_COMPONENTS } from './MarkdownRenderer'
+import { PressArticle } from './press/PressArticle'
 
 const TTS_SPEEDS = [0.75, 1, 1.25, 1.5, 2] as const
 
@@ -21,6 +22,20 @@ interface BriefingCardProps {
   defaultVoice?: string | null
   defaultSpeed?: number
   sheetMode?: boolean
+}
+
+// Distinct publication names (hostnames) for the source footer
+function sourceNames(sources: Source[]): { name: string; url: string }[] {
+  const seen = new Map<string, string>()
+  for (const s of sources) {
+    try {
+      const host = new URL(s.url).hostname.replace(/^www\./, '')
+      if (!seen.has(host)) seen.set(host, s.url)
+    } catch {
+      // unparsable URL — skip
+    }
+  }
+  return [...seen.entries()].map(([name, url]) => ({ name, url }))
 }
 
 function readingTime(content: string): string {
@@ -276,7 +291,7 @@ export function BriefingCard({
           data-clip-btn
           onClick={saveClip}
           style={{ top: clipPos.top, left: clipPos.left, transform: 'translateX(-50%)' }}
-          className="fixed z-50 flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-xs font-medium rounded-full shadow-lg transition-colors"
+          className="fixed z-50 flex items-center gap-1.5 px-3 py-1.5 bg-press-accent hover:bg-press-accent/90 text-white text-xs font-medium rounded-full shadow-lg transition-colors"
         >
           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -286,21 +301,18 @@ export function BriefingCard({
         </button>
       )}
 
-      {/* Outer wrapper — structural difference only */}
-      <div className={sheetMode
-        ? 'bg-transparent'
-        : 'bg-cream-50 border border-cream-300/60 rounded-2xl overflow-hidden'
-      }>
-        {/* Card header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-cream-300/60">
-          <div className="flex items-center gap-2">
+      {/* Outer wrapper — broadsheet: no card chrome */}
+      <div className="bg-transparent">
+        {/* Article header — section label + hairline + chrome */}
+        <div className="flex items-center justify-between gap-3 px-5 py-3 border-b-[0.5px] border-press-hair">
+          <div className="flex items-center gap-2 min-w-0">
             <StatusDot status={briefing.status} />
             {sheetMode ? (
-              <h3 className="font-display text-2xl font-normal text-ink-300 leading-tight">
+              <h3 className="font-georgia text-[20px] font-normal tracking-[-0.3px] text-press-ink leading-tight truncate">
                 {briefing.channelName}
               </h3>
             ) : (
-              <h3 className="font-sans text-sm font-medium text-ink-300">{briefing.channelName}</h3>
+              <h3 className="font-georgia text-[15px] font-normal text-press-ink truncate">{briefing.channelName}</h3>
             )}
           </div>
           <div className="flex items-center gap-2">
@@ -312,8 +324,8 @@ export function BriefingCard({
                 className={[
                   'flex items-center gap-1 text-xs transition-colors',
                   isActive
-                    ? 'text-amber-600 hover:text-amber-700'
-                    : 'text-ink-100 hover:text-amber-600',
+                    ? 'text-press-accent hover:text-press-accent/80'
+                    : 'text-press-pin hover:text-press-accent',
                 ].join(' ')}
               >
                 {isPlaying ? (
@@ -335,7 +347,7 @@ export function BriefingCard({
               <button
                 onClick={handleShare}
                 disabled={shareState === 'loading'}
-                className="flex items-center gap-1 text-xs text-ink-200 hover:text-ink-300 transition-colors"
+                className="flex items-center gap-1 text-xs text-press-pin hover:text-press-accent transition-colors"
                 title="Copy share link"
               >
                 {shareState === 'copied' ? (
@@ -351,7 +363,7 @@ export function BriefingCard({
                 )}
               </button>
             )}
-            <span className="text-xs text-ink-100">
+            <span className="font-chrome text-[10px] uppercase tracking-[1px] text-press-muted whitespace-nowrap">
               {briefing.status === 'queued'
                 ? `Starting in ${queuedSecsLeft}s…`
                 : briefing.rateLimitedUntil
@@ -371,7 +383,7 @@ export function BriefingCard({
 
         {/* TTS controls bar — visible when this card is active */}
         {ttsEnabled && isActive && (
-          <div className="flex items-center gap-2 px-4 py-2 border-b bg-amber-50/40 border-amber-300/40">
+          <div className="flex items-center gap-2 px-4 py-2 border-b-[0.5px] bg-press-accent/[0.05] border-press-hair">
             {/* Speed pills */}
             <div className="flex items-center gap-1">
               {TTS_SPEEDS.map((s) => (
@@ -381,8 +393,8 @@ export function BriefingCard({
                   className={[
                     'text-xs px-2 py-0.5 rounded-full border transition-colors',
                     speech.rate === s
-                      ? 'border-amber-500 bg-amber-50 text-amber-700'
-                      : 'border-cream-300 text-ink-100 hover:border-amber-400 hover:text-amber-700',
+                      ? 'border-press-accent bg-press-accent/10 text-press-accent'
+                      : 'border-press-hair text-press-muted hover:border-press-accent/60 hover:text-press-accent',
                   ].join(' ')}
                 >
                   {s}×
@@ -402,8 +414,8 @@ export function BriefingCard({
           </div>
         )}
 
-        {/* Card body */}
-        <div className={sheetMode ? 'px-5 py-4' : 'px-4 py-4'}>
+        {/* Article body */}
+        <div className="px-5 py-4">
           {briefing.status === 'error' ? (
             <p className="text-red-700 text-sm">
               {briefing.error || 'Failed to generate briefing.'}
@@ -420,15 +432,15 @@ export function BriefingCard({
             >
               {isActive ? (
                 /* ── TTS sentence-highlighted view ── */
-                <div className="text-sm text-ink-200 leading-relaxed">
+                <div className="font-georgia text-[13px] text-press-body leading-[1.65]">
                   {speech.sentences.map((s, i) => (
                     <span
                       key={i}
                       ref={i === speech.currentSentenceIndex ? activeSentenceRef : undefined}
                       className={
                         i === speech.currentSentenceIndex
-                          ? 'bg-amber-300/40 text-amber-900 rounded-sm'
-                          : 'text-ink-100'
+                          ? 'bg-press-accent/15 text-press-ink rounded-sm'
+                          : 'text-press-muted'
                       }
                     >
                       {s}{' '}
@@ -436,19 +448,15 @@ export function BriefingCard({
                   ))}
                 </div>
               ) : (
-                /* ── Normal markdown view ── */
-                sheetMode ? (
-                  <div className="font-serif prose prose-sm max-w-none prose-headings:font-display prose-headings:font-normal prose-headings:text-ink-300 prose-p:text-ink-200 prose-p:leading-relaxed prose-li:text-ink-200 prose-strong:text-ink-300 prose-a:text-brand-600 prose-a:no-underline hover:prose-a:underline prose-hr:border-ink-50/30 prose-code:text-ink-300 prose-code:bg-cream-300 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-blockquote:border-brand-500/50 prose-blockquote:text-ink-200">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>{briefing.content}</ReactMarkdown>
-                  </div>
-                ) : (
-                  <div className="font-serif prose prose-sm max-w-none prose-headings:font-sans prose-headings:font-semibold prose-headings:text-ink-300 prose-p:text-ink-200 prose-p:leading-relaxed prose-li:text-ink-200 prose-strong:text-ink-300 prose-a:text-brand-600 prose-a:no-underline hover:prose-a:underline prose-hr:border-cream-300 prose-code:text-ink-300 prose-code:bg-cream-300 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-blockquote:border-brand-500/50 prose-blockquote:text-ink-200">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>{briefing.content}</ReactMarkdown>
-                  </div>
-                )
+                /* ── Broadsheet article view ── */
+                <PressArticle
+                  content={briefing.content}
+                  channelName={briefing.channelName}
+                  pinnable={isDone}
+                />
               )}
               {highlightsEnabled && isDone && !isActive && (
-                <p className="text-xs text-ink-50 mt-3 select-none">
+                <p className="font-chrome text-[10px] text-press-faint mt-3 select-none">
                   {clipSaved ? '✓ Saved to notes' : 'Select any text to save it to notes'}
                 </p>
               )}
@@ -456,7 +464,7 @@ export function BriefingCard({
           ) : (
             /* Skeleton — show live search queries while waiting for first text token */
             <div className="space-y-2.5 py-1">
-              <div className="flex items-center gap-2 text-sm text-ink-100">
+              <div className="flex items-center gap-2 font-chrome text-sm text-press-muted">
                 <svg className="w-4 h-4 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -468,7 +476,7 @@ export function BriefingCard({
               {briefing.searchQueries.length > 1 && (
                 <div className="flex flex-wrap gap-1.5 pl-6">
                   {briefing.searchQueries.slice(0, -1).map((q, i) => (
-                    <span key={i} className="text-xs px-2 py-0.5 rounded-full bg-cream-300 text-ink-200">
+                    <span key={i} className="font-chrome text-xs px-2 py-0.5 rounded-full bg-press-accent/[0.07] text-press-muted">
                       ✓ {q}
                     </span>
                   ))}
@@ -477,38 +485,52 @@ export function BriefingCard({
             </div>
           )}
 
-          {/* Sources footer */}
+          {/* Source attribution footer */}
           {briefing.sources.length > 0 && (
-            <div className="mt-4 pt-3 border-t border-cream-300/60">
-              <p className="text-xs font-medium text-ink-100 mb-2">Sources</p>
-              <div className="flex flex-col gap-1.5">
-                {briefing.sources.slice(0, 5).map((src, i) => (
-                  <a
-                    key={i}
-                    href={src.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs truncate transition-colors text-ink-200 hover:text-ink-300"
-                  >
-                    {src.title || src.url}
-                  </a>
-                ))}
-              </div>
+            <div className="mt-5 pt-2.5 border-t-[0.5px] border-press-hair font-chrome text-[10px] text-press-faint leading-relaxed">
+              <span className="uppercase tracking-[1.5px] mr-1.5">Sources</span>
+              {(() => {
+                const names = sourceNames(briefing.sources)
+                const shown = names.slice(0, 6)
+                return (
+                  <>
+                    {shown.map((s, i) => (
+                      <span key={s.name}>
+                        {i > 0 && ' · '}
+                        <a
+                          href={s.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="hover:text-press-accent transition-colors"
+                        >
+                          {s.name}
+                        </a>
+                      </span>
+                    ))}
+                    {names.length > shown.length && ` · +${names.length - shown.length} more`}
+                  </>
+                )
+              })()}
+              <span>
+                {' '}— {briefing.sources.length} source{briefing.sources.length !== 1 ? 's' : ''} accessed
+                {isDone && briefing.usage &&
+                  ` · ${formatTokens(briefing.usage.inputTokens)} in / ${formatTokens(briefing.usage.outputTokens)} out · est. cost ${formatCost(briefing.usage.costUsd)}`}
+              </span>
             </div>
           )}
 
           {/* Feedback footer */}
           {feedbackEnabled && isDone && hasId && (
-            <div className="mt-4 pt-3 border-t border-cream-300/60 flex items-center gap-3">
-              <span className="text-xs text-ink-100">Was this useful?</span>
+            <div className="mt-4 pt-3 border-t-[0.5px] border-press-hair flex items-center gap-3">
+              <span className="font-chrome text-[10px] uppercase tracking-[1px] text-press-muted">Was this useful?</span>
               <button
                 onClick={() => submitFeedback(1)}
                 disabled={voteSaving}
                 className={[
                   'flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-colors',
                   vote === 1
-                    ? 'border-emerald-600/60 bg-emerald-50 text-emerald-700'
-                    : 'border-cream-300 text-ink-100 hover:border-emerald-600/50 hover:text-emerald-700',
+                    ? 'border-press-up/60 bg-press-up/5 text-press-up'
+                    : 'border-press-hair text-press-muted hover:border-press-up/50 hover:text-press-up',
                 ].join(' ')}
               >
                 <svg className="w-3.5 h-3.5" fill={vote === 1 ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor">
@@ -523,8 +545,8 @@ export function BriefingCard({
                 className={[
                   'flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-colors',
                   vote === -1
-                    ? 'border-red-600/60 bg-red-50 text-red-700'
-                    : 'border-cream-300 text-ink-100 hover:border-red-600/50 hover:text-red-700',
+                    ? 'border-press-down/60 bg-press-down/5 text-press-down'
+                    : 'border-press-hair text-press-muted hover:border-press-down/50 hover:text-press-down',
                 ].join(' ')}
               >
                 <svg className="w-3.5 h-3.5" fill={vote === -1 ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor">
@@ -536,38 +558,21 @@ export function BriefingCard({
             </div>
           )}
 
-          {/* Cost summary */}
-          {isDone && briefing.usage && (
-            <div className="mt-3 flex items-center gap-1.5 text-xs text-ink-50">
-              <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>
-                {formatTokens(briefing.usage.inputTokens)} in
-                &thinsp;·&thinsp;
-                {formatTokens(briefing.usage.outputTokens)} out
-                &thinsp;·&thinsp;
-                {formatCost(briefing.usage.costUsd)}
-              </span>
-            </div>
-          )}
-
           {/* Discuss toggle */}
           {discussEnabled && isDone && (
             <div className={[
               'flex justify-start',
               feedbackEnabled && hasId
                 ? 'mt-3'
-                : 'mt-4 pt-3 border-t border-cream-300/60',
+                : 'mt-4 pt-3 border-t-[0.5px] border-press-hair',
             ].join(' ')}>
               <button
                 onClick={() => setDiscussOpen((o) => !o)}
                 className={[
                   'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition-colors',
                   discussOpen
-                    ? 'border-brand-600/60 bg-brand-50 text-brand-700'
-                    : 'border-cream-300 text-ink-100 hover:border-brand-600/50 hover:text-brand-700',
+                    ? 'border-press-accent/60 bg-press-accent/5 text-press-accent'
+                    : 'border-press-hair text-press-muted hover:border-press-accent/50 hover:text-press-accent',
                 ].join(' ')}
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -582,7 +587,7 @@ export function BriefingCard({
 
         {/* Discuss panel */}
         {discussEnabled && discussOpen && isDone && (
-          <div className="border-t border-brand-500/20 bg-cream-100/60">
+          <div className="border-t-[0.5px] border-press-hair bg-white/30">
             {/* Messages area */}
             <div className="max-h-96 overflow-y-auto px-4 py-3 space-y-3">
               {/* Suggested questions when conversation is empty */}
@@ -594,7 +599,7 @@ export function BriefingCard({
                       <button
                         key={q}
                         onClick={() => sendDiscussMessage(q)}
-                        className="text-xs px-3 py-1.5 rounded-full border border-cream-300 text-ink-100 hover:border-brand-600/50 hover:text-brand-700 transition-colors text-left"
+                        className="text-xs px-3 py-1.5 rounded-full border border-press-hair text-press-muted hover:border-press-accent/50 hover:text-press-accent transition-colors text-left"
                       >
                         {q}
                       </button>
@@ -607,7 +612,7 @@ export function BriefingCard({
               {discussMessages.map((msg, i) => (
                 <div key={i} className={msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
                   {msg.role === 'user' ? (
-                    <div className="max-w-[80%] bg-brand-600 rounded-2xl rounded-tr-sm px-3 py-2">
+                    <div className="max-w-[80%] bg-press-accent rounded-2xl rounded-tr-sm px-3 py-2">
                       <p className="text-sm text-white">{msg.content}</p>
                     </div>
                   ) : (
@@ -653,7 +658,7 @@ export function BriefingCard({
             </div>
 
             {/* Input area */}
-            <div className="px-4 pb-3 pt-2 border-t border-cream-300/60 flex gap-2">
+            <div className="px-4 pb-3 pt-2 border-t-[0.5px] border-press-hair flex gap-2">
               <input
                 ref={inputRef}
                 type="text"
@@ -667,12 +672,12 @@ export function BriefingCard({
                 }}
                 placeholder="Ask a question — Claude can search the web for more…"
                 disabled={isStreaming}
-                className="flex-1 bg-cream-100 border border-cream-300 rounded-xl px-3 py-2 text-sm text-ink-300 placeholder-ink-50 focus:outline-none focus:border-brand-500/50 focus:ring-1 focus:ring-brand-500/30 disabled:opacity-50 transition-colors"
+                className="flex-1 bg-white/50 border border-press-hair rounded-xl px-3 py-2 text-sm text-press-ink placeholder-press-faint focus:outline-none focus:border-press-accent/50 focus:ring-1 focus:ring-press-accent/30 disabled:opacity-50 transition-colors"
               />
               <button
                 onClick={() => sendDiscussMessage()}
                 disabled={!discussInput.trim() || isStreaming}
-                className="flex-shrink-0 p-2 rounded-xl bg-brand-600 hover:bg-brand-500 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
+                className="flex-shrink-0 p-2 rounded-xl bg-press-accent hover:bg-press-accent/90 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
                 title="Send"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

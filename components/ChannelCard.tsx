@@ -48,10 +48,10 @@ export function ChannelCard({ channel, isSelected, onToggle, groupId, hasBriefin
           'group relative p-4 rounded-2xl cursor-pointer select-none',
           'transition-all duration-200 ease-out',
           isDragging
-            ? 'bg-cream-100 shadow-[0_8px_30px_rgba(0,0,0,0.14)] scale-[1.02]'
+            ? 'bg-white/70 shadow-[0_8px_30px_rgba(60,50,80,0.14)] scale-[1.02]'
             : isSelected
-            ? 'bg-cream-50 ring-2 ring-brand-500/70 shadow-[0_4px_20px_rgba(124,111,205,0.12)] -translate-y-0.5'
-            : 'bg-cream-50 shadow-[0_2px_12px_rgba(0,0,0,0.07)] hover:-translate-y-0.5 hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)]',
+            ? 'bg-white/50 ring-1 ring-press-accent/70 shadow-[0_2px_12px_rgba(107,92,165,0.10)]'
+            : 'bg-white/30 border-[0.5px] border-press-hair hover:bg-white/50',
         ].join(' ')}
       >
         {/* Drag handle — top-left, hover-reveal */}
@@ -73,7 +73,7 @@ export function ChannelCard({ channel, isSelected, onToggle, groupId, hasBriefin
         {/* Briefing indicator dot + config gear — top-right */}
         <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
           {hasBriefing && (
-            <span className="w-1.5 h-1.5 bg-brand-500 rounded-full flex-shrink-0" />
+            <span className="w-1.5 h-1.5 bg-press-accent rounded-full flex-shrink-0" />
           )}
           <Link
             href={`/channels/${channel.id}/config`}
@@ -91,16 +91,16 @@ export function ChannelCard({ channel, isSelected, onToggle, groupId, hasBriefin
 
         {/* Text content */}
         <div className="pr-6 pt-1">
-          <p className="font-display text-lg font-normal tracking-wide text-ink-300 leading-snug">
+          <p className="font-georgia text-[15px] font-normal text-press-ink leading-snug">
             {channel.name}
           </p>
           {channel.description && (
-            <p className="font-sans font-light text-sm text-ink-100 mt-1 leading-snug">
+            <p className="font-georgia text-[12px] text-press-body mt-1 leading-snug">
               {channel.description}
             </p>
           )}
           {lastBriefed && (
-            <p className="font-sans text-xs text-ink-50 mt-3">
+            <p className="font-chrome text-[9px] uppercase tracking-[1px] text-press-faint mt-3">
               {lastBriefed}
             </p>
           )}

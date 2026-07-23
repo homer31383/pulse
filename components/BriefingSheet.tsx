@@ -78,18 +78,18 @@ export function BriefingSheet({
 
       {/* Sheet */}
       <div
-        className="fixed bottom-0 inset-x-0 rounded-t-3xl bg-cream-50 shadow-[0_-8px_40px_rgba(44,36,32,0.12)] animate-slide-up flex flex-col h-sheet"
+        className="fixed bottom-0 inset-x-0 rounded-t-3xl paper-page shadow-[0_-8px_40px_rgba(60,50,80,0.14)] animate-slide-up flex flex-col h-sheet"
         style={{ zIndex: 40 }}
       >
         {/* ── Tab bar header ── */}
-        <div className="flex-shrink-0 rounded-t-3xl bg-cream-50">
+        <div className="flex-shrink-0 rounded-t-3xl">
           {/* Drag handle */}
           <div className="flex justify-center pt-3 pb-1.5">
-            <div className="w-10 h-1 bg-ink-50/40 rounded-full" />
+            <div className="w-10 h-1 bg-press-pin/60 rounded-full" />
           </div>
 
           {/* Tabs + close button row */}
-          <div className="flex items-stretch px-2 border-b border-cream-300/60">
+          <div className="flex items-stretch px-2 border-b-[0.5px] border-press-hair">
             {/* Horizontally scrollable tab strip */}
             <div
               ref={tabBarRef}
@@ -106,11 +106,12 @@ export function BriefingSheet({
                     data-active={isActive}
                     onClick={() => onTabClick(id)}
                     className={[
-                      'flex items-center gap-1.5 px-3.5 min-h-[44px] text-sm whitespace-nowrap flex-shrink-0',
-                      'border-b-2 -mb-px transition-colors duration-150 focus:outline-none',
+                      'flex items-center gap-1.5 px-3.5 min-h-[44px] whitespace-nowrap flex-shrink-0',
+                      'font-chrome text-[10px] uppercase tracking-[1.5px]',
+                      'border-b -mb-px transition-colors duration-150 focus:outline-none',
                       isActive
-                        ? 'border-[#7c6fcd] text-[#7c6fcd] font-medium'
-                        : 'border-transparent text-ink-100 hover:text-ink-200',
+                        ? 'border-press-accent text-press-accent'
+                        : 'border-transparent text-press-muted hover:text-press-accent',
                     ].join(' ')}
                   >
                     <StatusDot status={b.status} />
@@ -124,7 +125,7 @@ export function BriefingSheet({
             <div className="flex-shrink-0 flex items-center pl-1 pr-1">
               <button
                 onClick={onClose}
-                className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-100 hover:text-ink-300 hover:bg-cream-300 rounded-lg transition-colors"
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center text-press-muted hover:text-press-ink hover:bg-press-accent/10 rounded-lg transition-colors"
                 aria-label="Close briefings"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

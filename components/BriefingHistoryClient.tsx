@@ -1,13 +1,12 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { MARKDOWN_COMPONENTS } from './MarkdownRenderer'
+import { PressArticle } from './press/PressArticle'
 import type { Briefing } from '@/lib/types'
 
 interface Props {
-  briefings: Briefing[]
+  briefings: (Briefing & { channel_name?: string })[]
+  channelName?: string
 }
 
 function formatDate(iso: string) {
@@ -34,7 +33,7 @@ function stripMarkdown(text: string): string {
     .trim()
 }
 
-export function BriefingHistoryClient({ briefings }: Props) {
+export function BriefingHistoryClient({ briefings, channelName }: Props) {
   const [search, setSearch] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
@@ -47,14 +46,12 @@ export function BriefingHistoryClient({ briefings }: Props) {
   if (briefings.length === 0) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-20 text-center">
-        <div className="w-14 h-14 bg-cream-300 rounded-2xl flex items-center justify-center mx-auto mb-4">
-          <svg className="w-7 h-7 text-ink-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-        </div>
-        <p className="text-ink-300 font-medium mb-1">No briefings yet</p>
-        <p className="text-ink-100 text-sm">
+        <svg className="w-7 h-7 text-press-pin mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        <p className="font-georgia text-[15px] text-press-ink mb-1">No briefings yet</p>
+        <p className="font-georgia italic text-press-muted text-sm">
           Generate a briefing from the home screen to see it here.
         </p>
       </div>
@@ -62,11 +59,11 @@ export function BriefingHistoryClient({ briefings }: Props) {
   }
 
   return (
-    <main className="max-w-2xl mx-auto px-4 pt-5 pb-10 space-y-4">
+    <main className="max-w-2xl mx-auto px-4 pt-5 pb-10">
       {/* Search */}
-      <div className="relative">
+      <div className="relative mb-5">
         <svg
-          className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-50 pointer-events-none"
+          className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-press-faint pointer-events-none"
           fill="none" viewBox="0 0 24 24" stroke="currentColor"
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -76,17 +73,18 @@ export function BriefingHistoryClient({ briefings }: Props) {
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search briefings…"
-          className="w-full bg-cream-100 border border-cream-300 rounded-xl pl-10 pr-4 py-2.5 text-ink-300 placeholder-ink-50 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/50 text-sm transition-colors"
+          placeholder="Search the archive…"
+          className="w-full bg-white/40 border-[0.5px] border-press-hair rounded-none pl-10 pr-4 py-2.5 font-chrome text-press-ink placeholder-press-faint focus:outline-none focus:border-press-accent/50 text-sm transition-colors"
         />
       </div>
 
       {/* No results */}
       {filtered.length === 0 && (
-        <p className="text-center text-ink-50 text-sm py-8">
+        <p className="text-center font-georgia italic text-press-muted text-sm py-8">
           No briefings match &ldquo;{search}&rdquo;
         </p>
       )}
+      {filtered.length > 0 && <div className="press-rule-h" />}
 
       {/* Briefing cards */}
       {filtered.map((briefing) => {
@@ -96,17 +94,17 @@ export function BriefingHistoryClient({ briefings }: Props) {
         return (
           <div
             key={briefing.id}
-            className="bg-cream-50 border border-cream-300/60 rounded-2xl overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)]"
+            className="border-b-[0.5px] border-press-hair"
           >
-            {/* Card header — always visible, click to expand */}
+            {/* Entry header — always visible, click to expand */}
             <button
               onClick={() => setExpandedId(isExpanded ? null : briefing.id)}
-              className="w-full text-left px-4 py-4 flex items-start gap-3 hover:bg-cream-100 transition-colors"
+              className="w-full text-left px-1 py-4 flex items-start gap-3 hover:bg-white/30 transition-colors"
             >
               {/* Expand icon */}
               <span className="flex-shrink-0 mt-0.5">
                 <svg
-                  className={`w-4 h-4 text-ink-50 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+                  className={`w-4 h-4 text-press-pin transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
                   fill="none" viewBox="0 0 24 24" stroke="currentColor"
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -115,23 +113,28 @@ export function BriefingHistoryClient({ briefings }: Props) {
 
               <div className="flex-1 min-w-0">
                 {/* Meta row */}
-                <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                  <span className="text-xs font-medium text-ink-200">
+                <div className="flex items-center gap-2.5 flex-wrap mb-1.5">
+                  {briefing.channel_name && (
+                    <span className="press-label">
+                      {briefing.channel_name}
+                    </span>
+                  )}
+                  <span className="font-chrome text-[10px] uppercase tracking-[1px] text-press-muted">
                     {formatDate(briefing.created_at)}
                   </span>
                   {briefing.sources.length > 0 && (
-                    <span className="text-xs text-ink-50">
+                    <span className="font-chrome text-[10px] text-press-faint">
                       · {briefing.sources.length} source{briefing.sources.length !== 1 ? 's' : ''}
                     </span>
                   )}
-                  <span className="text-xs text-ink-50 font-mono bg-cream-200 px-1.5 py-0.5 rounded">
+                  <span className="font-chrome text-[9px] uppercase tracking-[1px] text-press-faint">
                     {briefing.model}
                   </span>
                 </div>
 
                 {/* Preview text — hidden when expanded */}
                 {!isExpanded && (
-                  <p className="text-sm text-ink-100 leading-relaxed line-clamp-3">
+                  <p className="font-georgia text-[13px] text-press-body leading-[1.65] line-clamp-3">
                     {preview}
                     {briefing.content.length > 220 ? '…' : ''}
                   </p>
@@ -141,34 +144,36 @@ export function BriefingHistoryClient({ briefings }: Props) {
 
             {/* Expanded content */}
             {isExpanded && (
-              <div className="border-t border-cream-300/60">
-                {/* Markdown body */}
-                <div className="px-5 py-5 font-serif prose prose-sm max-w-none prose-headings:font-semibold prose-headings:font-sans prose-headings:text-ink-300 prose-p:text-ink-200 prose-p:leading-relaxed prose-li:text-ink-200 prose-strong:text-ink-300 prose-a:text-brand-600 prose-a:no-underline hover:prose-a:underline prose-hr:border-cream-300 prose-code:text-brand-700 prose-code:bg-cream-200 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-blockquote:border-brand-500/50 prose-blockquote:text-ink-100">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
-                    {briefing.content}
-                  </ReactMarkdown>
+              <div className="border-t-[0.5px] border-press-hair">
+                {/* Article body */}
+                <div className="px-1 py-5">
+                  <PressArticle
+                    content={briefing.content}
+                    channelName={briefing.channel_name ?? channelName ?? null}
+                    sourceDate={briefing.created_at}
+                  />
                 </div>
 
                 {/* Sources */}
                 {briefing.sources.length > 0 && (
-                  <div className="px-5 pb-5 border-t border-cream-300/40 pt-4">
-                    <p className="text-xs font-semibold text-ink-50 uppercase tracking-wider mb-2">
-                      Sources
-                    </p>
-                    <div className="flex flex-col gap-1.5">
-                      {briefing.sources.slice(0, 8).map((src, i) => (
+                  <div className="px-1 pb-5 border-t-[0.5px] border-press-hair pt-3 font-chrome text-[10px] text-press-faint leading-relaxed">
+                    <span className="uppercase tracking-[1.5px] mr-1.5">Sources</span>
+                    {briefing.sources.slice(0, 8).map((src, i) => (
+                      <span key={i}>
+                        {i > 0 && ' · '}
                         <a
-                          key={i}
                           href={src.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-xs text-brand-600 hover:text-brand-700 truncate transition-colors"
+                          className="hover:text-press-accent transition-colors"
                           onClick={(e) => e.stopPropagation()}
                         >
                           {src.title || src.url}
                         </a>
-                      ))}
-                    </div>
+                      </span>
+                    ))}
+                    {briefing.sources.length > 8 && ` · +${briefing.sources.length - 8} more`}
+                    {` — ${briefing.sources.length} source${briefing.sources.length !== 1 ? 's' : ''} accessed`}
                   </div>
                 )}
               </div>

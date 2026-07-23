@@ -29,6 +29,11 @@ export const SETTINGS_DEFAULTS: AppSettings = {
   tts_enabled: false,
   tts_voice: null,
   tts_speed: 1,
+  schedule_enabled: false,
+  schedule_time: '06:00',
+  schedule_channel_ids: [],
+  schedule_output: 'briefings',
+  ticker_items: [],
 }
 
 // Whitelist of columns that PATCH is allowed to modify
@@ -42,6 +47,8 @@ const ALLOWED_FIELDS = [
   'discuss_enabled',
   'briefing_retention_days',
   'tts_enabled', 'tts_voice', 'tts_speed',
+  'schedule_enabled', 'schedule_time', 'schedule_channel_ids', 'schedule_output',
+  'ticker_items',
 ] as const
 
 export async function GET() {

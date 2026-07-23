@@ -21,7 +21,10 @@ import {
 import { ChannelCard } from './ChannelCard'
 import { BriefingSheet } from './BriefingSheet'
 import { GroupSection } from './GroupSection'
-import type { Channel, ChannelGroup, BriefingState, BriefingStreamEvent, AppSettings, Profile } from '@/lib/types'
+import { Masthead } from './press/Masthead'
+import { TickerBar } from './press/TickerBar'
+import { PressNav } from './press/PressNav'
+import type { Channel, ChannelGroup, BriefingState, BriefingStreamEvent, AppSettings, Profile, Briefing, Digest } from '@/lib/types'
 
 interface HomeClientProps {
   channels: Channel[]
@@ -29,9 +32,11 @@ interface HomeClientProps {
   groups: ChannelGroup[]
   profiles: Profile[]
   currentProfileId: string
+  scheduledBriefings?: Briefing[]
+  scheduledDigest?: Digest | null
 }
 
-export function HomeClient({ channels: initialChannels, settings, groups: initialGroups, profiles, currentProfileId }: HomeClientProps) {
+export function HomeClient({ channels: initialChannels, settings, groups: initialGroups, profiles, currentProfileId, scheduledBriefings = [], scheduledDigest = null }: HomeClientProps) {
   const router = useRouter()
   const [channels, setChannels] = useState<Channel[]>(initialChannels)
   const [groups, setGroups] = useState<ChannelGroup[]>(initialGroups)
@@ -58,6 +63,64 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
     document.cookie = `profile_id=${currentProfileId}; path=/; max-age=31536000; SameSite=Lax`
     localStorage.setItem('pulse_profile_id', currentProfileId)
   }, [currentProfileId])
+
+  // ── Pre-generated scheduled content banner ───────────────────────────────
+  // Identify this batch by its newest timestamp; dismissal is remembered per batch
+  const readyBatchKey = [
+    ...scheduledBriefings.map((b) => b.created_at),
+    ...(scheduledDigest ? [scheduledDigest.created_at] : []),
+  ].sort().pop() ?? null
+  const readyCount = scheduledBriefings.length + (scheduledDigest ? 1 : 0)
+  const [showReady, setShowReady] = useState(false)
+
+  useEffect(() => {
+    if (!readyBatchKey) return
+    const seen = localStorage.getItem(`pulse_ready_seen_${currentProfileId}`)
+    if (seen !== readyBatchKey) setShowReady(true)
+  }, [readyBatchKey, currentProfileId])
+
+  function markReadySeen() {
+    if (readyBatchKey) localStorage.setItem(`pulse_ready_seen_${currentProfileId}`, readyBatchKey)
+  }
+
+  function openScheduled() {
+    const map = new Map<string, BriefingState>()
+    for (const b of scheduledBriefings) {
+      const name = channels.find((c) => c.id === b.channel_id)?.name ?? 'Briefing'
+      map.set(b.channel_id, {
+        channelId: b.channel_id,
+        channelName: name,
+        content: b.content,
+        sources: b.sources ?? [],
+        searchQueries: [],
+        status: 'done',
+        briefingId: b.id,
+      })
+    }
+    if (scheduledDigest) {
+      map.set('digest', {
+        channelId: 'digest',
+        channelName: 'Morning Digest',
+        content: scheduledDigest.content,
+        sources: scheduledDigest.sources ?? [],
+        searchQueries: [],
+        status: 'done',
+        briefingId: scheduledDigest.id,
+      })
+    }
+    if (map.size === 0) return
+    setBriefings(map)
+    const ids = [...map.keys()]
+    setOpenSheets(ids)
+    setActiveSheetId(ids[0])
+    markReadySeen()
+    setShowReady(false)
+  }
+
+  function dismissReady() {
+    markReadySeen()
+    setShowReady(false)
+  }
 
   // Keep activeSheetId pointing to a valid open sheet
   useEffect(() => {
@@ -461,21 +524,10 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
   const ungroupedIds = ungrouped.map((c) => c.id)
 
   return (
-    <div className="min-h-screen bg-cream-200 pb-32">
-      {/* ── Header ── */}
-      <header className="sticky top-0 z-20 bg-cream-200/95 backdrop-blur-sm border-b border-cream-300/60 px-4 py-3">
-        <div className="max-w-screen-xl mx-auto flex items-center gap-3">
-          {/* Logo */}
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="#7c6fcd" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-              <line x1="5" y1="17" x2="20" y2="17"/>
-              <g transform="rotate(-45, 5, 17)">
-                <polyline points="5,17 10,17 11,10 12,20 14,17 20,17"/>
-              </g>
-            </svg>
-            <h1 className="font-display text-xl font-normal text-ink-300 tracking-wide">Pulse</h1>
-          </div>
-
+    <div className="min-h-screen paper-page pb-32">
+      {/* ── Utility strip (profile + menu) ── */}
+      <header className="sticky top-0 z-20 bg-[#F0ECF4]/95 backdrop-blur-sm border-b-[0.5px] border-press-hair px-4 py-1.5">
+        <div className="max-w-2xl mx-auto flex items-center gap-3">
           {/* Profile selector */}
           {profiles.length > 0 && (
             <div ref={profileRef} className="relative flex-1">
@@ -492,7 +544,7 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
               </button>
 
               {profileOpen && (
-                <div className="absolute left-0 top-full mt-1.5 w-44 bg-cream-50 rounded-2xl shadow-xl border border-cream-300/60 p-2 z-50">
+                <div className="absolute left-0 top-full mt-1.5 w-44 bg-[#FAF8FC] rounded-2xl shadow-xl border-[0.5px] border-press-hair p-2 z-50">
                   {profiles.map((p) => (
                     <button
                       key={p.id}
@@ -576,7 +628,7 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
 
             {/* Dropdown panel */}
             {menuOpen && (
-              <div className="absolute right-0 top-full mt-2 w-56 bg-cream-50 rounded-2xl shadow-xl border border-cream-300/60 p-2 z-50">
+              <div className="absolute right-0 top-full mt-2 w-56 bg-[#FAF8FC] rounded-2xl shadow-xl border-[0.5px] border-press-hair p-2 z-50">
                 {/* Weekly Summary */}
                 <button
                   onClick={generateWeeklySummary}
@@ -647,19 +699,41 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
                     Notes
                   </Link>
                 )}
-                {digestModeActive && (
-                  <Link
-                    href="/digest-history"
-                    onClick={() => setMenuOpen(false)}
-                    className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-ink-200 hover:bg-cream-200 transition-colors"
-                  >
-                    <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
-                        d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9.5a2 2 0 00-2-2h-2" />
-                    </svg>
-                    Digest History
-                  </Link>
-                )}
+                <Link
+                  href="/pinned"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-ink-200 hover:bg-cream-200 transition-colors"
+                >
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+                      d="M17.657 16.657L13.414 20.9a2 2 0 01-2.828 0l-4.243-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+                      d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  Pinned
+                </Link>
+                <Link
+                  href="/briefing-history"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-ink-200 hover:bg-cream-200 transition-colors"
+                >
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Briefing History
+                </Link>
+                <Link
+                  href="/digest-history"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-ink-200 hover:bg-cream-200 transition-colors"
+                >
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+                      d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9.5a2 2 0 00-2-2h-2" />
+                  </svg>
+                  Digest History
+                </Link>
                 <Link
                   href="/weekly-summary-history"
                   onClick={() => setMenuOpen(false)}
@@ -689,7 +763,47 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
         </div>
       </header>
 
+      {/* ── Masthead + ticker ── */}
+      <Masthead />
+      <TickerBar items={settings.ticker_items ?? []} />
+
       <main className="max-w-screen-xl mx-auto px-4 pt-6">
+        {/* ── Scheduled briefing ready banner ── */}
+        {showReady && readyCount > 0 && (
+          <div className="mb-5 border-y-[0.5px] border-press-hair bg-press-accent/[0.04] px-4 py-3.5 flex items-center gap-3">
+            <div className="flex-shrink-0 w-9 h-9 rounded-full border-[0.5px] border-press-hair bg-white/40 flex items-center justify-center">
+              <svg className="w-5 h-5 text-press-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+                  d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-georgia text-[15px] text-press-ink">Your morning briefing is ready</p>
+              <p className="font-chrome text-[10px] uppercase tracking-[1px] text-press-muted mt-0.5">
+                {scheduledDigest && scheduledBriefings.length === 0
+                  ? 'A digest was generated for you'
+                  : `${scheduledBriefings.length} briefing${scheduledBriefings.length !== 1 ? 's' : ''}${scheduledDigest ? ' and a digest' : ''} generated for you`}
+                {readyBatchKey && ` · ${new Date(readyBatchKey).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`}
+              </p>
+            </div>
+            <button
+              onClick={openScheduled}
+              className="flex-shrink-0 bg-press-accent hover:bg-press-accent/90 text-white font-chrome text-[10px] uppercase tracking-[1.5px] font-semibold px-4 py-2 rounded-xl transition-colors"
+            >
+              Read now
+            </button>
+            <button
+              onClick={dismissReady}
+              aria-label="Dismiss"
+              className="flex-shrink-0 p-1.5 rounded-lg text-ink-50 hover:text-ink-300 hover:bg-cream-200 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+
         {/* ── Empty state ── */}
         {channels.length === 0 ? (
           <div className="text-center py-20">
@@ -714,14 +828,14 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
           <>
             {/* ── Mode toggle ── */}
             <div className="flex justify-center mb-5 mt-1">
-              <div className="inline-flex items-center bg-cream-100 border border-cream-300/60 rounded-full p-0.5">
+              <div className="inline-flex items-center border-[0.5px] border-press-hair rounded-full p-0.5 bg-white/30">
                 <button
                   onClick={() => setDigestModeActive(false)}
                   className={[
-                    'px-3.5 py-1 rounded-full text-xs font-sans font-medium transition-all duration-150',
+                    'px-3.5 py-1 rounded-full font-chrome text-[10px] uppercase tracking-[1.5px] transition-all duration-150',
                     !digestModeActive
-                      ? 'bg-cream-300 text-ink-300 shadow-sm'
-                      : 'text-ink-100 hover:text-ink-200',
+                      ? 'bg-press-accent/10 text-press-accent'
+                      : 'text-press-muted hover:text-press-accent',
                   ].join(' ')}
                 >
                   Briefings
@@ -729,10 +843,10 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
                 <button
                   onClick={() => setDigestModeActive(true)}
                   className={[
-                    'px-3.5 py-1 rounded-full text-xs font-sans font-medium transition-all duration-150',
+                    'px-3.5 py-1 rounded-full font-chrome text-[10px] uppercase tracking-[1.5px] transition-all duration-150',
                     digestModeActive
-                      ? 'bg-cream-300 text-ink-300 shadow-sm'
-                      : 'text-ink-100 hover:text-ink-200',
+                      ? 'bg-press-accent/10 text-press-accent'
+                      : 'text-press-muted hover:text-press-accent',
                   ].join(' ')}
                 >
                   Digest
@@ -742,7 +856,7 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
 
             {/* ── Selection bar ── */}
             <div className="flex items-center justify-between mb-4">
-              <p className="text-sm font-sans text-ink-50">
+              <p className="font-chrome text-[10px] uppercase tracking-[1.5px] text-press-muted">
                 {selectedCount > 0
                   ? `${selectedCount} selected`
                   : digestModeActive ? 'Select channels for digest' : 'Select channels to brief'}
@@ -834,6 +948,8 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
         )}
       </main>
 
+      <PressNav />
+
       {/* ── Briefing sheet overlay (tab bar navigation) ── */}
       {openSheets.length > 0 && (
         <BriefingSheet
@@ -855,7 +971,7 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
       {/* ── Fixed generate bar ── */}
       {channels.length > 0 && (
         <div
-          className="fixed bottom-0 inset-x-0 bg-cream-200/95 backdrop-blur-sm border-t border-cream-300/60 px-4 pt-3"
+          className="fixed bottom-0 inset-x-0 bg-[#F0ECF4]/95 backdrop-blur-sm border-t-[0.5px] border-press-hair px-4 pt-3"
           style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
         >
           <div className="max-w-screen-xl mx-auto flex items-center gap-3">
@@ -863,11 +979,11 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
               onClick={digestModeActive ? generateDigest : generateBriefings}
               disabled={selectedCount === 0 || isGenerating}
               className={[
-                'flex-1 font-semibold py-3 rounded-2xl text-sm transition-all duration-200',
+                'flex-1 font-chrome font-semibold py-3 rounded-2xl text-sm transition-all duration-200',
                 'flex items-center justify-center gap-2',
                 selectedCount === 0 || isGenerating
-                  ? 'bg-cream-300 text-ink-50 cursor-not-allowed'
-                  : 'bg-brand-500 hover:bg-brand-600 active:scale-[0.98] text-white shadow-lg shadow-brand-500/25',
+                  ? 'bg-[#DED8E6] text-press-faint cursor-not-allowed'
+                  : 'bg-press-accent hover:bg-press-accent/90 active:scale-[0.98] text-white shadow-lg shadow-press-accent/25',
               ].join(' ')}
             >
               {isGenerating ? (

@@ -2,7 +2,7 @@ import { cookies } from 'next/headers'
 import { supabase } from '@/lib/supabase'
 import { HomeClient } from '@/components/HomeClient'
 import { SETTINGS_DEFAULTS } from '@/app/api/settings/route'
-import type { Channel, ChannelGroup, AppSettings, Profile } from '@/lib/types'
+import type { Channel, ChannelGroup, AppSettings, Profile, Briefing, Digest } from '@/lib/types'
 
 // Always fetch fresh channel list and settings
 export const dynamic = 'force-dynamic'
@@ -52,6 +52,39 @@ export default async function HomePage() {
   const settings: AppSettings = { ...SETTINGS_DEFAULTS, ...(settingsResult.data ?? {}) }
   const groups = (groupsResult.data ?? []) as ChannelGroup[]
 
+  // ── Pre-generated scheduled content from the last 18 hours ────────────────
+  const scheduledBriefings: Briefing[] = []
+  let scheduledDigest: Digest | null = null
+  if (settings.schedule_enabled && channels.length > 0) {
+    const since = new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString()
+    const [briefingsResult, digestResult] = await Promise.all([
+      supabase
+        .from('briefings')
+        .select('*')
+        .in('channel_id', channels.map((c) => c.id))
+        .eq('scheduled', true)
+        .gte('created_at', since)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('digests')
+        .select('*')
+        .eq('profile_id', currentProfileId)
+        .eq('scheduled', true)
+        .gte('created_at', since)
+        .order('created_at', { ascending: false })
+        .limit(1),
+    ])
+    // Keep only the newest scheduled briefing per channel
+    const seenChannels = new Set<string>()
+    for (const b of (briefingsResult.data ?? []) as Briefing[]) {
+      if (!seenChannels.has(b.channel_id)) {
+        seenChannels.add(b.channel_id)
+        scheduledBriefings.push(b)
+      }
+    }
+    scheduledDigest = ((digestResult.data ?? [])[0] as Digest | undefined) ?? null
+  }
+
   // Auto-delete old briefings and digests if retention is configured (fire-and-forget)
   if (settings.briefing_retention_days) {
     const cutoff = new Date()
@@ -77,6 +110,8 @@ export default async function HomePage() {
       groups={groups}
       profiles={profiles}
       currentProfileId={currentProfileId}
+      scheduledBriefings={scheduledBriefings}
+      scheduledDigest={scheduledDigest}
     />
   )
 }

@@ -26,13 +26,13 @@ export default async function BriefingHistoryPage({ params }: PageProps) {
   const briefings = (briefingsResult.data ?? []) as Briefing[]
 
   return (
-    <div className="min-h-screen bg-cream-200">
+    <div className="min-h-screen paper-page">
       {/* Header */}
-      <header className="sticky top-0 z-20 bg-cream-200/95 backdrop-blur-sm border-b border-cream-300/60 px-4 py-3">
+      <header className="sticky top-0 z-20 bg-[#F0ECF4]/95 backdrop-blur-sm border-b-[0.5px] border-press-hair px-4 py-3">
         <div className="max-w-2xl mx-auto flex items-center gap-3">
           <Link
             href={`/channels/${id}/config`}
-            className="p-1.5 rounded-lg text-ink-100 hover:text-ink-300 hover:bg-cream-300 transition-colors flex-shrink-0"
+            className="p-1.5 rounded-lg text-press-muted hover:text-press-ink hover:bg-press-accent/10 transition-colors flex-shrink-0"
             aria-label="Back to config"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -40,17 +40,17 @@ export default async function BriefingHistoryPage({ params }: PageProps) {
             </svg>
           </Link>
           <div className="flex-1 min-w-0">
-            <h1 className="font-display text-lg font-normal text-ink-300 truncate">{channel.name}</h1>
-            <p className="text-xs text-ink-50">
+            <h1 className="font-georgia text-[20px] font-normal tracking-[-0.3px] text-press-ink truncate">{channel.name}</h1>
+            <p className="font-chrome text-[9px] uppercase tracking-[2px] text-press-muted">
               {briefings.length === 0
                 ? 'No briefings yet'
-                : `${briefings.length} briefing${briefings.length !== 1 ? 's' : ''}`}
+                : `${briefings.length} briefing${briefings.length !== 1 ? 's' : ''} on file`}
             </p>
           </div>
         </div>
       </header>
 
-      <BriefingHistoryClient briefings={briefings} />
+      <BriefingHistoryClient briefings={briefings} channelName={channel.name} />
     </div>
   )
 }

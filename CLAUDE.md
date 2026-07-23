@@ -9,7 +9,7 @@ Pulse is a personal AI briefing platform. Users create **channels** — topic-ba
 - **Framework**: Next.js 16.1.6 (App Router, React 18)
 - **Database**: Supabase (PostgreSQL via service-role key, server-side only)
 - **AI**: Anthropic Claude API (`@anthropic-ai/sdk` 0.39.0) with web search beta
-- **Styling**: Tailwind CSS 3.4 with custom warm/parchment color palette
+- **Styling**: Tailwind CSS 3.4. Reading/home/archive views use the broadsheet "press" design (lavender paper `#F0ECF4`, indigo accent `#6B5CA5`, Georgia serif); utility pages (settings, channel config, notes) keep the older warm/parchment palette
 - **Fonts**: Lora (serif body), Playfair Display (headings), Inter (UI/sans)
 - **DnD**: `@dnd-kit` for drag-to-reorder channels and groups
 - **Markdown**: `react-markdown` + `remark-gfm`
@@ -28,7 +28,7 @@ npm install
 npm run dev
 ```
 
-Run all migrations in `supabase/migrations/` in order (001 through 011) in the Supabase SQL editor. Optionally run `supabase/seed.sql` for sample channels.
+Run all migrations in `supabase/migrations/` in order (001 through 014) in the Supabase SQL editor. Optionally run `supabase/seed.sql` for sample channels.
 
 ## File Structure
 
@@ -41,6 +41,8 @@ app/
     config/page.tsx             — Channel config page (or NewChannelClient for id="new")
     history/page.tsx            — Briefing history for a channel
   notes/page.tsx                — Saved notes/clips page (client component)
+  pinned/page.tsx               — Pinned insights page (client component)
+  briefing-history/page.tsx     — Global briefing history across all channels
   share/[slug]/page.tsx         — Public shared briefing view (server component)
   settings/page.tsx             — Settings page wrapper
   digest-history/page.tsx       — Digest history page
@@ -68,9 +70,12 @@ app/
     share/route.ts                       — POST: create share link (slug)
     notes/route.ts                       — GET list, POST create note
     notes/[id]/route.ts                  — DELETE note
+    pins/route.ts                        — GET list, POST create pinned insight (profile-scoped)
+    pins/[id]/route.ts                   — DELETE pinned insight
     usage/route.ts                       — GET: usage stats (totals, daily, by-channel)
     settings/route.ts                    — GET/PATCH settings (profile-scoped)
     profiles/route.ts                    — GET list, POST create profile
+    cron/scheduled-briefings/route.ts    — GET (Vercel Cron, hourly): pre-generate scheduled briefings/digests
 
 components/
   HomeClient.tsx              — Main home screen: channel grid, DnD, generate bar, profile switcher
@@ -85,13 +90,19 @@ components/
   BriefingHistorySection.tsx  — Collapsible briefing history (used in config page)
   DigestHistoryClient.tsx     — Digest history with expand/PDF/delete
   WeeklySummaryHistoryClient.tsx — Weekly summary history
-  MarkdownRenderer.tsx        — Shared markdown renderer (links open in new tab)
+  MarkdownRenderer.tsx        — Shared markdown renderer (links open in new tab; used by utility pages)
+  press/
+    Masthead.tsx              — PULSE nameplate, subtitle, dateline rules
+    TickerBar.tsx             — Key-figures bar under the masthead (settings.ticker_items)
+    PressNav.tsx              — Bottom nav: Today/History/Pinned/Channels/Settings
+    PressArticle.tsx          — Broadsheet article renderer: section rules, analyst-note asides, two-column, per-section pin (PRESS_MD_COMPONENTS exported for reuse)
   SpeechProviderWrapper.tsx   — TTS context provider
 
 lib/
   types.ts      — All TypeScript types and interfaces
   supabase.ts   — Server-only Supabase client (service_role key)
   anthropic.ts  — Anthropic client + DEFAULT_MODEL constant
+  generation.ts — Shared briefing/digest generation (prompts, web-search stream, persist, usage) used by SSE routes AND the cron route
   cost.ts       — Token cost calculation and formatting
   usage.ts      — Server-side usage logging to Supabase
   speech.ts     — stripMarkdown() and splitSentences() for TTS
@@ -174,6 +185,31 @@ Channels are scoped to profiles via `profile_id`.
 - Settings table uses `id = profile UUID` as primary key
 - "Copy channel to profile" feature on config page
 - Profile switcher dropdown on home screen
+
+## Scheduled Briefings (Vercel Cron)
+
+Pre-generates briefings server-side so they're ready when the app opens:
+- **Settings** (migration 013, per profile): `schedule_enabled`, `schedule_time` ('HH:MM' Eastern Time), `schedule_channel_ids` (empty = all channels), `schedule_output` ('briefings' | 'digest' | 'both'). UI in the settings page ("Scheduled Briefings" section).
+- **Cron**: `vercel.json` fires `/api/cron/scheduled-briefings` hourly (`0 * * * *`). The route requires `Authorization: Bearer $CRON_SECRET` (set `CRON_SECRET` in Vercel env vars — Vercel sends it automatically). It matches each enabled profile's `schedule_time` **hour** against the current hour in America/New_York (minutes ignored), skips profiles that already generated in the last 20h (idempotent), then generates via `lib/generation.ts` with `scheduled: true`. `maxDuration = 300`. Note: Vercel Hobby plan crons may be limited to daily — if so, change the schedule to e.g. `0 10 * * *` (6 AM EDT).
+- **Marking**: `briefings.scheduled` / `digests.scheduled` boolean columns (migration 013). Live generation omits the column (safe pre-migration).
+- **Surfacing**: `app/page.tsx` fetches scheduled content from the last 18h (newest per channel + latest digest) and passes it to HomeClient, which shows a "Your morning briefing is ready" banner. "Read now" opens the BriefingSheet instantly with the stored content (no streaming). Dismissal is remembered per batch in localStorage (`pulse_ready_seen_<profileId>`).
+- **Refactor note**: the briefing/digest SSE routes are now thin wrappers around `generateChannelBriefing` / `generateProfileDigest` in `lib/generation.ts` — edit prompts there, not in the routes.
+
+## Broadsheet Press Design
+
+The reading experience (BriefingCard/BriefingSheet), home screen, history/archive pages, and pinned page use a newspaper aesthetic. **Do not apply to settings, channel config, notes, or other utility pages.**
+- **Palette**: `press.*` colors in tailwind.config (paper #F0ECF4, accent #6B5CA5, ink #2C2522, body #48404A, muted #7A7070, faint #9A9098, pin #B8B0C0, up #1D6E56, down #993C1D, hair = hairline rgba). Fonts: `font-georgia` for ALL editorial content, `font-chrome` (system sans) for ALL UI chrome.
+- **CSS utilities** (globals.css): `.paper-page` (lavender bg + CSS-only grain, directional lighting, inset edge darkening), `.press-label` (9px uppercase accent label), `.press-rule-h` (0.5px hairline), `.press-fold` (faint fold line), `.press-columns` (two-column text with rule, ≥768px only).
+- **PressArticle** splits briefing markdown by `##` headings: leading `#` → Georgia headline; sections titled like "Key Takeaways"/analysis → "Analyst note" aside (tinted bg, accent left border); other sections get a label+rule header with a bookmark pin (posts to `/api/pins`); long sections flow into two CSS columns on desktop; a fold line appears mid-article when ≥5 sections. No cards anywhere in reading views — hairline rules only.
+- **TickerBar**: figures under the home masthead from `settings.ticker_items` (migration 014, JSONB `{label, value, change}`), edited manually in Settings → Ticker Bar. Hidden when empty.
+- **PressNav**: bottom nav on press pages. "Channels" links to `/channels/new/config`.
+
+## Pinned Insights
+
+A lightweight reference shelf (no editing, no folders — pin and review only):
+- Pin buttons live in `PressArticle` (one per article section, bookmark icon top-right of the section rule). Used in `BriefingCard` (live briefings + digests, once generation is done), `BriefingHistoryClient`, and `DigestHistoryClient`.
+- `pinned_insights` table (migration 012): content, channel_name, source_date (date of the source briefing/digest), profile_id, created_at.
+- `/pinned` page: chronological ruled list with per-item delete, linked from the home hamburger menu and PressNav. API: GET/POST `/api/pins`, DELETE `/api/pins/[id]` — profile-scoped via cookie.
 
 ## Serendipity Mode
 

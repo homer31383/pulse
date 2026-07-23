@@ -3,13 +3,20 @@
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { formatCost } from '@/lib/cost'
-import type { AppSettings, BriefingDensity } from '@/lib/types'
+import type { AppSettings, BriefingDensity, Channel, ScheduleOutput, TickerItem } from '@/lib/types'
 import type { UsageData } from '@/app/api/usage/route'
 
 const TTS_SPEEDS = [0.75, 1, 1.25, 1.5, 2] as const
 
+const SCHEDULE_OUTPUTS: { id: ScheduleOutput; label: string; description: string }[] = [
+  { id: 'briefings', label: 'Briefings', description: 'One briefing per channel' },
+  { id: 'digest', label: 'Digest', description: 'A single unified digest' },
+  { id: 'both', label: 'Both', description: 'Briefings and a digest' },
+]
+
 interface Props {
   initialSettings: AppSettings
+  channels?: Channel[]
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
@@ -85,7 +92,7 @@ function ToggleRow({
   )
 }
 
-export function SettingsClient({ initialSettings }: Props) {
+export function SettingsClient({ initialSettings, channels = [] }: Props) {
   // ── Model & density ──────────────────────────────────────────────────────
   const [model, setModel] = useState(initialSettings.model)
   const [density, setDensity] = useState<BriefingDensity>(initialSettings.briefing_density)
@@ -109,6 +116,15 @@ export function SettingsClient({ initialSettings }: Props) {
   const [emailAddress, setEmailAddress] = useState(initialSettings.email_address ?? '')
   const [notificationsEnabled, setNotificationsEnabled] = useState(initialSettings.notifications_enabled)
   const [notificationTime, setNotificationTime] = useState(initialSettings.notification_time ?? '08:00')
+
+  // ── Scheduled briefings ──────────────────────────────────────────────────
+  const [scheduleEnabled, setScheduleEnabled] = useState(initialSettings.schedule_enabled ?? false)
+  const [scheduleTime, setScheduleTime] = useState(initialSettings.schedule_time ?? '06:00')
+  const [scheduleOutput, setScheduleOutput] = useState<ScheduleOutput>(initialSettings.schedule_output ?? 'briefings')
+  const [scheduleChannelIds, setScheduleChannelIds] = useState<string[]>(initialSettings.schedule_channel_ids ?? [])
+
+  // ── Ticker bar ───────────────────────────────────────────────────────────
+  const [tickerItems, setTickerItems] = useState<TickerItem[]>(initialSettings.ticker_items ?? [])
 
   // ── TTS ───────────────────────────────────────────────────────────────────
   const [ttsEnabled, setTtsEnabled] = useState(initialSettings.tts_enabled)
@@ -601,6 +617,171 @@ export function SettingsClient({ initialSettings }: Props) {
               </div>
             </div>
           )}
+        </div>
+      </section>
+
+      {/* ── Scheduled briefings ── */}
+      <section className="space-y-3">
+        <div>
+          <h2 className="font-display text-base font-normal text-ink-300">Scheduled Briefings</h2>
+          <p className="text-xs text-ink-50 mt-0.5">Pre-generate briefings overnight so they&rsquo;re ready when you open Pulse.</p>
+        </div>
+        <div className="bg-cream-50 border border-cream-300 rounded-2xl px-4 shadow-[0_1px_4px_rgba(0,0,0,0.05)]">
+          <ToggleRow
+            label="Enable schedule"
+            description="A server-side job generates your briefings automatically each morning."
+            checked={scheduleEnabled}
+            onChange={(v) => { setScheduleEnabled(v); save({ schedule_enabled: v }) }}
+          />
+          {scheduleEnabled && (
+            <div className="pb-4 space-y-4 border-t border-cream-300 pt-4">
+              {/* Time */}
+              <div className="flex items-center gap-3">
+                <label className="text-xs text-ink-100">Generate at</label>
+                <input
+                  type="time"
+                  step={3600}
+                  value={scheduleTime}
+                  onChange={(e) => setScheduleTime(e.target.value)}
+                  onBlur={() => save({ schedule_time: scheduleTime })}
+                  className="bg-cream-100 border border-cream-300 rounded-lg px-2 py-1.5 text-sm text-ink-200 focus:outline-none focus:border-brand-500/60"
+                />
+                <span className="text-xs text-ink-50">Eastern Time — runs on the hour</span>
+              </div>
+
+              {/* Output type */}
+              <div className="space-y-1.5">
+                <p className="text-xs text-ink-100">What to generate</p>
+                <div className="flex gap-2">
+                  {SCHEDULE_OUTPUTS.map((o) => (
+                    <button
+                      key={o.id}
+                      onClick={() => { setScheduleOutput(o.id); save({ schedule_output: o.id }) }}
+                      title={o.description}
+                      className={[
+                        'text-xs px-3 py-1.5 rounded-full border transition-colors',
+                        scheduleOutput === o.id
+                          ? 'border-brand-600 bg-brand-50 text-brand-700 font-medium'
+                          : 'border-cream-300 text-ink-100 hover:border-brand-600/50 hover:text-brand-700',
+                      ].join(' ')}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-ink-50">
+                  {SCHEDULE_OUTPUTS.find((o) => o.id === scheduleOutput)?.description}
+                </p>
+              </div>
+
+              {/* Channel selection */}
+              <div className="space-y-1.5">
+                <p className="text-xs text-ink-100">Channels to include</p>
+                {channels.length === 0 ? (
+                  <p className="text-xs text-ink-50">No channels yet — create one from the home screen.</p>
+                ) : (
+                  <div className="space-y-0.5">
+                    {channels.map((c) => (
+                      <label key={c.id} className="flex items-center gap-2.5 py-1 text-sm text-ink-200 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={scheduleChannelIds.includes(c.id)}
+                          onChange={() => {
+                            const next = scheduleChannelIds.includes(c.id)
+                              ? scheduleChannelIds.filter((id) => id !== c.id)
+                              : [...scheduleChannelIds, c.id]
+                            setScheduleChannelIds(next)
+                            save({ schedule_channel_ids: next })
+                          }}
+                          className="accent-[#6355b0] w-4 h-4"
+                        />
+                        {c.name}
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <p className="text-xs text-ink-50">
+                  {scheduleChannelIds.length === 0
+                    ? 'None selected — all channels will be included.'
+                    : `${scheduleChannelIds.length} of ${channels.length} channels selected.`}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ── Ticker bar ── */}
+      <section className="space-y-3">
+        <div>
+          <h2 className="font-display text-base font-normal text-ink-300">Ticker Bar</h2>
+          <p className="text-xs text-ink-50 mt-0.5">
+            Key figures shown under the masthead on the home screen. Values are whatever you set them to — update them as you like.
+          </p>
+        </div>
+        <div className="bg-cream-50 border border-cream-300 rounded-2xl px-4 py-4 space-y-2.5 shadow-[0_1px_4px_rgba(0,0,0,0.05)]">
+          {tickerItems.length === 0 && (
+            <p className="text-xs text-ink-50">No figures yet — add one below (e.g. S&amp;P 500, ETH, 10-Yr yield).</p>
+          )}
+          {tickerItems.map((item, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <input
+                type="text"
+                value={item.label}
+                placeholder="Label"
+                onChange={(e) => {
+                  const next = tickerItems.map((t, j) => (j === i ? { ...t, label: e.target.value } : t))
+                  setTickerItems(next)
+                }}
+                onBlur={() => save({ ticker_items: tickerItems })}
+                className="flex-1 min-w-0 bg-cream-100 border border-cream-300 rounded-lg px-2.5 py-1.5 text-sm text-ink-300 placeholder:text-ink-50 focus:outline-none focus:border-brand-500/60"
+              />
+              <input
+                type="text"
+                value={item.value}
+                placeholder="Value"
+                onChange={(e) => {
+                  const next = tickerItems.map((t, j) => (j === i ? { ...t, value: e.target.value } : t))
+                  setTickerItems(next)
+                }}
+                onBlur={() => save({ ticker_items: tickerItems })}
+                className="w-28 bg-cream-100 border border-cream-300 rounded-lg px-2.5 py-1.5 text-sm text-ink-300 placeholder:text-ink-50 focus:outline-none focus:border-brand-500/60"
+              />
+              <select
+                value={item.change}
+                onChange={(e) => {
+                  const next = tickerItems.map((t, j) =>
+                    (j === i ? { ...t, change: e.target.value as TickerItem['change'] } : t))
+                  setTickerItems(next)
+                  save({ ticker_items: next })
+                }}
+                className="bg-cream-100 border border-cream-300 rounded-lg px-1.5 py-1.5 text-sm text-ink-200 focus:outline-none focus:border-brand-500/60"
+              >
+                <option value="up">▲ up</option>
+                <option value="down">▼ down</option>
+                <option value="flat">— flat</option>
+              </select>
+              <button
+                onClick={() => {
+                  const next = tickerItems.filter((_, j) => j !== i)
+                  setTickerItems(next)
+                  save({ ticker_items: next })
+                }}
+                className="flex-shrink-0 p-1.5 rounded-lg text-ink-50 hover:text-red-500 hover:bg-red-50 transition-colors"
+                aria-label="Remove ticker item"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          ))}
+          <button
+            onClick={() => setTickerItems([...tickerItems, { label: '', value: '', change: 'flat' }])}
+            className="text-xs font-medium text-brand-600 hover:text-brand-500 transition-colors"
+          >
+            + Add figure
+          </button>
         </div>
       </section>
 
