@@ -3,12 +3,19 @@ import { supabase } from '@/lib/supabase'
 import { generateChannelBriefing, generateProfileDigest } from '@/lib/generation'
 import type { Channel } from '@/lib/types'
 
-// Web-search generation for several channels can take minutes
+// Web-search generation can take minutes; channels run in parallel
 export const maxDuration = 300
 export const dynamic = 'force-dynamic'
 
-// How far back to look when deciding a profile's scheduled run already happened
+// How far back to look when deciding whether an item was already generated.
+// The scheduled flag doubles as a progress tracker: anything missing from
+// this window is (re)generated, so a partially timed-out run is completed
+// by a later invocation instead of being skipped.
 const DEDUPE_WINDOW_MS = 20 * 60 * 60 * 1000
+
+// A profile is eligible at its scheduled hour and for a few hours after,
+// so the next hourly cron run picks up whatever an earlier run left behind.
+const CATCH_UP_HOURS = 3
 
 function currentHourInET(): number {
   const hour = new Intl.DateTimeFormat('en-US', {
@@ -39,15 +46,18 @@ export async function GET(req: NextRequest) {
 
   const results: Array<{
     profileId: string
-    status: 'generated' | 'skipped' | 'error'
-    detail: string
+    status: 'generated' | 'partial' | 'skipped' | 'error'
+    succeeded: string[]
+    failed: string[]
+    detail?: string
   }> = []
 
   for (const settings of scheduledSettings ?? []) {
     const profileId: string = settings.id
     const scheduledHour = parseInt((settings.schedule_time ?? '06:00').split(':')[0], 10)
 
-    if (scheduledHour !== etHour) {
+    const hoursSinceScheduled = (etHour - scheduledHour + 24) % 24
+    if (hoursSinceScheduled > CATCH_UP_HOURS) {
       continue
     }
 
@@ -66,20 +76,19 @@ export async function GET(req: NextRequest) {
       }
 
       if (channels.length === 0) {
-        results.push({ profileId, status: 'skipped', detail: 'No channels to generate' })
+        results.push({ profileId, status: 'skipped', succeeded: [], failed: [], detail: 'No channels to generate' })
         continue
       }
 
-      // ── Idempotency: skip if this profile's scheduled run already happened ──
+      // ── What already exists in this window? ────────────────────────────
       const since = new Date(Date.now() - DEDUPE_WINDOW_MS).toISOString()
-      const [existingBriefings, existingDigests] = await Promise.all([
+      const [doneBriefings, doneDigests] = await Promise.all([
         supabase
           .from('briefings')
-          .select('id')
+          .select('channel_id')
           .in('channel_id', channels.map((c) => c.id))
           .eq('scheduled', true)
-          .gte('created_at', since)
-          .limit(1),
+          .gte('created_at', since),
         supabase
           .from('digests')
           .select('id')
@@ -88,49 +97,66 @@ export async function GET(req: NextRequest) {
           .gte('created_at', since)
           .limit(1),
       ])
-      if (existingBriefings.data?.length || existingDigests.data?.length) {
-        results.push({ profileId, status: 'skipped', detail: 'Already generated in this window' })
-        continue
-      }
+      const doneChannelIds = new Set((doneBriefings.data ?? []).map((b) => b.channel_id as string))
+      const digestDone = (doneDigests.data?.length ?? 0) > 0
 
-      // ── Generate ───────────────────────────────────────────────────────
+      // ── Build the remaining work list ──────────────────────────────────
       const output: string = settings.schedule_output ?? 'briefings'
-      const generated: string[] = []
-      const failures: string[] = []
+      const tasks: Array<{ label: string; run: () => Promise<unknown> }> = []
 
       if (output === 'briefings' || output === 'both') {
         for (const channel of channels) {
-          try {
-            await generateChannelBriefing({ channel, profileId, scheduled: true })
-            generated.push(channel.name)
-          } catch (err) {
-            failures.push(`${channel.name}: ${err instanceof Error ? err.message : 'failed'}`)
-          }
+          if (doneChannelIds.has(channel.id)) continue
+          tasks.push({
+            label: channel.name,
+            run: () => generateChannelBriefing({ channel, profileId, scheduled: true }),
+          })
         }
+      }
+      if ((output === 'digest' || output === 'both') && !digestDone) {
+        tasks.push({
+          label: 'digest',
+          run: () => generateProfileDigest({ channels, profileId, scheduled: true }),
+        })
       }
 
-      if (output === 'digest' || output === 'both') {
-        try {
-          await generateProfileDigest({ channels, profileId, scheduled: true })
-          generated.push('digest')
-        } catch (err) {
-          failures.push(`digest: ${err instanceof Error ? err.message : 'failed'}`)
-        }
+      if (tasks.length === 0) {
+        results.push({ profileId, status: 'skipped', succeeded: [], failed: [], detail: 'Already generated in this window' })
+        continue
       }
+
+      // ── Generate everything in parallel; one failure never kills the batch ──
+      console.log(
+        `[cron] profile ${profileId}: generating ${tasks.length} item(s) in parallel: ${tasks.map((t) => t.label).join(', ')}`
+      )
+      const settled = await Promise.allSettled(tasks.map((t) => t.run()))
+
+      const succeeded: string[] = []
+      const failed: string[] = []
+      settled.forEach((res, i) => {
+        if (res.status === 'fulfilled') {
+          succeeded.push(tasks[i].label)
+        } else {
+          const msg = res.reason instanceof Error ? res.reason.message : 'failed'
+          failed.push(`${tasks[i].label}: ${msg}`)
+          console.error(`[cron] profile ${profileId}: "${tasks[i].label}" failed — ${msg}`)
+        }
+      })
+      console.log(
+        `[cron] profile ${profileId}: ${succeeded.length}/${tasks.length} generated` +
+        (failed.length ? ` (${failed.length} failed — next hourly run will retry within the catch-up window)` : '')
+      )
 
       results.push({
         profileId,
-        status: generated.length > 0 ? 'generated' : 'error',
-        detail:
-          `Generated: ${generated.join(', ') || 'none'}` +
-          (failures.length ? ` — failed: ${failures.join('; ')}` : ''),
+        status: failed.length === 0 ? 'generated' : succeeded.length > 0 ? 'partial' : 'error',
+        succeeded,
+        failed,
       })
     } catch (err) {
-      results.push({
-        profileId,
-        status: 'error',
-        detail: err instanceof Error ? err.message : 'Unknown error',
-      })
+      const msg = err instanceof Error ? err.message : 'Unknown error'
+      console.error(`[cron] profile ${profileId}: run failed — ${msg}`)
+      results.push({ profileId, status: 'error', succeeded: [], failed: [], detail: msg })
     }
   }
 
