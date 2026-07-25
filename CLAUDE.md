@@ -42,7 +42,7 @@ app/
     history/page.tsx            — Briefing history for a channel
   notes/page.tsx                — Saved notes/clips page (client component)
   pinned/page.tsx               — Pinned insights page (client component)
-  briefing-history/page.tsx     — Global briefing history across all channels
+  briefing-history/page.tsx     — "The Archive": briefings + digests grouped by day (DailyArchiveClient)
   share/[slug]/page.tsx         — Public shared briefing view (server component)
   settings/page.tsx             — Settings page wrapper
   digest-history/page.tsx       — Digest history page
@@ -86,7 +86,8 @@ components/
   ChannelConfigClient.tsx     — Config editor: Settings tab + Chat tab
   NewChannelClient.tsx        — New channel creation form
   SettingsClient.tsx          — Global settings page with usage dashboard
-  BriefingHistoryClient.tsx   — Full-page briefing history with search
+  BriefingHistoryClient.tsx   — Per-channel briefing history with search (used by /channels/[id]/history)
+  DailyArchiveClient.tsx      — Day-grouped archive: one row per day ("July 25 — 12 briefings, 1 digest"), chevron expands individual entries inline, "Read all" opens a full-screen Daily Edition overlay (all entries in sequence, double-rule channel dividers, per-section collapse). Day boundaries use America/New_York so SSR and client group identically.
   BriefingHistorySection.tsx  — Collapsible briefing history (used in config page)
   DigestHistoryClient.tsx     — Digest history with expand/PDF/delete
   WeeklySummaryHistoryClient.tsx — Weekly summary history

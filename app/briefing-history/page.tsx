@@ -1,9 +1,9 @@
 import { cookies } from 'next/headers'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
-import { BriefingHistoryClient } from '@/components/BriefingHistoryClient'
+import { DailyArchiveClient } from '@/components/DailyArchiveClient'
 import { PressNav } from '@/components/press/PressNav'
-import type { Briefing } from '@/lib/types'
+import type { Briefing, Digest, Source } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,20 +21,36 @@ export default async function AllBriefingHistoryPage() {
   const channelNames = new Map((channels ?? []).map((c) => [c.id, c.name as string]))
   const channelIds = [...channelNames.keys()]
 
-  let briefings: (Briefing & { channel_name?: string })[] = []
-  if (channelIds.length > 0) {
-    const { data } = await supabase
-      .from('briefings')
-      .select('*')
-      .in('channel_id', channelIds)
+  const [briefingsResult, digestsResult] = await Promise.all([
+    channelIds.length > 0
+      ? supabase
+          .from('briefings')
+          .select('*')
+          .in('channel_id', channelIds)
+          .order('created_at', { ascending: false })
+          .limit(100)
+      : Promise.resolve({ data: [] as Briefing[] }),
+    supabase
+      .from('digests')
+      .select('id, content, sources, channel_ids, channel_names, model, created_at')
+      .eq('profile_id', profileId)
       .order('created_at', { ascending: false })
-      .limit(100)
+      .limit(100),
+  ])
 
-    briefings = ((data ?? []) as Briefing[]).map((b) => ({
-      ...b,
-      channel_name: channelNames.get(b.channel_id),
-    }))
-  }
+  const briefings = ((briefingsResult.data ?? []) as Briefing[]).map((b) => ({
+    ...b,
+    channel_name: channelNames.get(b.channel_id),
+  }))
+
+  const digests: Digest[] = (digestsResult.data ?? []).map((d) => ({
+    ...d,
+    sources: (d.sources as unknown as Source[]) ?? [],
+    channel_ids: d.channel_ids ?? [],
+    channel_names: d.channel_names ?? [],
+  }))
+
+  const total = briefings.length + digests.length
 
   return (
     <div className="min-h-screen paper-page">
@@ -50,17 +66,20 @@ export default async function AllBriefingHistoryPage() {
             </svg>
           </Link>
           <div className="flex-1 min-w-0">
-            <h1 className="font-georgia text-[20px] font-normal tracking-[-0.3px] text-press-ink">The Briefing Archive</h1>
+            <h1 className="font-georgia text-[20px] font-normal tracking-[-0.3px] text-press-ink">The Archive</h1>
             <p className="font-chrome text-[9px] uppercase tracking-[2px] text-press-muted">
-              {briefings.length === 0
-                ? 'No briefings yet'
-                : `${briefings.length} briefing${briefings.length !== 1 ? 's' : ''} across all channels`}
+              {total === 0
+                ? 'Nothing on file yet'
+                : [
+                    briefings.length > 0 && `${briefings.length} briefing${briefings.length !== 1 ? 's' : ''}`,
+                    digests.length > 0 && `${digests.length} digest${digests.length !== 1 ? 's' : ''}`,
+                  ].filter(Boolean).join(' · ')}
             </p>
           </div>
         </div>
       </header>
 
-      <BriefingHistoryClient briefings={briefings} />
+      <DailyArchiveClient briefings={briefings} digests={digests} />
       <PressNav />
     </div>
   )
