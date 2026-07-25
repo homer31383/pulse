@@ -1,6 +1,6 @@
 // Server-side briefing/digest generation shared by the SSE streaming routes
 // and the scheduled-briefings cron route. Never import in 'use client' files.
-import { anthropic, DEFAULT_MODEL } from '@/lib/anthropic'
+import { anthropic, resolveModel } from '@/lib/anthropic'
 import { supabase } from '@/lib/supabase'
 import { calculateCost } from '@/lib/cost'
 import { logUsage } from '@/lib/usage'
@@ -184,7 +184,7 @@ export async function generateChannelBriefing(opts: {
 
     const previousBriefing = prevResult.data
     const settings = settingsResult.data
-    const model = settings?.model ?? DEFAULT_MODEL
+    const model = resolveModel(settings?.model)
     const density = settings?.briefing_density ?? 'balanced'
 
     const queries = channel.search_queries?.join(', ') || channel.name
@@ -301,7 +301,7 @@ export async function generateProfileDigest(opts: {
       .eq('id', profileId)
       .single()
 
-    const model = settings?.model ?? DEFAULT_MODEL
+    const model = resolveModel(settings?.model)
     const density = settings?.briefing_density ?? 'balanced'
 
     const channelList = channels

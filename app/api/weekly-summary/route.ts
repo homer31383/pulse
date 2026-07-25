@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { cookies } from 'next/headers'
-import { anthropic, DEFAULT_MODEL } from '@/lib/anthropic'
+import { anthropic, resolveModel } from '@/lib/anthropic'
 import { supabase } from '@/lib/supabase'
 import { calculateCost } from '@/lib/cost'
 import { logUsage } from '@/lib/usage'
@@ -50,7 +50,7 @@ export async function POST(_req: NextRequest) {
         ])
 
         const settings = settingsResult.data
-        const model = settings?.model ?? DEFAULT_MODEL
+        const model = resolveModel(settings?.model)
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const rawBriefings = (briefingsResult.data ?? []) as any[] as Array<{

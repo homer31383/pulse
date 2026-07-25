@@ -11,7 +11,7 @@ async function getProfileId(): Promise<string> {
 }
 
 export const SETTINGS_DEFAULTS: AppSettings = {
-  model: 'claude-sonnet-4-6',
+  model: 'claude-sonnet-5',
   briefing_density: 'balanced',
   digest_mode: false,
   highlights_enabled: false,

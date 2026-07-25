@@ -1,7 +1,12 @@
 // Pricing in USD per 1 million tokens
 const PRICING: Record<string, { input: number; output: number }> = {
+  // Sonnet 5 has an intro rate of $2/$10 through 2026-08-31; standard rate used
+  // here so costs aren't underreported after it lapses.
+  'claude-sonnet-5':   { input: 3,  output: 15 },
+  'claude-opus-4-8':   { input: 5,  output: 25 },
+  // Legacy models kept for profiles that haven't re-saved settings yet
   'claude-sonnet-4-6': { input: 3,  output: 15 },
-  'claude-opus-4-6':   { input: 15, output: 75 },
+  'claude-opus-4-6':   { input: 5,  output: 25 },
 }
 
 const DEFAULT_PRICING = { input: 3, output: 15 }

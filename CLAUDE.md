@@ -141,7 +141,7 @@ Instead of per-channel briefings, generates a single unified digest across all s
 
 ## Claude API Integration
 
-- **Default model**: `claude-sonnet-4-6` (configurable per profile in settings)
+- **Default model**: `claude-sonnet-5` (configurable per profile in settings; premium option `claude-opus-4-8`). Legacy IDs (`claude-sonnet-4-6`, `claude-opus-4-6`) in old settings rows are mapped to their successors by `resolveModel()` in `lib/anthropic.ts`
 - **Web search**: Uses `web_search_20250305` tool with `anthropic-beta: web-search-2025-03-05` header
 - **Streaming**: All generation uses `anthropic.messages.stream()` — never non-streaming
 - **API calls that use web search**: briefings, digests, discuss
@@ -172,7 +172,7 @@ Channels are scoped to profiles via `profile_id`.
 ## Cost Tracking
 
 - `usage_logs` table records every API call with `call_type`, model, token counts, and cost
-- Pricing in `lib/cost.ts`: Sonnet 4.6 ($3/$15 per M), Opus 4.6 ($15/$75 per M)
+- Pricing in `lib/cost.ts`: Sonnet 5 ($3/$15 per M), Opus 4.8 ($5/$25 per M), plus legacy Sonnet 4.6 / Opus 4.6 entries
 - Settings page shows: today/week/month/year/all-time totals, 30-day bar chart, per-channel breakdown
 - History pages match costs to entries via timestamp proximity (within 120s)
 

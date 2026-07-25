@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { cookies } from 'next/headers'
-import { anthropic, DEFAULT_MODEL } from '@/lib/anthropic'
+import { anthropic, resolveModel } from '@/lib/anthropic'
 import { supabase } from '@/lib/supabase'
 import { calculateCost } from '@/lib/cost'
 import { logUsage } from '@/lib/usage'
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
           .select('model')
           .eq('id', profileId)
           .single()
-        const model = settings?.model ?? DEFAULT_MODEL
+        const model = resolveModel(settings?.model)
 
         const truncated = briefingContent.slice(0, 8000)
         const ellipsis = briefingContent.length > 8000 ? '\n\n[…content truncated…]' : ''

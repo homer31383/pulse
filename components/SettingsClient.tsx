@@ -23,18 +23,24 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
 const MODELS = [
   {
-    id: 'claude-sonnet-4-6',
-    label: 'Claude Sonnet 4.6',
+    id: 'claude-sonnet-5',
+    label: 'Claude Sonnet 5',
     badge: 'Default',
-    description: 'Fast and cost-efficient. Great for daily briefings.',
+    description: 'Near-Opus quality at Sonnet cost. Fast, great for daily briefings.',
   },
   {
-    id: 'claude-opus-4-6',
-    label: 'Claude Opus 4.6',
+    id: 'claude-opus-4-8',
+    label: 'Claude Opus 4.8',
     badge: 'Most capable',
-    description: 'Deeper analysis and richer insights. Slower and more expensive.',
+    description: 'Deepest analysis and richest insights. Slower and ~2x the cost.',
   },
 ] as const
+
+// Settings saved before the upgrade may still hold the previous model IDs
+const LEGACY_MODEL_MAP: Record<string, string> = {
+  'claude-sonnet-4-6': 'claude-sonnet-5',
+  'claude-opus-4-6': 'claude-opus-4-8',
+}
 
 const DENSITIES: { id: BriefingDensity; label: string; description: string }[] = [
   {
@@ -94,7 +100,7 @@ function ToggleRow({
 
 export function SettingsClient({ initialSettings, channels = [] }: Props) {
   // ── Model & density ──────────────────────────────────────────────────────
-  const [model, setModel] = useState(initialSettings.model)
+  const [model, setModel] = useState(LEGACY_MODEL_MAP[initialSettings.model] ?? initialSettings.model)
   const [density, setDensity] = useState<BriefingDensity>(initialSettings.briefing_density)
 
   // ── History retention ────────────────────────────────────────────────────
