@@ -65,23 +65,24 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
   }, [currentProfileId])
 
   // ── Pre-generated scheduled content banner ───────────────────────────────
-  // Identify this batch by its newest timestamp; dismissal is remembered per batch
+  // Identify this batch by its newest timestamp. Reading marks the batch as
+  // read (banner stays, muted); only explicit dismissal hides it. A new batch
+  // key resets both.
   const readyBatchKey = [
     ...scheduledBriefings.map((b) => b.created_at),
     ...(scheduledDigest ? [scheduledDigest.created_at] : []),
   ].sort().pop() ?? null
   const readyCount = scheduledBriefings.length + (scheduledDigest ? 1 : 0)
   const [showReady, setShowReady] = useState(false)
+  const [readyRead, setReadyRead] = useState(false)
 
   useEffect(() => {
     if (!readyBatchKey) return
-    const seen = localStorage.getItem(`pulse_ready_seen_${currentProfileId}`)
-    if (seen !== readyBatchKey) setShowReady(true)
+    const dismissed = localStorage.getItem(`pulse_ready_seen_${currentProfileId}`)
+    const read = localStorage.getItem(`pulse_ready_read_${currentProfileId}`)
+    setShowReady(dismissed !== readyBatchKey)
+    setReadyRead(read === readyBatchKey)
   }, [readyBatchKey, currentProfileId])
-
-  function markReadySeen() {
-    if (readyBatchKey) localStorage.setItem(`pulse_ready_seen_${currentProfileId}`, readyBatchKey)
-  }
 
   function openScheduled() {
     const map = new Map<string, BriefingState>()
@@ -113,12 +114,12 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
     const ids = [...map.keys()]
     setOpenSheets(ids)
     setActiveSheetId(ids[0])
-    markReadySeen()
-    setShowReady(false)
+    if (readyBatchKey) localStorage.setItem(`pulse_ready_read_${currentProfileId}`, readyBatchKey)
+    setReadyRead(true)
   }
 
   function dismissReady() {
-    markReadySeen()
+    if (readyBatchKey) localStorage.setItem(`pulse_ready_seen_${currentProfileId}`, readyBatchKey)
     setShowReady(false)
   }
 
@@ -770,17 +771,27 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
       <main className="max-w-screen-xl mx-auto px-4 pt-6">
         {/* ── Scheduled briefing ready banner ── */}
         {showReady && readyCount > 0 && (
-          <div className="mb-5 border-y-[0.5px] border-press-hair bg-press-accent/[0.04] px-4 py-3.5 flex items-center gap-3">
+          <div className={`mb-5 border-y-[0.5px] border-press-hair px-4 py-3.5 flex items-center gap-3 ${readyRead ? 'opacity-80' : 'bg-press-accent/[0.04]'}`}>
             <div className="flex-shrink-0 w-9 h-9 rounded-full border-[0.5px] border-press-hair bg-white/40 flex items-center justify-center">
-              <svg className="w-5 h-5 text-press-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
-                  d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
+              {readyRead ? (
+                <svg className="w-5 h-5 text-press-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M5 13l4 4L19 7" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5 text-press-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+                    d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+              )}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-georgia text-[15px] text-press-ink">Your morning briefing is ready</p>
+              <p className={`font-georgia text-[15px] ${readyRead ? 'text-press-body' : 'text-press-ink'}`}>
+                {readyRead ? 'Your morning briefing' : 'Your morning briefing is ready'}
+              </p>
               <p className="font-chrome text-[10px] uppercase tracking-[1px] text-press-muted mt-0.5">
-                {scheduledDigest && scheduledBriefings.length === 0
+                {readyRead
+                  ? 'Read'
+                  : scheduledDigest && scheduledBriefings.length === 0
                   ? 'A digest was generated for you'
                   : `${scheduledBriefings.length} briefing${scheduledBriefings.length !== 1 ? 's' : ''}${scheduledDigest ? ' and a digest' : ''} generated for you`}
                 {readyBatchKey && ` · ${new Date(readyBatchKey).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`}
@@ -788,9 +799,13 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
             </div>
             <button
               onClick={openScheduled}
-              className="flex-shrink-0 bg-press-accent hover:bg-press-accent/90 text-white font-chrome text-[10px] uppercase tracking-[1.5px] font-semibold px-4 py-2 rounded-xl transition-colors"
+              className={`flex-shrink-0 font-chrome text-[10px] uppercase tracking-[1.5px] font-semibold px-4 py-2 rounded-xl transition-colors ${
+                readyRead
+                  ? 'border-[0.5px] border-press-hair text-press-body hover:bg-white/40'
+                  : 'bg-press-accent hover:bg-press-accent/90 text-white'
+              }`}
             >
-              Read now
+              {readyRead ? 'Reopen' : 'Read now'}
             </button>
             <button
               onClick={dismissReady}
