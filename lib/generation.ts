@@ -91,11 +91,21 @@ async function runWebSearchStream(params: {
   // results before they enter the context window. max_uses caps the search
   // loop — each search iteration re-processes all prior results, so cost
   // grows superlinearly with search count.
+  //
+  // cache_control breakpoints let the server-side search loop reuse the
+  // shared prefix (tools + system + user message + accumulated search
+  // results) at the 0.1x cache-read rate on iterations 2+ instead of
+  // re-billing full input price each iteration.
   const messageStream = anthropic.messages.stream({
     model,
     max_tokens: maxTokens,
-    system,
-    messages: [{ role: 'user', content: userMessage }],
+    system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+    messages: [
+      {
+        role: 'user',
+        content: [{ type: 'text', text: userMessage, cache_control: { type: 'ephemeral' } }],
+      },
+    ],
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: maxSearches }] as any,
   })

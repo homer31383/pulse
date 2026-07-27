@@ -18,11 +18,21 @@ let searchQueries = 0
 
 const stream = anthropic.messages.stream({
   model: 'claude-sonnet-5',
-  max_tokens: 600,
-  system: 'You are a research assistant. Be extremely brief.',
-  messages: [{ role: 'user', content: 'In 2-3 sentences: what is the latest stable Node.js LTS version?' }],
-  tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 1 }],
+  max_tokens: 1500,
+  system: [{ type: 'text', text: 'You are a research assistant. Be brief.', cache_control: { type: 'ephemeral' } }],
+  messages: [{
+    role: 'user',
+    content: [{
+      type: 'text',
+      text: 'Search the web and summarize in a short paragraph: the latest stable Node.js LTS version and its headline features.',
+      cache_control: { type: 'ephemeral' },
+    }],
+  }],
+  tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 2 }],
 })
+
+stream.on('error', (e) => console.error('STREAM ERROR:', e?.status, e?.message))
+setInterval(() => console.log(`  …t=${Math.round(process.uptime())}s`), 15_000).unref()
 
 for await (const event of stream) {
   if (event.type === 'content_block_start') {
