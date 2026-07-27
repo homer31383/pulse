@@ -87,30 +87,66 @@ async function runWebSearchStream(params: {
   let currentBlockType = ''
   let currentInputJson = ''
 
-  // web_search_20260209 (GA, no beta header): dynamic filtering trims search
-  // results before they enter the context window. max_uses caps the search
-  // loop — each search iteration re-processes all prior results, so cost
-  // grows superlinearly with search count.
-  //
-  // cache_control breakpoints let the server-side search loop reuse the
-  // shared prefix (tools + system + user message + accumulated search
-  // results) at the 0.1x cache-read rate on iterations 2+ instead of
-  // re-billing full input price each iteration.
-  const messageStream = anthropic.messages.stream({
-    model,
-    max_tokens: maxTokens,
-    system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
-    messages: [
-      {
-        role: 'user',
-        content: [{ type: 'text', text: userMessage, cache_control: { type: 'ephemeral' } }],
-      },
-    ],
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: maxSearches }] as any,
-  })
+  // The model must know about the max_uses cap: without this, Sonnet 5 treats
+  // the "server tool use limit exceeded" error on search N+1 as an outage and
+  // retries in a loop with sandbox sleeps — minutes of silent wall-clock —
+  // then writes an apology instead of the briefing.
+  const searchBudgetNote =
+    `\n\nYou have a hard limit of ${maxSearches} web searches for this task — plan your queries to fit it. ` +
+    `If a search returns an error or the limit is reached, do NOT retry, wait, or mention the limit: ` +
+    `immediately write the briefing from the results you already have.`
 
-  for await (const event of messageStream) {
+  // Hard bounds so a stalled or grinding request fails cleanly instead of
+  // hanging until a platform timeout: an overall deadline, plus an idle
+  // watchdog that aborts when the stream goes silent (e.g. the model
+  // sleeping in the code-execution sandbox between retries).
+  const OVERALL_TIMEOUT_MS = 300_000
+  const IDLE_TIMEOUT_MS = 120_000
+  const controller = new AbortController()
+  let timedOutReason: string | null = null
+  const deadline = setTimeout(() => {
+    timedOutReason = `generation exceeded ${OVERALL_TIMEOUT_MS / 1000}s`
+    controller.abort()
+  }, OVERALL_TIMEOUT_MS)
+  let idleTimer: ReturnType<typeof setTimeout> | undefined
+  const resetIdle = () => {
+    clearTimeout(idleTimer)
+    idleTimer = setTimeout(() => {
+      timedOutReason = `stream produced no events for ${IDLE_TIMEOUT_MS / 1000}s`
+      controller.abort()
+    }, IDLE_TIMEOUT_MS)
+  }
+  resetIdle()
+
+  try {
+    // web_search_20260209 (GA, no beta header): dynamic filtering trims search
+    // results before they enter the context window. max_uses caps the search
+    // loop — each search iteration re-processes all prior results, so cost
+    // grows superlinearly with search count.
+    //
+    // cache_control breakpoints let the server-side search loop reuse the
+    // shared prefix (tools + system + user message + accumulated search
+    // results) at the 0.1x cache-read rate on iterations 2+ instead of
+    // re-billing full input price each iteration.
+    const messageStream = anthropic.messages.stream(
+      {
+        model,
+        max_tokens: maxTokens,
+        system: [{ type: 'text', text: system + searchBudgetNote, cache_control: { type: 'ephemeral' } }],
+        messages: [
+          {
+            role: 'user',
+            content: [{ type: 'text', text: userMessage, cache_control: { type: 'ephemeral' } }],
+          },
+        ],
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: maxSearches }] as any,
+      },
+      { signal: controller.signal },
+    )
+
+    for await (const event of messageStream) {
+      resetIdle()
     switch (event.type) {
       case 'content_block_start': {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -166,17 +202,26 @@ async function runWebSearchStream(params: {
     }
   }
 
-  const finalMsg = await messageStream.finalMessage()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const usage = finalMsg.usage as any
-  return {
-    content,
-    sources,
-    inputTokens: usage.input_tokens ?? 0,
-    outputTokens: usage.output_tokens ?? 0,
-    cacheCreationTokens: usage.cache_creation_input_tokens ?? 0,
-    cacheReadTokens: usage.cache_read_input_tokens ?? 0,
-    webSearchCount: usage.server_tool_use?.web_search_requests ?? 0,
+    const finalMsg = await messageStream.finalMessage()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const usage = finalMsg.usage as any
+    return {
+      content,
+      sources,
+      inputTokens: usage.input_tokens ?? 0,
+      outputTokens: usage.output_tokens ?? 0,
+      cacheCreationTokens: usage.cache_creation_input_tokens ?? 0,
+      cacheReadTokens: usage.cache_read_input_tokens ?? 0,
+      webSearchCount: usage.server_tool_use?.web_search_requests ?? 0,
+    }
+  } catch (err) {
+    if (timedOutReason) {
+      throw new Error(`Generation timed out: ${timedOutReason}`)
+    }
+    throw err
+  } finally {
+    clearTimeout(deadline)
+    clearTimeout(idleTimer)
   }
 }
 

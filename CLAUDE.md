@@ -145,6 +145,8 @@ Instead of per-channel briefings, generates a single unified digest across all s
 
 - **Default model**: `claude-sonnet-5` (configurable per profile in settings; premium option `claude-opus-4-8`). Legacy IDs (`claude-sonnet-4-6`, `claude-opus-4-6`) in old settings rows are mapped to their successors by `resolveModel()` in `lib/anthropic.ts`
 - **Web search (briefings/digests)**: `web_search_20260209` tool (GA, no beta header) with dynamic filtering; `max_uses` caps the search loop at 6 per briefing / 10 per digest — each search iteration re-processes all prior results, so cost grows superlinearly with search count. Discuss/other routes still use the older `web_search_20250305` + beta header
+- **Search budget prompt note is load-bearing**: the system prompt tells the model its `max_uses` limit. Without it, Sonnet 5 treats the "server tool use limit exceeded" error on search N+1 as an outage, retries with sandbox sleeps (minutes of silent wall-clock), and writes an apology instead of the briefing
+- **Generation timeouts** (`runWebSearchStream`): 300s overall deadline + 120s stream-idle watchdog via AbortController — a stalled/grinding request throws "Generation timed out" instead of hanging until a platform limit
 - **Streaming**: All generation uses `anthropic.messages.stream()` — never non-streaming
 - **API calls that use web search**: briefings, digests, discuss
 - **API calls without web search**: config-chat, synthesize, weekly-summary, cross-channel
