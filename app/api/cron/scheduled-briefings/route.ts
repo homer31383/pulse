@@ -26,6 +26,16 @@ function currentHourInET(): number {
   return parseInt(hour, 10) % 24
 }
 
+// Whole calendar days between two instants, in Eastern Time. Calendar-day
+// comparison (rather than elapsed milliseconds) means a run at 05:02 doesn't
+// push the next eligible run past the scheduled hour N days later.
+function etDayDiff(from: Date, to: Date): number {
+  const key = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+  const a = new Date(`${key(from)}T00:00:00Z`).getTime()
+  const b = new Date(`${key(to)}T00:00:00Z`).getTime()
+  return Math.round((b - a) / 86_400_000)
+}
+
 export async function GET(req: NextRequest) {
   // Vercel Cron sends Authorization: Bearer <CRON_SECRET>
   const cronSecret = process.env.CRON_SECRET
@@ -78,6 +88,51 @@ export async function GET(req: NextRequest) {
       if (channels.length === 0) {
         results.push({ profileId, status: 'skipped', succeeded: [], failed: [], detail: 'No channels to generate' })
         continue
+      }
+
+      // ── Interval gate: has enough time passed since the last scheduled run? ──
+      // Anchored to the most recent scheduled briefing/digest for this profile.
+      // daysSince === 0 means today IS a run day (possibly a partial run from an
+      // earlier hourly invocation) — fall through so the dedupe pass below
+      // completes whatever is missing. The 20h dedupe window still prevents
+      // double-firing within the same day.
+      const intervalDays: number = settings.schedule_interval_days ?? 1
+      if (intervalDays > 1) {
+        const [lastBriefing, lastDigest] = await Promise.all([
+          supabase
+            .from('briefings')
+            .select('created_at')
+            .in('channel_id', channels.map((c) => c.id))
+            .eq('scheduled', true)
+            .order('created_at', { ascending: false })
+            .limit(1),
+          supabase
+            .from('digests')
+            .select('created_at')
+            .eq('profile_id', profileId)
+            .eq('scheduled', true)
+            .order('created_at', { ascending: false })
+            .limit(1),
+        ])
+        const lastRunIso = [
+          lastBriefing.data?.[0]?.created_at,
+          lastDigest.data?.[0]?.created_at,
+        ].filter(Boolean).sort().pop() as string | undefined
+
+        if (lastRunIso) {
+          const daysSince = etDayDiff(new Date(lastRunIso), new Date())
+          if (daysSince > 0 && daysSince < intervalDays) {
+            results.push({
+              profileId,
+              status: 'skipped',
+              succeeded: [],
+              failed: [],
+              detail: `Interval not due: ${daysSince} of ${intervalDays} days since last scheduled run`,
+            })
+            continue
+          }
+        }
+        // No scheduled run on record → due now (first run anchors the cycle).
       }
 
       // ── What already exists in this window? ────────────────────────────

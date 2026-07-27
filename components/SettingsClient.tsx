@@ -14,6 +14,15 @@ const SCHEDULE_OUTPUTS: { id: ScheduleOutput; label: string; description: string
   { id: 'both', label: 'Both', description: 'Briefings and a digest' },
 ]
 
+const SCHEDULE_INTERVALS: { days: number; label: string }[] = [
+  { days: 1, label: 'day' },
+  { days: 2, label: '2 days' },
+  { days: 3, label: '3 days' },
+  { days: 4, label: '4 days' },
+  { days: 7, label: 'week' },
+  { days: 14, label: '2 weeks' },
+]
+
 interface Props {
   initialSettings: AppSettings
   channels?: Channel[]
@@ -126,6 +135,7 @@ export function SettingsClient({ initialSettings, channels = [] }: Props) {
   // ── Scheduled briefings ──────────────────────────────────────────────────
   const [scheduleEnabled, setScheduleEnabled] = useState(initialSettings.schedule_enabled ?? false)
   const [scheduleTime, setScheduleTime] = useState(initialSettings.schedule_time ?? '06:00')
+  const [scheduleIntervalDays, setScheduleIntervalDays] = useState(initialSettings.schedule_interval_days ?? 1)
   const [scheduleOutput, setScheduleOutput] = useState<ScheduleOutput>(initialSettings.schedule_output ?? 'briefings')
   const [scheduleChannelIds, setScheduleChannelIds] = useState<string[]>(initialSettings.schedule_channel_ids ?? [])
 
@@ -641,9 +651,23 @@ export function SettingsClient({ initialSettings, channels = [] }: Props) {
           />
           {scheduleEnabled && (
             <div className="pb-4 space-y-4 border-t border-cream-300 pt-4">
-              {/* Time */}
-              <div className="flex items-center gap-3">
-                <label className="text-xs text-ink-100">Generate at</label>
+              {/* Interval + time */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className="text-xs text-ink-100">Generate every</label>
+                <select
+                  value={scheduleIntervalDays}
+                  onChange={(e) => {
+                    const days = parseInt(e.target.value, 10)
+                    setScheduleIntervalDays(days)
+                    save({ schedule_interval_days: days })
+                  }}
+                  className="bg-cream-100 border border-cream-300 rounded-lg px-2 py-1.5 text-sm text-ink-200 focus:outline-none focus:border-brand-500/60"
+                >
+                  {SCHEDULE_INTERVALS.map((i) => (
+                    <option key={i.days} value={i.days}>{i.label}</option>
+                  ))}
+                </select>
+                <label className="text-xs text-ink-100">at</label>
                 <input
                   type="time"
                   step={3600}
@@ -654,6 +678,11 @@ export function SettingsClient({ initialSettings, channels = [] }: Props) {
                 />
                 <span className="text-xs text-ink-50">Eastern Time — runs on the hour</span>
               </div>
+              <p className="text-xs text-ink-50 -mt-2">
+                {scheduleIntervalDays === 1
+                  ? 'Runs every day at the chosen hour.'
+                  : `Runs once every ${scheduleIntervalDays} days at the chosen hour, counted from the last scheduled run.`}
+              </p>
 
               {/* Output type */}
               <div className="space-y-1.5">

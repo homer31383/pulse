@@ -8,7 +8,7 @@ Pulse is a personal AI briefing platform. Users create **channels** — topic-ba
 
 - **Framework**: Next.js 16.1.6 (App Router, React 18)
 - **Database**: Supabase (PostgreSQL via service-role key, server-side only)
-- **AI**: Anthropic Claude API (`@anthropic-ai/sdk` 0.39.0) with web search beta
+- **AI**: Anthropic Claude API (`@anthropic-ai/sdk` 0.115.0) with web search
 - **Styling**: Tailwind CSS 3.4. Reading/home/archive views use the broadsheet "press" design (lavender paper `#F0ECF4`, indigo accent `#6B5CA5`, Georgia serif); utility pages (settings, channel config, notes) keep the older warm/parchment palette
 - **Fonts**: Lora (serif body), Playfair Display (headings), Inter (UI/sans)
 - **DnD**: `@dnd-kit` for drag-to-reorder channels and groups
@@ -28,7 +28,7 @@ npm install
 npm run dev
 ```
 
-Run all migrations in `supabase/migrations/` in order (001 through 014) in the Supabase SQL editor. Optionally run `supabase/seed.sql` for sample channels.
+Run all migrations in `supabase/migrations/` in order (001 through 015) in the Supabase SQL editor. Optionally run `supabase/seed.sql` for sample channels.
 
 ## File Structure
 
@@ -143,7 +143,7 @@ Instead of per-channel briefings, generates a single unified digest across all s
 ## Claude API Integration
 
 - **Default model**: `claude-sonnet-5` (configurable per profile in settings; premium option `claude-opus-4-8`). Legacy IDs (`claude-sonnet-4-6`, `claude-opus-4-6`) in old settings rows are mapped to their successors by `resolveModel()` in `lib/anthropic.ts`
-- **Web search**: Uses `web_search_20250305` tool with `anthropic-beta: web-search-2025-03-05` header
+- **Web search (briefings/digests)**: `web_search_20260209` tool (GA, no beta header) with dynamic filtering; `max_uses` caps the search loop at 6 per briefing / 10 per digest — each search iteration re-processes all prior results, so cost grows superlinearly with search count. Discuss/other routes still use the older `web_search_20250305` + beta header
 - **Streaming**: All generation uses `anthropic.messages.stream()` — never non-streaming
 - **API calls that use web search**: briefings, digests, discuss
 - **API calls without web search**: config-chat, synthesize, weekly-summary, cross-channel
@@ -172,7 +172,8 @@ Channels are scoped to profiles via `profile_id`.
 
 ## Cost Tracking
 
-- `usage_logs` table records every API call with `call_type`, model, token counts, and cost
+- `usage_logs` table records every API call with `call_type`, model, token counts, and cost. Migration 015 adds `cache_creation_tokens`, `cache_read_tokens`, `web_search_count` — the web-search server loop bills most of its tokens as cache writes/reads (invisible pre-015, so older `cost_usd` values vastly underreport web-search calls). `logUsage` falls back to the pre-015 columns if the migration isn't applied yet
+- `calculateCost` prices cache writes at 1.25x input, cache reads at 0.1x input, and web searches at $10/1K
 - Pricing in `lib/cost.ts`: Sonnet 5 ($3/$15 per M), Opus 4.8 ($5/$25 per M), plus legacy Sonnet 4.6 / Opus 4.6 entries
 - Settings page shows: today/week/month/year/all-time totals, 30-day bar chart, per-channel breakdown
 - History pages match costs to entries via timestamp proximity (within 120s)
@@ -190,7 +191,8 @@ Channels are scoped to profiles via `profile_id`.
 ## Scheduled Briefings (Vercel Cron)
 
 Pre-generates briefings server-side so they're ready when the app opens:
-- **Settings** (migration 013, per profile): `schedule_enabled`, `schedule_time` ('HH:MM' Eastern Time), `schedule_channel_ids` (empty = all channels), `schedule_output` ('briefings' | 'digest' | 'both'). UI in the settings page ("Scheduled Briefings" section).
+- **Settings** (migrations 013 + 016, per profile): `schedule_enabled`, `schedule_time` ('HH:MM' Eastern Time), `schedule_interval_days` (1 = daily, 2/3/4, 7 = weekly, 14 = bi-weekly), `schedule_channel_ids` (empty = all channels), `schedule_output` ('briefings' | 'digest' | 'both'). UI in the settings page ("Scheduled Briefings" section): "Generate every [interval] at [time]".
+- **Interval gate**: the cron anchors the interval to the most recent scheduled briefing/digest for the profile, comparing ET *calendar days* (not elapsed ms, so a 05:02 run stays eligible at 05:00 N days later). `daysSince === 0` falls through so catch-up runs can complete a partial day; `0 < daysSince < interval` skips; no prior scheduled run = due now.
 - **Cron**: `vercel.json` fires `/api/cron/scheduled-briefings` hourly (`0 * * * *`). The route requires `Authorization: Bearer $CRON_SECRET` (set `CRON_SECRET` in Vercel env vars — Vercel sends it automatically). A profile is eligible from its `schedule_time` **hour** (America/New_York, minutes ignored) through the next `CATCH_UP_HOURS` (3) hourly runs. All remaining items (channels + digest) generate **in parallel via `Promise.allSettled`** — per-item error isolation, per-item console logging. The `scheduled` flag is the progress tracker: each run queries which channels/digest already exist in the 20h dedupe window and only generates what's missing, so a timed-out or partially-failed run is completed by the next hourly invocation instead of being skipped. `maxDuration = 300`. Note: Vercel Hobby plan crons may be limited to daily — if so, change the schedule to e.g. `0 10 * * *` (6 AM EDT), though that loses catch-up retries.
 - **Marking**: `briefings.scheduled` / `digests.scheduled` boolean columns (migration 013). Live generation omits the column (safe pre-migration).
 - **Surfacing**: `app/page.tsx` fetches scheduled content from the last 18h (newest per channel + latest digest) and passes it to HomeClient, which shows a "Your morning briefing is ready" banner. "Read now" opens the BriefingSheet instantly with the stored content (no streaming). Reading marks the batch as read in localStorage (`pulse_ready_read_<profileId>`) — the banner stays visible in a muted "Read · Reopen" state so it can be revisited all day. Only the explicit dismiss button hides it (`pulse_ready_seen_<profileId>`); a new batch key resets both.
@@ -249,7 +251,7 @@ Per-channel toggle. When enabled:
 5. **Rate limits**: Staggered 15s generation + automatic 65s retry on 429 — adjust if hitting limits
 6. **Profile cookie**: Falls back to Chris's UUID (`00000000-...0001`) if not set
 7. **Settings migration**: Settings `id` was `'default'`, now uses profile UUID — migration 011 handles conversion
-8. **Web search beta**: Uses `anthropic-beta: web-search-2025-03-05` header — may change when GA
+8. **Web search versions**: Briefings/digests use GA `web_search_20260209` (no header); discuss and other routes still use `web_search_20250305` + `anthropic-beta: web-search-2025-03-05` header
 9. **Supabase server-only**: Never import `lib/supabase.ts` in client components — will leak service role key
 
 ## Unimplemented / Stub Features

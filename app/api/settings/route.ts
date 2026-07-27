@@ -31,6 +31,7 @@ export const SETTINGS_DEFAULTS: AppSettings = {
   tts_speed: 1,
   schedule_enabled: false,
   schedule_time: '06:00',
+  schedule_interval_days: 1,
   schedule_channel_ids: [],
   schedule_output: 'briefings',
   ticker_items: [],
@@ -47,7 +48,7 @@ const ALLOWED_FIELDS = [
   'discuss_enabled',
   'briefing_retention_days',
   'tts_enabled', 'tts_voice', 'tts_speed',
-  'schedule_enabled', 'schedule_time', 'schedule_channel_ids', 'schedule_output',
+  'schedule_enabled', 'schedule_time', 'schedule_interval_days', 'schedule_channel_ids', 'schedule_output',
   'ticker_items',
 ] as const
 

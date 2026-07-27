@@ -140,6 +140,7 @@ export interface AppSettings {
   // Scheduled briefings (Vercel Cron)
   schedule_enabled: boolean
   schedule_time: string           // 'HH:MM' Eastern Time; generation runs on the hour
+  schedule_interval_days: number  // 1 = daily, 7 = weekly, 14 = bi-weekly, …
   schedule_channel_ids: string[]  // empty = all channels
   schedule_output: ScheduleOutput
   ticker_items: TickerItem[]
