@@ -23,12 +23,12 @@ export default async function SettingsPage() {
       .order('position', { ascending: true }),
     supabase
       .from('usage_logs')
-      .select('call_type, cost_usd, cache_creation_tokens, cache_read_tokens, web_search_count')
+      .select('call_type, channel_id, cost_usd, cache_creation_tokens, cache_read_tokens, created_at')
       .in('call_type', ['briefing', 'digest'])
       .gte('created_at', since),
     supabase
       .from('digests')
-      .select('channel_ids')
+      .select('channel_ids, created_at')
       .eq('profile_id', profileId)
       .gte('created_at', since),
   ])
@@ -37,35 +37,80 @@ export default async function SettingsPage() {
   const channels = (channelData ?? []) as Channel[]
 
   // ── Cost basis for the schedule estimator ─────────────────────────────────
-  // Only fully-instrumented rows (cache/search columns populated) — rows
-  // logged before migration 015 vastly underreported web-search costs.
+  // Basis rows = post-caching runs only (cache activity > 0). This excludes
+  // both pre-migration-015 rows (which underreported web-search costs) and
+  // pre-caching rows (a different cost regime, ~3-5x today's).
   type UsageRow = {
     call_type: string
+    channel_id: string | null
     cost_usd: number
     cache_creation_tokens: number | null
     cache_read_tokens: number | null
-    web_search_count: number | null
+    created_at: string
   }
-  const instrumented = ((usageResult.data ?? []) as UsageRow[]).filter(
-    (r) => (r.web_search_count ?? 0) > 0 || (r.cache_creation_tokens ?? 0) > 0 || (r.cache_read_tokens ?? 0) > 0
+  const basisRows = ((usageResult.data ?? []) as UsageRow[]).filter(
+    (r) => (r.cache_creation_tokens ?? 0) + (r.cache_read_tokens ?? 0) > 0
   )
-  const avg = (rows: UsageRow[]) => rows.reduce((s, r) => s + Number(r.cost_usd), 0) / rows.length
-  const briefingRows = instrumented.filter((r) => r.call_type === 'briefing')
-  const digestRows = instrumented.filter((r) => r.call_type === 'digest')
-  // Fallbacks reflect recent real runs with caching + search caps in place
-  const avgBriefingCost = briefingRows.length >= 3 ? avg(briefingRows) : 0.5
-  const avgDigestCost = digestRows.length >= 2 ? avg(digestRows) : 0.8
-  const digestSizes = (digestSizesResult.data ?? [])
-    .map((d) => (d.channel_ids ?? []).length)
-    .filter((n) => n > 0)
-  const avgChannelsPerDigest = digestSizes.length > 0
-    ? digestSizes.reduce((a, b) => a + b, 0) / digestSizes.length
-    : 4
+  const briefingRows = basisRows.filter((r) => r.call_type === 'briefing')
+  const digestUsageRows = basisRows.filter((r) => r.call_type === 'digest')
+
+  // Per-digest share: match each digest usage row to its digests-table row by
+  // timestamp proximity (the codebase's established pattern) and divide the
+  // cost by THAT digest's own channel count — no global channels-per-digest
+  // divisor, which broke when recent digests were single-channel tests.
+  const unmatchedDigests = [...(digestSizesResult.data ?? [])]
+  const digestShares: { share: number; channelIds: string[] }[] = []
+  for (const u of digestUsageRows) {
+    const t = new Date(u.created_at).getTime()
+    const idx = unmatchedDigests.findIndex(
+      (d) => Math.abs(new Date(d.created_at).getTime() - t) <= 120_000
+    )
+    if (idx === -1) continue
+    const digest = unmatchedDigests.splice(idx, 1)[0]
+    const ids = (digest.channel_ids ?? []) as string[]
+    digestShares.push({ share: Number(u.cost_usd) / Math.max(1, ids.length), channelIds: ids })
+  }
+
+  const mean = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length
+  const median = (a: number[]) => {
+    const s = [...a].sort((x, y) => x - y)
+    const m = Math.floor(s.length / 2)
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
+  }
+
+  // Globals (fallback for channels with no history): median for outlier
+  // robustness. Fallback constants reflect recent capped+cached runs.
+  const briefingCosts = briefingRows.map((r) => Number(r.cost_usd))
+  const shareValues = digestShares.map((s) => s.share)
+  const globalBriefing = briefingCosts.length >= 3 ? median(briefingCosts) : 0.5
+  const globalDigestShare = shareValues.length >= 2 ? median(shareValues) : 0.2
+
+  // Per-channel history: a channel's own average wins over the global blend.
+  const perChannel: Record<string, { briefing?: number; digestShare?: number }> = {}
+  const briefingsByChannel = new Map<string, number[]>()
+  for (const r of briefingRows) {
+    if (!r.channel_id) continue
+    briefingsByChannel.set(r.channel_id, [...(briefingsByChannel.get(r.channel_id) ?? []), Number(r.cost_usd)])
+  }
+  for (const [id, costs] of briefingsByChannel) {
+    perChannel[id] = { ...perChannel[id], briefing: mean(costs) }
+  }
+  const sharesByChannel = new Map<string, number[]>()
+  for (const s of digestShares) {
+    for (const cid of s.channelIds) {
+      sharesByChannel.set(cid, [...(sharesByChannel.get(cid) ?? []), s.share])
+    }
+  }
+  for (const [id, shares] of sharesByChannel) {
+    perChannel[id] = { ...perChannel[id], digestShare: mean(shares) }
+  }
+
   const costBasis = {
-    briefing: avgBriefingCost,
-    digestPerChannel: avgDigestCost / Math.max(1, avgChannelsPerDigest),
+    briefing: globalBriefing,
+    digestPerChannel: globalDigestShare,
     briefingSamples: briefingRows.length,
-    digestSamples: digestRows.length,
+    digestSamples: digestShares.length,
+    perChannel,
   }
 
   return (

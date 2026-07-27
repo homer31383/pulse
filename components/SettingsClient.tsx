@@ -40,10 +40,12 @@ const CHANNEL_OUTPUTS: { id: ChannelScheduleOutput; label: string }[] = [
 ]
 
 export interface ScheduleCostBasis {
-  briefing: number         // avg cost of one standalone briefing
-  digestPerChannel: number // avg digest cost / avg channels per digest
+  briefing: number         // global median cost of one standalone briefing (fallback)
+  digestPerChannel: number // global median per-channel digest share (fallback)
   briefingSamples: number
   digestSamples: number
+  // Per-channel history: a channel's own average wins over the global blend
+  perChannel: Record<string, { briefing?: number; digestShare?: number }>
 }
 
 interface Props {
@@ -184,10 +186,18 @@ export function SettingsClient({ initialSettings, channels = [], costBasis }: Pr
       const interval = sched.interval ?? scheduleIntervalDays
       const out = sched.output ?? profileOut
       const perWeek = 7 / interval
+      const history = costBasis.perChannel[c.id]
       let weekly = 0
-      if (out === 'briefing' || out === 'both') weekly += costBasis.briefing * perWeek
-      if (out === 'digest' || out === 'both') weekly += costBasis.digestPerChannel * perWeek
-      return { id: c.id, name: c.name, weekly, interval, out }
+      let fromHistory = true
+      if (out === 'briefing' || out === 'both') {
+        if (history?.briefing == null) fromHistory = false
+        weekly += (history?.briefing ?? costBasis.briefing) * perWeek
+      }
+      if (out === 'digest' || out === 'both') {
+        if (history?.digestShare == null) fromHistory = false
+        weekly += (history?.digestShare ?? costBasis.digestPerChannel) * perWeek
+      }
+      return { id: c.id, name: c.name, weekly, interval, out, fromHistory }
     })
     const total = rows.reduce((s, r) => s + r.weekly, 0)
     return { rows: [...rows].sort((a, b) => b.weekly - a.weekly), total }
@@ -869,6 +879,7 @@ export function SettingsClient({ initialSettings, channels = [], costBasis }: Pr
                             {r.name}
                             <span className="text-ink-50">
                               {' '}· {r.out}{r.interval === 1 ? ', daily' : r.interval === 7 ? ', weekly' : r.interval === 14 ? ', bi-weekly' : `, every ${r.interval} days`}
+                              {!r.fromHistory && ' · no history yet'}
                             </span>
                           </span>
                           <span className="flex-shrink-0 ml-2 tabular-nums">{formatCost(r.weekly)}/wk</span>
@@ -877,8 +888,8 @@ export function SettingsClient({ initialSettings, channels = [], costBasis }: Pr
                     </div>
                   )}
                   <p className="text-xs text-ink-50 mt-2">
-                    {costBasis && costBasis.briefingSamples >= 3
-                      ? `Based on your last ${costBasis.briefingSamples} briefing${costBasis.briefingSamples !== 1 ? 's' : ''}${costBasis.digestSamples > 0 ? ` and ${costBasis.digestSamples} digest${costBasis.digestSamples !== 1 ? 's' : ''}` : ''} (14 days).`
+                    {costBasis && (costBasis.briefingSamples > 0 || costBasis.digestSamples > 0)
+                      ? `Channels use their own recent run history where available (${costBasis.briefingSamples} briefing${costBasis.briefingSamples !== 1 ? 's' : ''}, ${costBasis.digestSamples} digest${costBasis.digestSamples !== 1 ? 's' : ''} in the last 14 days); the rest use your overall average.`
                       : 'Based on default per-briefing estimates — will calibrate as scheduled runs accumulate.'}
                     {' '}Actual costs vary with source volume and search activity per generation.
                   </p>
