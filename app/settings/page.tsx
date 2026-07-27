@@ -13,17 +13,60 @@ export default async function SettingsPage() {
   const cookieStore = await cookies()
   const profileId = cookieStore.get('profile_id')?.value ?? DEFAULT_PROFILE_ID
 
-  const [{ data }, { data: channelData }] = await Promise.all([
+  const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
+  const [{ data }, { data: channelData }, usageResult, digestSizesResult] = await Promise.all([
     supabase.from('settings').select('*').eq('id', profileId).single(),
     supabase
       .from('channels')
       .select('*')
       .eq('profile_id', profileId)
       .order('position', { ascending: true }),
+    supabase
+      .from('usage_logs')
+      .select('call_type, cost_usd, cache_creation_tokens, cache_read_tokens, web_search_count')
+      .in('call_type', ['briefing', 'digest'])
+      .gte('created_at', since),
+    supabase
+      .from('digests')
+      .select('channel_ids')
+      .eq('profile_id', profileId)
+      .gte('created_at', since),
   ])
 
   const settings: AppSettings = { ...SETTINGS_DEFAULTS, ...((data as AppSettings | null) ?? {}) }
   const channels = (channelData ?? []) as Channel[]
+
+  // ── Cost basis for the schedule estimator ─────────────────────────────────
+  // Only fully-instrumented rows (cache/search columns populated) — rows
+  // logged before migration 015 vastly underreported web-search costs.
+  type UsageRow = {
+    call_type: string
+    cost_usd: number
+    cache_creation_tokens: number | null
+    cache_read_tokens: number | null
+    web_search_count: number | null
+  }
+  const instrumented = ((usageResult.data ?? []) as UsageRow[]).filter(
+    (r) => (r.web_search_count ?? 0) > 0 || (r.cache_creation_tokens ?? 0) > 0 || (r.cache_read_tokens ?? 0) > 0
+  )
+  const avg = (rows: UsageRow[]) => rows.reduce((s, r) => s + Number(r.cost_usd), 0) / rows.length
+  const briefingRows = instrumented.filter((r) => r.call_type === 'briefing')
+  const digestRows = instrumented.filter((r) => r.call_type === 'digest')
+  // Fallbacks reflect recent real runs with caching + search caps in place
+  const avgBriefingCost = briefingRows.length >= 3 ? avg(briefingRows) : 0.5
+  const avgDigestCost = digestRows.length >= 2 ? avg(digestRows) : 0.8
+  const digestSizes = (digestSizesResult.data ?? [])
+    .map((d) => (d.channel_ids ?? []).length)
+    .filter((n) => n > 0)
+  const avgChannelsPerDigest = digestSizes.length > 0
+    ? digestSizes.reduce((a, b) => a + b, 0) / digestSizes.length
+    : 4
+  const costBasis = {
+    briefing: avgBriefingCost,
+    digestPerChannel: avgDigestCost / Math.max(1, avgChannelsPerDigest),
+    briefingSamples: briefingRows.length,
+    digestSamples: digestRows.length,
+  }
 
   return (
     <div className="min-h-screen bg-cream-200">
@@ -42,7 +85,7 @@ export default async function SettingsPage() {
         </div>
       </header>
 
-      <SettingsClient initialSettings={settings} channels={channels} />
+      <SettingsClient initialSettings={settings} channels={channels} costBasis={costBasis} />
     </div>
   )
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { formatCost } from '@/lib/cost'
 import type { AppSettings, BriefingDensity, Channel, ChannelScheduleOutput, ScheduleOutput, TickerItem } from '@/lib/types'
@@ -39,9 +39,17 @@ const CHANNEL_OUTPUTS: { id: ChannelScheduleOutput; label: string }[] = [
   { id: 'both', label: 'Both' },
 ]
 
+export interface ScheduleCostBasis {
+  briefing: number         // avg cost of one standalone briefing
+  digestPerChannel: number // avg digest cost / avg channels per digest
+  briefingSamples: number
+  digestSamples: number
+}
+
 interface Props {
   initialSettings: AppSettings
   channels?: Channel[]
+  costBasis?: ScheduleCostBasis
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
@@ -123,7 +131,7 @@ function ToggleRow({
   )
 }
 
-export function SettingsClient({ initialSettings, channels = [] }: Props) {
+export function SettingsClient({ initialSettings, channels = [], costBasis }: Props) {
   // ── Model & density ──────────────────────────────────────────────────────
   const [model, setModel] = useState(LEGACY_MODEL_MAP[initialSettings.model] ?? initialSettings.model)
   const [density, setDensity] = useState<BriefingDensity>(initialSettings.briefing_density)
@@ -160,6 +168,30 @@ export function SettingsClient({ initialSettings, channels = [] }: Props) {
       channels.map((c) => [c.id, { interval: c.schedule_interval_days ?? null, output: c.schedule_output ?? null }])
     )
   )
+
+  // ── Live schedule cost estimate ──────────────────────────────────────────
+  // Rough and directional: recent avg cost per briefing / per digest-channel
+  // x weekly generation frequency from each channel's resolved interval.
+  const [showCostBreakdown, setShowCostBreakdown] = useState(false)
+  const costEstimate = useMemo(() => {
+    if (!costBasis || channels.length === 0) return null
+    const included = scheduleChannelIds.length === 0
+      ? channels
+      : channels.filter((c) => scheduleChannelIds.includes(c.id))
+    const profileOut: ChannelScheduleOutput = scheduleOutput === 'briefings' ? 'briefing' : scheduleOutput
+    const rows = included.map((c) => {
+      const sched = channelSchedules[c.id] ?? { interval: null, output: null }
+      const interval = sched.interval ?? scheduleIntervalDays
+      const out = sched.output ?? profileOut
+      const perWeek = 7 / interval
+      let weekly = 0
+      if (out === 'briefing' || out === 'both') weekly += costBasis.briefing * perWeek
+      if (out === 'digest' || out === 'both') weekly += costBasis.digestPerChannel * perWeek
+      return { id: c.id, name: c.name, weekly, interval, out }
+    })
+    const total = rows.reduce((s, r) => s + r.weekly, 0)
+    return { rows: [...rows].sort((a, b) => b.weekly - a.weekly), total }
+  }, [costBasis, channels, scheduleChannelIds, channelSchedules, scheduleIntervalDays, scheduleOutput])
 
   function saveChannelSchedule(
     channelId: string,
@@ -813,6 +845,45 @@ export function SettingsClient({ initialSettings, channels = [] }: Props) {
                   {' '}Each channel can override the interval and output type; &ldquo;Inherit&rdquo; uses the profile settings above. The digest covers only the digest-scheduled channels due that day.
                 </p>
               </div>
+
+              {/* Cost estimate */}
+              {costEstimate && (
+                <div className="border-t border-cream-300 pt-3.5">
+                  <div className="flex items-baseline justify-between gap-3 flex-wrap">
+                    <p className="text-sm text-ink-300 font-medium">
+                      Estimated weekly cost: <span className="text-brand-700">{formatCost(costEstimate.total)}</span>
+                      <span className="text-xs text-ink-50 font-normal"> · ≈{formatCost(costEstimate.total * 4.35)}/month</span>
+                    </p>
+                    <button
+                      onClick={() => setShowCostBreakdown((v) => !v)}
+                      className="text-xs text-brand-700 hover:underline"
+                    >
+                      {showCostBreakdown ? 'Hide breakdown' : 'Per-channel breakdown'}
+                    </button>
+                  </div>
+                  {showCostBreakdown && (
+                    <div className="mt-2 space-y-0.5">
+                      {costEstimate.rows.map((r) => (
+                        <div key={r.id} className="flex items-center justify-between text-xs text-ink-100">
+                          <span className="truncate min-w-0">
+                            {r.name}
+                            <span className="text-ink-50">
+                              {' '}· {r.out}{r.interval === 1 ? ', daily' : r.interval === 7 ? ', weekly' : r.interval === 14 ? ', bi-weekly' : `, every ${r.interval} days`}
+                            </span>
+                          </span>
+                          <span className="flex-shrink-0 ml-2 tabular-nums">{formatCost(r.weekly)}/wk</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-xs text-ink-50 mt-2">
+                    {costBasis && costBasis.briefingSamples >= 3
+                      ? `Based on your last ${costBasis.briefingSamples} briefing${costBasis.briefingSamples !== 1 ? 's' : ''}${costBasis.digestSamples > 0 ? ` and ${costBasis.digestSamples} digest${costBasis.digestSamples !== 1 ? 's' : ''}` : ''} (14 days).`
+                      : 'Based on default per-briefing estimates — will calibrate as scheduled runs accumulate.'}
+                    {' '}Actual costs vary with source volume and search activity per generation.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
