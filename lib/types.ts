@@ -12,6 +12,9 @@ export interface ChannelGroup {
   updated_at: string
 }
 
+// Per-channel scheduled output. NULL inherits the profile-level setting.
+export type ChannelScheduleOutput = 'briefing' | 'digest' | 'both'
+
 export interface Channel {
   id: string
   name: string
@@ -22,6 +25,8 @@ export interface Channel {
   position: number
   group_id: string | null
   serendipity_mode: boolean
+  schedule_interval_days?: number | null   // NULL = inherit profile setting (migration 017)
+  schedule_output?: ChannelScheduleOutput | null // NULL = inherit profile setting
   created_at: string
   updated_at: string
 }
@@ -33,6 +38,7 @@ export interface Briefing {
   sources: Source[]
   model: string
   scheduled?: boolean
+  read_at?: string | null   // NULL = unread (migration 017)
   created_at: string
 }
 
@@ -50,6 +56,7 @@ export interface Digest {
   channel_names: string[]
   model: string
   scheduled?: boolean
+  read_at?: string | null   // NULL = unread (migration 017)
   created_at: string
 }
 

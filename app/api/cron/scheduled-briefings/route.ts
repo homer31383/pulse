@@ -90,49 +90,69 @@ export async function GET(req: NextRequest) {
         continue
       }
 
-      // ── Interval gate: has enough time passed since the last scheduled run? ──
-      // Anchored to the most recent scheduled briefing/digest for this profile.
-      // daysSince === 0 means today IS a run day (possibly a partial run from an
-      // earlier hourly invocation) — fall through so the dedupe pass below
-      // completes whatever is missing. The 20h dedupe window still prevents
-      // double-firing within the same day.
-      const intervalDays: number = settings.schedule_interval_days ?? 1
-      if (intervalDays > 1) {
-        const [lastBriefing, lastDigest] = await Promise.all([
-          supabase
-            .from('briefings')
-            .select('created_at')
-            .in('channel_id', channels.map((c) => c.id))
-            .eq('scheduled', true)
-            .order('created_at', { ascending: false })
-            .limit(1),
-          supabase
-            .from('digests')
-            .select('created_at')
-            .eq('profile_id', profileId)
-            .eq('scheduled', true)
-            .order('created_at', { ascending: false })
-            .limit(1),
-        ])
-        const lastRunIso = [
-          lastBriefing.data?.[0]?.created_at,
-          lastDigest.data?.[0]?.created_at,
-        ].filter(Boolean).sort().pop() as string | undefined
+      // ── Per-channel due computation ────────────────────────────────────
+      // Each channel has its own interval and output type; NULL inherits the
+      // profile-level settings. Intervals are anchored per channel: briefings
+      // to the channel's newest scheduled briefing, digest participation to
+      // the newest scheduled digest that included the channel. daysSince === 0
+      // falls through (today is a run day; the dedupe pass below completes a
+      // partial run); 0 < daysSince < interval means not due.
+      const profileInterval: number = settings.schedule_interval_days ?? 1
+      const profileOutputRaw: string = settings.schedule_output ?? 'briefings'
+      const profileOutput = profileOutputRaw === 'briefings' ? 'briefing' : profileOutputRaw
 
-        if (lastRunIso) {
-          const daysSince = etDayDiff(new Date(lastRunIso), new Date())
-          if (daysSince > 0 && daysSince < intervalDays) {
-            results.push({
-              profileId,
-              status: 'skipped',
-              succeeded: [],
-              failed: [],
-              detail: `Interval not due: ${daysSince} of ${intervalDays} days since last scheduled run`,
-            })
-            continue
-          }
+      const anchorLookback = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString()
+      const [briefingAnchors, digestAnchors] = await Promise.all([
+        supabase
+          .from('briefings')
+          .select('channel_id, created_at')
+          .in('channel_id', channels.map((c) => c.id))
+          .eq('scheduled', true)
+          .gte('created_at', anchorLookback)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('digests')
+          .select('channel_ids, created_at')
+          .eq('profile_id', profileId)
+          .eq('scheduled', true)
+          .gte('created_at', anchorLookback)
+          .order('created_at', { ascending: false }),
+      ])
+
+      const lastBriefingAt = new Map<string, string>()
+      for (const row of briefingAnchors.data ?? []) {
+        if (!lastBriefingAt.has(row.channel_id)) lastBriefingAt.set(row.channel_id, row.created_at)
+      }
+      const lastDigestAt = new Map<string, string>()
+      for (const row of digestAnchors.data ?? []) {
+        for (const cid of (row.channel_ids ?? []) as string[]) {
+          if (!lastDigestAt.has(cid)) lastDigestAt.set(cid, row.created_at)
         }
-        // No scheduled run on record → due now (first run anchors the cycle).
+      }
+
+      function isDue(anchorIso: string | undefined, intervalDays: number): boolean {
+        if (!anchorIso) return true // never scheduled → due now (first run anchors the cycle)
+        const daysSince = etDayDiff(new Date(anchorIso), new Date())
+        return !(daysSince > 0 && daysSince < intervalDays)
+      }
+
+      const effectiveOutput = (c: Channel) => c.schedule_output ?? profileOutput
+      const effectiveInterval = (c: Channel) => c.schedule_interval_days ?? profileInterval
+
+      const briefingChannels = channels.filter((c) => {
+        const out = effectiveOutput(c)
+        return (out === 'briefing' || out === 'both') && isDue(lastBriefingAt.get(c.id), effectiveInterval(c))
+      })
+      // Thin days are fine: the digest covers exactly the digest-output
+      // channels due today. No digest-channels due → no digest generated.
+      const digestChannels = channels.filter((c) => {
+        const out = effectiveOutput(c)
+        return (out === 'digest' || out === 'both') && isDue(lastDigestAt.get(c.id), effectiveInterval(c))
+      })
+
+      if (briefingChannels.length === 0 && digestChannels.length === 0) {
+        results.push({ profileId, status: 'skipped', succeeded: [], failed: [], detail: 'No channels due today' })
+        continue
       }
 
       // ── What already exists in this window? ────────────────────────────
@@ -156,22 +176,19 @@ export async function GET(req: NextRequest) {
       const digestDone = (doneDigests.data?.length ?? 0) > 0
 
       // ── Build the remaining work list ──────────────────────────────────
-      const output: string = settings.schedule_output ?? 'briefings'
       const tasks: Array<{ label: string; run: () => Promise<unknown> }> = []
 
-      if (output === 'briefings' || output === 'both') {
-        for (const channel of channels) {
-          if (doneChannelIds.has(channel.id)) continue
-          tasks.push({
-            label: channel.name,
-            run: () => generateChannelBriefing({ channel, profileId, scheduled: true }),
-          })
-        }
-      }
-      if ((output === 'digest' || output === 'both') && !digestDone) {
+      for (const channel of briefingChannels) {
+        if (doneChannelIds.has(channel.id)) continue
         tasks.push({
-          label: 'digest',
-          run: () => generateProfileDigest({ channels, profileId, scheduled: true }),
+          label: channel.name,
+          run: () => generateChannelBriefing({ channel, profileId, scheduled: true }),
+        })
+      }
+      if (digestChannels.length > 0 && !digestDone) {
+        tasks.push({
+          label: `digest (${digestChannels.map((c) => c.name).join(', ')})`,
+          run: () => generateProfileDigest({ channels: digestChannels, profileId, scheduled: true }),
         })
       }
 

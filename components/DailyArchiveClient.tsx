@@ -16,13 +16,15 @@ interface Props {
 
 interface ArchiveEntry {
   kind: 'briefing' | 'digest'
-  id: string
+  id: string        // prefixed for React keys ('briefing-…' / 'digest-…')
+  sourceId: string  // raw DB id, used for read-marking
   title: string // channel name, or 'Morning Digest'
   subtitle: string | null
   content: string
   sources: Source[]
   model: string
   created_at: string
+  readAt: string | null
 }
 
 interface DayGroup {
@@ -190,12 +192,31 @@ export function DailyArchiveClient({ briefings, digests }: Props) {
   const [expandedDay, setExpandedDay] = useState<string | null>(null)
   const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null)
   const [readingDay, setReadingDay] = useState<string | null>(null)
+  // Optimistic overlay of sourceIds marked read this session (DB write is async)
+  const [localReadIds, setLocalReadIds] = useState<Set<string>>(new Set())
+
+  const entryUnread = (e: ArchiveEntry) => !e.readAt && !localReadIds.has(e.sourceId)
+
+  function markEntriesRead(entries: ArchiveEntry[]) {
+    const unread = entries.filter(entryUnread)
+    if (unread.length === 0) return
+    setLocalReadIds((prev) => new Set([...prev, ...unread.map((e) => e.sourceId)]))
+    fetch('/api/read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        briefingIds: unread.filter((e) => e.kind === 'briefing').map((e) => e.sourceId),
+        digestIds: unread.filter((e) => e.kind === 'digest').map((e) => e.sourceId),
+      }),
+    }).catch(() => {})
+  }
 
   const days = useMemo<DayGroup[]>(() => {
     const entries: ArchiveEntry[] = [
       ...digests.map<ArchiveEntry>((d) => ({
         kind: 'digest',
         id: `digest-${d.id}`,
+        sourceId: d.id,
         title: 'Morning Digest',
         subtitle: d.channel_names.length > 0
           ? `${d.channel_names.length} channel${d.channel_names.length !== 1 ? 's' : ''}`
@@ -204,16 +225,19 @@ export function DailyArchiveClient({ briefings, digests }: Props) {
         sources: d.sources ?? [],
         model: d.model,
         created_at: d.created_at,
+        readAt: d.read_at ?? null,
       })),
       ...briefings.map<ArchiveEntry>((b) => ({
         kind: 'briefing',
         id: `briefing-${b.id}`,
+        sourceId: b.id,
         title: b.channel_name ?? 'Briefing',
         subtitle: null,
         content: b.content,
         sources: b.sources ?? [],
         model: b.model,
         created_at: b.created_at,
+        readAt: b.read_at ?? null,
       })),
     ]
 
@@ -293,6 +317,7 @@ export function DailyArchiveClient({ briefings, digests }: Props) {
       {/* Day rows */}
       {days.map((day) => {
         const isExpanded = expandedDay === day.key
+        const dayUnread = day.entries.filter(entryUnread).length
         return (
           <div key={day.key} className="border-b-[0.5px] border-press-hair">
             <div className="flex items-center gap-3 px-1 py-4">
@@ -308,14 +333,19 @@ export function DailyArchiveClient({ briefings, digests }: Props) {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
                 <span className="min-w-0">
-                  <span className="block font-georgia text-[16px] text-press-ink leading-snug">{day.label}</span>
+                  <span className={`block font-georgia text-[16px] leading-snug ${dayUnread > 0 ? 'text-press-ink' : 'text-press-body'}`}>
+                    {day.label}
+                  </span>
                   <span className="block font-chrome text-[10px] uppercase tracking-[1px] text-press-muted mt-0.5">
                     {countsLabel(day)}
+                    {dayUnread > 0 && (
+                      <span className="text-press-accent font-semibold"> · {dayUnread} unread</span>
+                    )}
                   </span>
                 </span>
               </button>
               <button
-                onClick={() => setReadingDay(day.key)}
+                onClick={() => { setReadingDay(day.key); markEntriesRead(day.entries) }}
                 className="flex-shrink-0 border-[0.5px] border-press-hair text-press-accent hover:bg-press-accent/10 font-chrome text-[10px] uppercase tracking-[1.5px] font-semibold px-3.5 py-2 transition-colors"
               >
                 Read all
@@ -327,11 +357,15 @@ export function DailyArchiveClient({ briefings, digests }: Props) {
               <div className="border-t-[0.5px] border-press-hair pl-4">
                 {day.entries.map((entry) => {
                   const entryOpen = expandedEntryId === entry.id
+                  const unread = entryUnread(entry)
                   const preview = stripMarkdown(entry.content).slice(0, 160)
                   return (
                     <div key={entry.id} className="border-b-[0.5px] border-press-hair last:border-b-0">
                       <button
-                        onClick={() => setExpandedEntryId(entryOpen ? null : entry.id)}
+                        onClick={() => {
+                          setExpandedEntryId(entryOpen ? null : entry.id)
+                          if (!entryOpen) markEntriesRead([entry])
+                        }}
                         className="w-full text-left px-1 py-3 flex items-start gap-3 hover:bg-white/30 transition-colors"
                         aria-expanded={entryOpen}
                       >
@@ -343,6 +377,9 @@ export function DailyArchiveClient({ briefings, digests }: Props) {
                         </svg>
                         <span className="flex-1 min-w-0">
                           <span className="flex items-center gap-2.5 flex-wrap mb-1">
+                            {unread && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-press-accent flex-shrink-0" aria-label="Unread" />
+                            )}
                             <span className="press-label">{entry.title}</span>
                             {entry.subtitle && (
                               <span className="font-chrome text-[10px] text-press-faint">{entry.subtitle}</span>
@@ -357,7 +394,7 @@ export function DailyArchiveClient({ briefings, digests }: Props) {
                             )}
                           </span>
                           {!entryOpen && (
-                            <span className="block font-georgia text-[13px] text-press-body leading-[1.65] line-clamp-2">
+                            <span className={`block font-georgia text-[13px] leading-[1.65] line-clamp-2 ${unread ? 'text-press-ink' : 'text-press-body'}`}>
                               {preview}
                               {entry.content.length > 160 ? '…' : ''}
                             </span>

@@ -289,7 +289,9 @@ export async function generateChannelBriefing(opts: {
           content,
           sources,
           model,
-          ...(scheduled ? { scheduled: true } : {}),
+          // Live generations are watched as they stream — born read.
+          // Scheduled ones stay unread until opened (drives the banner).
+          ...(scheduled ? { scheduled: true } : { read_at: new Date().toISOString() }),
         })
         .select('id')
         .single(),
@@ -389,7 +391,7 @@ export async function generateProfileDigest(opts: {
         channel_names: channels.map((c) => c.name),
         model,
         profile_id: profileId,
-        ...(scheduled ? { scheduled: true } : {}),
+        ...(scheduled ? { scheduled: true } : { read_at: new Date().toISOString() }),
       })
       .select('id')
       .single()

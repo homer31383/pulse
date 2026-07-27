@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { formatCost } from '@/lib/cost'
-import type { AppSettings, BriefingDensity, Channel, ScheduleOutput, TickerItem } from '@/lib/types'
+import type { AppSettings, BriefingDensity, Channel, ChannelScheduleOutput, ScheduleOutput, TickerItem } from '@/lib/types'
 import type { UsageData } from '@/app/api/usage/route'
 
 const TTS_SPEEDS = [0.75, 1, 1.25, 1.5, 2] as const
@@ -21,6 +21,22 @@ const SCHEDULE_INTERVALS: { days: number; label: string }[] = [
   { days: 4, label: '4 days' },
   { days: 7, label: 'week' },
   { days: 14, label: '2 weeks' },
+]
+
+// Per-channel overrides (NULL = inherit the profile-level setting above)
+const CHANNEL_INTERVALS: { days: number; label: string }[] = [
+  { days: 1, label: 'Daily' },
+  { days: 2, label: 'Every 2 days' },
+  { days: 3, label: 'Every 3 days' },
+  { days: 4, label: 'Every 4 days' },
+  { days: 7, label: 'Weekly' },
+  { days: 14, label: 'Bi-weekly' },
+]
+
+const CHANNEL_OUTPUTS: { id: ChannelScheduleOutput; label: string }[] = [
+  { id: 'briefing', label: 'Briefing' },
+  { id: 'digest', label: 'Digest' },
+  { id: 'both', label: 'Both' },
 ]
 
 interface Props {
@@ -138,6 +154,26 @@ export function SettingsClient({ initialSettings, channels = [] }: Props) {
   const [scheduleIntervalDays, setScheduleIntervalDays] = useState(initialSettings.schedule_interval_days ?? 1)
   const [scheduleOutput, setScheduleOutput] = useState<ScheduleOutput>(initialSettings.schedule_output ?? 'briefings')
   const [scheduleChannelIds, setScheduleChannelIds] = useState<string[]>(initialSettings.schedule_channel_ids ?? [])
+  // Per-channel schedule overrides; null = inherit profile setting
+  const [channelSchedules, setChannelSchedules] = useState<Record<string, { interval: number | null; output: ChannelScheduleOutput | null }>>(
+    () => Object.fromEntries(
+      channels.map((c) => [c.id, { interval: c.schedule_interval_days ?? null, output: c.schedule_output ?? null }])
+    )
+  )
+
+  function saveChannelSchedule(
+    channelId: string,
+    patch: { schedule_interval_days?: number | null; schedule_output?: ChannelScheduleOutput | null },
+  ) {
+    setSaveState('saving')
+    fetch(`/api/channels/${channelId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    })
+      .then((res) => setSaveState(res.ok ? 'saved' : 'error'))
+      .catch(() => setSaveState('error'))
+  }
 
   // ── Ticker bar ───────────────────────────────────────────────────────────
   const [tickerItems, setTickerItems] = useState<TickerItem[]>(initialSettings.ticker_items ?? [])
@@ -716,29 +752,65 @@ export function SettingsClient({ initialSettings, channels = [] }: Props) {
                   <p className="text-xs text-ink-50">No channels yet — create one from the home screen.</p>
                 ) : (
                   <div className="space-y-0.5">
-                    {channels.map((c) => (
-                      <label key={c.id} className="flex items-center gap-2.5 py-1 text-sm text-ink-200 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={scheduleChannelIds.includes(c.id)}
-                          onChange={() => {
-                            const next = scheduleChannelIds.includes(c.id)
-                              ? scheduleChannelIds.filter((id) => id !== c.id)
-                              : [...scheduleChannelIds, c.id]
-                            setScheduleChannelIds(next)
-                            save({ schedule_channel_ids: next })
-                          }}
-                          className="accent-[#6355b0] w-4 h-4"
-                        />
-                        {c.name}
-                      </label>
-                    ))}
+                    {channels.map((c) => {
+                      const sched = channelSchedules[c.id] ?? { interval: null, output: null }
+                      return (
+                        <div key={c.id} className="flex items-center gap-2.5 py-1">
+                          <label className="flex items-center gap-2.5 text-sm text-ink-200 cursor-pointer flex-1 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={scheduleChannelIds.includes(c.id)}
+                              onChange={() => {
+                                const next = scheduleChannelIds.includes(c.id)
+                                  ? scheduleChannelIds.filter((id) => id !== c.id)
+                                  : [...scheduleChannelIds, c.id]
+                                setScheduleChannelIds(next)
+                                save({ schedule_channel_ids: next })
+                              }}
+                              className="accent-[#6355b0] w-4 h-4"
+                            />
+                            <span className="truncate">{c.name}</span>
+                          </label>
+                          <select
+                            value={sched.interval ?? ''}
+                            onChange={(e) => {
+                              const interval = e.target.value === '' ? null : parseInt(e.target.value, 10)
+                              setChannelSchedules((prev) => ({ ...prev, [c.id]: { ...sched, interval } }))
+                              saveChannelSchedule(c.id, { schedule_interval_days: interval })
+                            }}
+                            title="How often this channel generates"
+                            className="flex-shrink-0 bg-cream-100 border border-cream-300 rounded-lg px-1.5 py-1 text-xs text-ink-200 focus:outline-none focus:border-brand-500/60"
+                          >
+                            <option value="">Inherit</option>
+                            {CHANNEL_INTERVALS.map((i) => (
+                              <option key={i.days} value={i.days}>{i.label}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={sched.output ?? ''}
+                            onChange={(e) => {
+                              const output = (e.target.value === '' ? null : e.target.value) as ChannelScheduleOutput | null
+                              setChannelSchedules((prev) => ({ ...prev, [c.id]: { ...sched, output } }))
+                              saveChannelSchedule(c.id, { schedule_output: output })
+                            }}
+                            title="What this channel generates on schedule"
+                            className="flex-shrink-0 bg-cream-100 border border-cream-300 rounded-lg px-1.5 py-1 text-xs text-ink-200 focus:outline-none focus:border-brand-500/60"
+                          >
+                            <option value="">Inherit</option>
+                            {CHANNEL_OUTPUTS.map((o) => (
+                              <option key={o.id} value={o.id}>{o.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
                 <p className="text-xs text-ink-50">
                   {scheduleChannelIds.length === 0
                     ? 'None selected — all channels will be included.'
                     : `${scheduleChannelIds.length} of ${channels.length} channels selected.`}
+                  {' '}Each channel can override the interval and output type; &ldquo;Inherit&rdquo; uses the profile settings above. The digest covers only the digest-scheduled channels due that day.
                 </p>
               </div>
             </div>

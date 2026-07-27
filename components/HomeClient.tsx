@@ -65,24 +65,35 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
   }, [currentProfileId])
 
   // ── Pre-generated scheduled content banner ───────────────────────────────
-  // Identify this batch by its newest timestamp. Reading marks the batch as
-  // read (banner stays, muted); only explicit dismissal hides it. A new batch
-  // key resets both.
+  // Read-state driven (migration 017): the banner is prominent while the
+  // batch has unread items, muted once everything is read, and derives
+  // entirely from briefings/digests.read_at — consistent across devices.
+  // localReadIds is an optimistic overlay so the banner flips without a
+  // server round-trip.
   const readyBatchKey = [
     ...scheduledBriefings.map((b) => b.created_at),
     ...(scheduledDigest ? [scheduledDigest.created_at] : []),
   ].sort().pop() ?? null
   const readyCount = scheduledBriefings.length + (scheduledDigest ? 1 : 0)
-  const [showReady, setShowReady] = useState(false)
-  const [readyRead, setReadyRead] = useState(false)
+  const [localReadIds, setLocalReadIds] = useState<Set<string>>(new Set())
 
-  useEffect(() => {
-    if (!readyBatchKey) return
-    const dismissed = localStorage.getItem(`pulse_ready_seen_${currentProfileId}`)
-    const read = localStorage.getItem(`pulse_ready_read_${currentProfileId}`)
-    setShowReady(dismissed !== readyBatchKey)
-    setReadyRead(read === readyBatchKey)
-  }, [readyBatchKey, currentProfileId])
+  const isUnread = (item: { id: string; read_at?: string | null }) =>
+    !item.read_at && !localReadIds.has(item.id)
+  const unreadBriefingCount = scheduledBriefings.filter(isUnread).length
+  const digestUnread = scheduledDigest ? isUnread(scheduledDigest) : false
+  const unreadCount = unreadBriefingCount + (digestUnread ? 1 : 0)
+
+  function markBatchRead() {
+    const briefingIds = scheduledBriefings.filter(isUnread).map((b) => b.id)
+    const digestIds = scheduledDigest && digestUnread ? [scheduledDigest.id] : []
+    if (briefingIds.length === 0 && digestIds.length === 0) return
+    setLocalReadIds((prev) => new Set([...prev, ...briefingIds, ...digestIds]))
+    fetch('/api/read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ briefingIds, digestIds }),
+    }).catch(() => {})
+  }
 
   function openScheduled() {
     const map = new Map<string, BriefingState>()
@@ -114,13 +125,7 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
     const ids = [...map.keys()]
     setOpenSheets(ids)
     setActiveSheetId(ids[0])
-    if (readyBatchKey) localStorage.setItem(`pulse_ready_read_${currentProfileId}`, readyBatchKey)
-    setReadyRead(true)
-  }
-
-  function dismissReady() {
-    if (readyBatchKey) localStorage.setItem(`pulse_ready_seen_${currentProfileId}`, readyBatchKey)
-    setShowReady(false)
+    markBatchRead()
   }
 
   // Keep activeSheetId pointing to a valid open sheet
@@ -769,11 +774,11 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
       <TickerBar items={settings.ticker_items ?? []} />
 
       <main className="max-w-screen-xl mx-auto px-4 pt-6">
-        {/* ── Scheduled briefing ready banner ── */}
-        {showReady && readyCount > 0 && (
-          <div className={`mb-5 border-y-[0.5px] border-press-hair px-4 py-3.5 flex items-center gap-3 ${readyRead ? 'opacity-80' : 'bg-press-accent/[0.04]'}`}>
+        {/* ── Scheduled briefing banner — prominent while unread, muted once read ── */}
+        {readyCount > 0 && (
+          <div className={`mb-5 border-y-[0.5px] border-press-hair px-4 py-3.5 flex items-center gap-3 ${unreadCount > 0 ? 'bg-press-accent/[0.04]' : 'opacity-80'}`}>
             <div className="flex-shrink-0 w-9 h-9 rounded-full border-[0.5px] border-press-hair bg-white/40 flex items-center justify-center">
-              {readyRead ? (
+              {unreadCount === 0 ? (
                 <svg className="w-5 h-5 text-press-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M5 13l4 4L19 7" />
                 </svg>
@@ -785,36 +790,28 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <p className={`font-georgia text-[15px] ${readyRead ? 'text-press-body' : 'text-press-ink'}`}>
-                {readyRead ? 'Your morning briefing' : 'Your morning briefing is ready'}
+              <p className={`font-georgia text-[15px] ${unreadCount > 0 ? 'text-press-ink' : 'text-press-body'}`}>
+                {unreadCount > 0 ? 'Your morning briefing is ready' : 'Your morning briefing'}
               </p>
               <p className="font-chrome text-[10px] uppercase tracking-[1px] text-press-muted mt-0.5">
-                {readyRead
-                  ? 'Read'
-                  : scheduledDigest && scheduledBriefings.length === 0
-                  ? 'A digest was generated for you'
-                  : `${scheduledBriefings.length} briefing${scheduledBriefings.length !== 1 ? 's' : ''}${scheduledDigest ? ' and a digest' : ''} generated for you`}
+                {unreadCount === 0
+                  ? 'All read'
+                  : [
+                      unreadBriefingCount > 0 && `${unreadBriefingCount} unread briefing${unreadBriefingCount !== 1 ? 's' : ''}`,
+                      digestUnread && 'a digest',
+                    ].filter(Boolean).join(' and ')}
                 {readyBatchKey && ` · ${new Date(readyBatchKey).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`}
               </p>
             </div>
             <button
               onClick={openScheduled}
               className={`flex-shrink-0 font-chrome text-[10px] uppercase tracking-[1.5px] font-semibold px-4 py-2 rounded-xl transition-colors ${
-                readyRead
+                unreadCount === 0
                   ? 'border-[0.5px] border-press-hair text-press-body hover:bg-white/40'
                   : 'bg-press-accent hover:bg-press-accent/90 text-white'
               }`}
             >
-              {readyRead ? 'Reopen' : 'Read now'}
-            </button>
-            <button
-              onClick={dismissReady}
-              aria-label="Dismiss"
-              className="flex-shrink-0 p-1.5 rounded-lg text-ink-50 hover:text-ink-300 hover:bg-cream-200 transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              {unreadCount === 0 ? 'Reopen' : 'Read now'}
             </button>
           </div>
         )}

@@ -28,7 +28,7 @@ npm install
 npm run dev
 ```
 
-Run all migrations in `supabase/migrations/` in order (001 through 015) in the Supabase SQL editor. Optionally run `supabase/seed.sql` for sample channels.
+Run all migrations in `supabase/migrations/` in order (001 through 017) in the Supabase SQL editor. Optionally run `supabase/seed.sql` for sample channels.
 
 ## File Structure
 
@@ -72,6 +72,7 @@ app/
     notes/[id]/route.ts                  — DELETE note
     pins/route.ts                        — GET list, POST create pinned insight (profile-scoped)
     pins/[id]/route.ts                   — DELETE pinned insight
+    read/route.ts                        — POST: batch mark briefings/digests read
     usage/route.ts                       — GET: usage stats (totals, daily, by-channel)
     settings/route.ts                    — GET/PATCH settings (profile-scoped)
     profiles/route.ts                    — GET list, POST create profile
@@ -192,10 +193,12 @@ Channels are scoped to profiles via `profile_id`.
 
 Pre-generates briefings server-side so they're ready when the app opens:
 - **Settings** (migrations 013 + 016, per profile): `schedule_enabled`, `schedule_time` ('HH:MM' Eastern Time), `schedule_interval_days` (1 = daily, 2/3/4, 7 = weekly, 14 = bi-weekly), `schedule_channel_ids` (empty = all channels), `schedule_output` ('briefings' | 'digest' | 'both'). UI in the settings page ("Scheduled Briefings" section): "Generate every [interval] at [time]".
-- **Interval gate**: the cron anchors the interval to the most recent scheduled briefing/digest for the profile, comparing ET *calendar days* (not elapsed ms, so a 05:02 run stays eligible at 05:00 N days later). `daysSince === 0` falls through so catch-up runs can complete a partial day; `0 < daysSince < interval` skips; no prior scheduled run = due now.
+- **Per-channel schedule** (migration 017): `channels.schedule_interval_days` and `channels.schedule_output` ('briefing' | 'digest' | 'both'), both nullable — NULL inherits the profile-level settings. Per-row selects in the Settings channel list PATCH `/api/channels/[id]`.
+- **Interval gate (per channel)**: briefing due-ness anchors to the channel's newest scheduled briefing; digest participation anchors to the newest scheduled digest whose `channel_ids` includes the channel. ET *calendar-day* comparison (not elapsed ms, so a 05:02 run stays eligible at 05:00 N days later). `daysSince === 0` falls through so catch-up runs complete a partial day; `0 < daysSince < interval` = not due; no anchor = due now.
+- **Digest composition**: the digest covers exactly the digest-output channels due that day ("thin days are fine"); no digest-channels due → no digest. Still one digest per 20h dedupe window.
 - **Cron**: `vercel.json` fires `/api/cron/scheduled-briefings` hourly (`0 * * * *`). The route requires `Authorization: Bearer $CRON_SECRET` (set `CRON_SECRET` in Vercel env vars — Vercel sends it automatically). A profile is eligible from its `schedule_time` **hour** (America/New_York, minutes ignored) through the next `CATCH_UP_HOURS` (3) hourly runs. All remaining items (channels + digest) generate **in parallel via `Promise.allSettled`** — per-item error isolation, per-item console logging. The `scheduled` flag is the progress tracker: each run queries which channels/digest already exist in the 20h dedupe window and only generates what's missing, so a timed-out or partially-failed run is completed by the next hourly invocation instead of being skipped. `maxDuration = 300`. Note: Vercel Hobby plan crons may be limited to daily — if so, change the schedule to e.g. `0 10 * * *` (6 AM EDT), though that loses catch-up retries.
 - **Marking**: `briefings.scheduled` / `digests.scheduled` boolean columns (migration 013). Live generation omits the column (safe pre-migration).
-- **Surfacing**: `app/page.tsx` fetches scheduled content from the last 18h (newest per channel + latest digest) and passes it to HomeClient, which shows a "Your morning briefing is ready" banner. "Read now" opens the BriefingSheet instantly with the stored content (no streaming). Reading marks the batch as read in localStorage (`pulse_ready_read_<profileId>`) — the banner stays visible in a muted "Read · Reopen" state so it can be revisited all day. Only the explicit dismiss button hides it (`pulse_ready_seen_<profileId>`); a new batch key resets both.
+- **Surfacing**: `app/page.tsx` fetches scheduled content from the last 18h (newest per channel + latest digest) and passes it to HomeClient. The banner is **read-state driven** (no localStorage, no dismiss button): prominent with an unread count ("3 unread briefings and a digest") while `read_at IS NULL` items remain, muted "All read · Reopen" once everything is read. "Read now" opens the BriefingSheet and POSTs `/api/read` for the batch.
 - **Refactor note**: the briefing/digest SSE routes are now thin wrappers around `generateChannelBriefing` / `generateProfileDigest` in `lib/generation.ts` — edit prompts there, not in the routes.
 
 ## Broadsheet Press Design
@@ -206,6 +209,13 @@ The reading experience (BriefingCard/BriefingSheet), home screen, history/archiv
 - **PressArticle** splits briefing markdown by `##` headings: leading `#` → Georgia headline; sections titled like "Key Takeaways"/analysis → "Analyst note" aside (tinted bg, accent left border); other sections get a label+rule header with a bookmark pin (posts to `/api/pins`); long sections flow into two CSS columns on desktop; a fold line appears mid-article when ≥5 sections. No cards anywhere in reading views — hairline rules only.
 - **TickerBar**: figures under the home masthead from `settings.ticker_items` (migration 014, JSONB `{label, value, change}`), edited manually in Settings → Ticker Bar. Hidden when empty.
 - **PressNav**: bottom nav on press pages. "Channels" links to `/channels/new/config`.
+
+## Read/Unread Tracking
+
+- `briefings.read_at` / `digests.read_at` (migration 017), NULL = unread; `is_read` is derived, never stored. Per-item state is effectively per-user because content is profile-owned.
+- **Marked read when**: live generation completes (born read — inserted with `read_at` set in `lib/generation.ts`); the home banner batch is opened; an archive/history entry is expanded; a Daily Edition is opened (whole day marked — "opening the paper reads the paper").
+- `POST /api/read { briefingIds, digestIds }` batch-marks, only touching rows where `read_at IS NULL` (first-read time is kept). Clients keep an optimistic `localReadIds` Set.
+- **Indicators**: press-accent dot + ink-weight preview on unread entries (DailyArchiveClient, BriefingHistoryClient, DigestHistoryClient); day rows show "N unread"; home banner shows unread counts.
 
 ## Pinned Insights
 

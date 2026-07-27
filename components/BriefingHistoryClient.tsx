@@ -36,6 +36,20 @@ function stripMarkdown(text: string): string {
 export function BriefingHistoryClient({ briefings, channelName }: Props) {
   const [search, setSearch] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  // Optimistic overlay of ids marked read this session
+  const [localReadIds, setLocalReadIds] = useState<Set<string>>(new Set())
+
+  const isUnread = (b: Briefing) => !b.read_at && !localReadIds.has(b.id)
+
+  function markRead(briefing: Briefing) {
+    if (!isUnread(briefing)) return
+    setLocalReadIds((prev) => new Set([...prev, briefing.id]))
+    fetch('/api/read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ briefingIds: [briefing.id] }),
+    }).catch(() => {})
+  }
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
@@ -89,6 +103,7 @@ export function BriefingHistoryClient({ briefings, channelName }: Props) {
       {/* Briefing cards */}
       {filtered.map((briefing) => {
         const isExpanded = expandedId === briefing.id
+        const unread = isUnread(briefing)
         const preview = stripMarkdown(briefing.content).slice(0, 220)
 
         return (
@@ -98,7 +113,10 @@ export function BriefingHistoryClient({ briefings, channelName }: Props) {
           >
             {/* Entry header — always visible, click to expand */}
             <button
-              onClick={() => setExpandedId(isExpanded ? null : briefing.id)}
+              onClick={() => {
+                setExpandedId(isExpanded ? null : briefing.id)
+                if (!isExpanded) markRead(briefing)
+              }}
               className="w-full text-left px-1 py-4 flex items-start gap-3 hover:bg-white/30 transition-colors"
             >
               {/* Expand icon */}
@@ -114,6 +132,9 @@ export function BriefingHistoryClient({ briefings, channelName }: Props) {
               <div className="flex-1 min-w-0">
                 {/* Meta row */}
                 <div className="flex items-center gap-2.5 flex-wrap mb-1.5">
+                  {unread && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-press-accent flex-shrink-0" aria-label="Unread" />
+                  )}
                   {briefing.channel_name && (
                     <span className="press-label">
                       {briefing.channel_name}
@@ -134,7 +155,7 @@ export function BriefingHistoryClient({ briefings, channelName }: Props) {
 
                 {/* Preview text — hidden when expanded */}
                 {!isExpanded && (
-                  <p className="font-georgia text-[13px] text-press-body leading-[1.65] line-clamp-3">
+                  <p className={`font-georgia text-[13px] leading-[1.65] line-clamp-3 ${unread ? 'text-press-ink' : 'text-press-body'}`}>
                     {preview}
                     {briefing.content.length > 220 ? '…' : ''}
                   </p>

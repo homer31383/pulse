@@ -38,6 +38,20 @@ function getFirstLine(content: string): string {
 export function DigestHistoryClient({ digests: initialDigests }: Props) {
   const [digests, setDigests] = useState<DigestWithCost[]>(initialDigests)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  // Optimistic overlay of ids marked read this session
+  const [localReadIds, setLocalReadIds] = useState<Set<string>>(new Set())
+
+  const isUnread = (d: DigestWithCost) => !d.read_at && !localReadIds.has(d.id)
+
+  function markRead(d: DigestWithCost) {
+    if (!isUnread(d)) return
+    setLocalReadIds((prev) => new Set([...prev, d.id]))
+    fetch('/api/read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ digestIds: [d.id] }),
+    }).catch(() => {})
+  }
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [exportingId, setExportingId] = useState<string | null>(null)
@@ -212,7 +226,10 @@ export function DigestHistoryClient({ digests: initialDigests }: Props) {
           >
             {/* Row header */}
             <button
-              onClick={() => setExpandedId(isExpanded ? null : d.id)}
+              onClick={() => {
+                setExpandedId(isExpanded ? null : d.id)
+                if (!isExpanded) markRead(d)
+              }}
               className="w-full px-1 py-4 flex items-start gap-3 text-left hover:bg-white/30 transition-colors"
             >
               <svg
@@ -222,7 +239,10 @@ export function DigestHistoryClient({ digests: initialDigests }: Props) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
               </svg>
               <div className="flex-1 min-w-0">
-                <p className="font-chrome text-[10px] uppercase tracking-[1px] text-press-muted mb-1">
+                <p className="font-chrome text-[10px] uppercase tracking-[1px] text-press-muted mb-1 flex items-center gap-2">
+                  {isUnread(d) && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-press-accent flex-shrink-0" aria-label="Unread" />
+                  )}
                   {formatDate(d.created_at)} · {readingTime(d.content)}
                 </p>
                 {/* Channel list */}
