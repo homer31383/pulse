@@ -11,14 +11,32 @@ const PRICING: Record<string, { input: number; output: number }> = {
 
 const DEFAULT_PRICING = { input: 3, output: 15 }
 
+// Cache writes bill at 1.25x input price, cache reads at 0.1x.
+// Web search tool requests bill at $10 per 1,000 searches.
+const CACHE_WRITE_MULTIPLIER = 1.25
+const CACHE_READ_MULTIPLIER = 0.1
+const WEB_SEARCH_COST_PER_CALL = 10 / 1000
+
+export interface UsageExtras {
+  cacheCreationTokens?: number
+  cacheReadTokens?: number
+  webSearchCount?: number
+}
+
 export function calculateCost(
   model: string,
   inputTokens: number,
   outputTokens: number,
+  extras?: UsageExtras,
 ): number {
   const p = PRICING[model] ?? DEFAULT_PRICING
-  return (inputTokens / 1_000_000) * p.input +
-         (outputTokens / 1_000_000) * p.output
+  return (
+    (inputTokens / 1_000_000) * p.input +
+    (outputTokens / 1_000_000) * p.output +
+    ((extras?.cacheCreationTokens ?? 0) / 1_000_000) * p.input * CACHE_WRITE_MULTIPLIER +
+    ((extras?.cacheReadTokens ?? 0) / 1_000_000) * p.input * CACHE_READ_MULTIPLIER +
+    (extras?.webSearchCount ?? 0) * WEB_SEARCH_COST_PER_CALL
+  )
 }
 
 export function formatCost(usd: number): string {

@@ -31,6 +31,9 @@ export interface GenerationUsage {
   inputTokens: number
   outputTokens: number
   costUsd: number
+  cacheCreationTokens?: number
+  cacheReadTokens?: number
+  webSearchCount?: number
 }
 
 export interface GenerationResult {
@@ -64,28 +67,38 @@ async function withRateLimitRetry<T>(fn: () => Promise<T>, onEvent?: OnEvent): P
 async function runWebSearchStream(params: {
   model: string
   maxTokens: number
+  maxSearches: number
   system: string
   userMessage: string
   onEvent?: OnEvent
-}): Promise<{ content: string; sources: Source[]; inputTokens: number; outputTokens: number }> {
-  const { model, maxTokens, system, userMessage, onEvent } = params
+}): Promise<{
+  content: string
+  sources: Source[]
+  inputTokens: number
+  outputTokens: number
+  cacheCreationTokens: number
+  cacheReadTokens: number
+  webSearchCount: number
+}> {
+  const { model, maxTokens, maxSearches, system, userMessage, onEvent } = params
 
   let content = ''
   const sources: Source[] = []
   let currentBlockType = ''
   let currentInputJson = ''
 
-  const messageStream = anthropic.messages.stream(
-    {
-      model,
-      max_tokens: maxTokens,
-      system,
-      messages: [{ role: 'user', content: userMessage }],
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      tools: [{ type: 'web_search_20250305', name: 'web_search' }] as any,
-    },
-    { headers: { 'anthropic-beta': 'web-search-2025-03-05' } },
-  )
+  // web_search_20260209 (GA, no beta header): dynamic filtering trims search
+  // results before they enter the context window. max_uses caps the search
+  // loop — each search iteration re-processes all prior results, so cost
+  // grows superlinearly with search count.
+  const messageStream = anthropic.messages.stream({
+    model,
+    max_tokens: maxTokens,
+    system,
+    messages: [{ role: 'user', content: userMessage }],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: maxSearches }] as any,
+  })
 
   for await (const event of messageStream) {
     switch (event.type) {
@@ -144,11 +157,16 @@ async function runWebSearchStream(params: {
   }
 
   const finalMsg = await messageStream.finalMessage()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const usage = finalMsg.usage as any
   return {
     content,
     sources,
-    inputTokens: finalMsg.usage.input_tokens,
-    outputTokens: finalMsg.usage.output_tokens,
+    inputTokens: usage.input_tokens ?? 0,
+    outputTokens: usage.output_tokens ?? 0,
+    cacheCreationTokens: usage.cache_creation_input_tokens ?? 0,
+    cacheReadTokens: usage.cache_read_input_tokens ?? 0,
+    webSearchCount: usage.server_tool_use?.web_search_requests ?? 0,
   }
 }
 
@@ -237,15 +255,20 @@ export async function generateChannelBriefing(opts: {
       `Today's date: ${new Date().toDateString()}` +
       previousContext
 
-    const { content, sources, inputTokens, outputTokens } = await runWebSearchStream({
-      model,
-      maxTokens: 4096,
-      system: systemPrompt,
-      userMessage,
-      onEvent,
-    })
+    const { content, sources, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, webSearchCount } =
+      await runWebSearchStream({
+        model,
+        // 6000 (was 4096): Sonnet 5's tokenizer spends ~30% more tokens per
+        // character, so the old cap truncated briefings to ~9K chars.
+        maxTokens: 6000,
+        maxSearches: 6,
+        system: systemPrompt,
+        userMessage,
+        onEvent,
+      })
 
-    const costUsd = calculateCost(model, inputTokens, outputTokens)
+    const usageExtras = { cacheCreationTokens, cacheReadTokens, webSearchCount }
+    const costUsd = calculateCost(model, inputTokens, outputTokens, usageExtras)
 
     // ── Persist to Supabase ─────────────────────────────────────────────────
     const [briefingResult] = await Promise.all([
@@ -274,13 +297,14 @@ export async function generateChannelBriefing(opts: {
       inputTokens,
       outputTokens,
       costUsd,
+      ...usageExtras,
     }).catch(() => {})
 
     return {
       id: briefingResult.data?.id,
       content,
       sources,
-      usage: { inputTokens, outputTokens, costUsd },
+      usage: { inputTokens, outputTokens, costUsd, ...usageExtras },
     }
   }, onEvent)
 }
@@ -333,15 +357,18 @@ export async function generateProfileDigest(opts: {
       `Suggested search queries: ${allQueries}\n` +
       `Today's date: ${new Date().toDateString()}`
 
-    const { content, sources, inputTokens, outputTokens } = await runWebSearchStream({
-      model,
-      maxTokens: 6000,
-      system: systemPrompt,
-      userMessage,
-      onEvent,
-    })
+    const { content, sources, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, webSearchCount } =
+      await runWebSearchStream({
+        model,
+        maxTokens: 6000,
+        maxSearches: 10,
+        system: systemPrompt,
+        userMessage,
+        onEvent,
+      })
 
-    const costUsd = calculateCost(model, inputTokens, outputTokens)
+    const usageExtras = { cacheCreationTokens, cacheReadTokens, webSearchCount }
+    const costUsd = calculateCost(model, inputTokens, outputTokens, usageExtras)
 
     const { data: digestRow } = await supabase
       .from('digests')
@@ -363,13 +390,14 @@ export async function generateProfileDigest(opts: {
       inputTokens,
       outputTokens,
       costUsd,
+      ...usageExtras,
     }).catch(() => {})
 
     return {
       id: digestRow?.id,
       content,
       sources,
-      usage: { inputTokens, outputTokens, costUsd },
+      usage: { inputTokens, outputTokens, costUsd, ...usageExtras },
     }
   }, onEvent)
 }
