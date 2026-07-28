@@ -3,7 +3,7 @@
 
 const BASE = 'http://localhost:3000'
 
-// 1. Fetch the first channel
+// 1. Fetch a channel (optional name filter: node scripts/test-briefing.mjs cephalopod)
 const channelsRes = await fetch(`${BASE}/api/channels`)
 const channels = await channelsRes.json()
 if (!channels.length) {
@@ -11,7 +11,14 @@ if (!channels.length) {
   process.exit(1)
 }
 
-const channel = channels[0]
+const nameFilter = process.argv[2]?.toLowerCase()
+const channel = nameFilter
+  ? channels.find((c) => c.name.toLowerCase().includes(nameFilter))
+  : channels[0]
+if (!channel) {
+  console.error(`No channel matching "${nameFilter}"`)
+  process.exit(1)
+}
 console.log(`\n📡  Testing channel: "${channel.name}" (${channel.id})\n`)
 
 // 2. Hit the briefing endpoint and stream the response

@@ -239,6 +239,24 @@ async function runWebSearchStream(params: {
       continue
     }
 
+    // Empty/stub guard: a "successful" stream that never produced article
+    // text (budget exhausted on thinking/search, e.g. stop max_tokens) must
+    // fail loudly, not persist sources-with-no-text. Live routes surface the
+    // error; the cron's hourly catch-up regenerates the channel.
+    if (content.trim().length < 300) {
+      console.warn(
+        `[generation] no article text: stop_reason=${finalMsg.stop_reason}, content=${content.length} chars, ` +
+        `sources=${sources.length}, output_tokens=${totalOutput}, continuations=${continuations}`
+      )
+      throw new Error(
+        `Generation produced no article text (stop_reason: ${finalMsg.stop_reason}, ` +
+        `${sources.length} sources collected, ${totalOutput} output tokens spent)`
+      )
+    }
+    if (finalMsg.stop_reason !== 'end_turn') {
+      console.warn(`[generation] non-end_turn completion: stop_reason=${finalMsg.stop_reason}, content=${content.length} chars`)
+    }
+
     return {
       content,
       sources,
@@ -348,9 +366,9 @@ export async function generateChannelBriefing(opts: {
     const { content, sources, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, webSearchCount } =
       await runWebSearchStream({
         model,
-        // 6000 (was 4096): Sonnet 5's tokenizer spends ~30% more tokens per
-        // character, so the old cap truncated briefings to ~9K chars.
-        maxTokens: 6000,
+        // 8000: max_tokens covers adaptive thinking + text. Thinking-heavy
+        // channels exhausted 6000 before writing any article text.
+        maxTokens: 8000,
         maxSearches: 6,
         system: systemPrompt,
         userMessage,
@@ -452,7 +470,7 @@ export async function generateProfileDigest(opts: {
     const { content, sources, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, webSearchCount } =
       await runWebSearchStream({
         model,
-        maxTokens: 6000,
+        maxTokens: 10000,
         maxSearches: 10,
         system: systemPrompt,
         userMessage,
