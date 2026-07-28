@@ -15,27 +15,33 @@ export default async function AllBriefingHistoryPage() {
 
   const { data: channels } = await supabase
     .from('channels')
-    .select('id, name')
+    .select('id, name, position')
     .eq('profile_id', profileId)
+    .order('position', { ascending: true })
 
   const channelNames = new Map((channels ?? []).map((c) => [c.id, c.name as string]))
   const channelIds = [...channelNames.keys()]
 
+  // Complete daily capture: everything created in the last 30 days, manual
+  // and scheduled alike (no scheduled filter; 1000-row guardrail only).
+  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
   const [briefingsResult, digestsResult] = await Promise.all([
     channelIds.length > 0
       ? supabase
           .from('briefings')
           .select('*')
           .in('channel_id', channelIds)
+          .gte('created_at', cutoff)
           .order('created_at', { ascending: false })
-          .limit(100)
+          .limit(1000)
       : Promise.resolve({ data: [] as Briefing[] }),
     supabase
       .from('digests')
-      .select('id, content, sources, channel_ids, channel_names, model, created_at')
+      .select('id, content, sources, channel_ids, channel_names, model, read_at, created_at')
       .eq('profile_id', profileId)
+      .gte('created_at', cutoff)
       .order('created_at', { ascending: false })
-      .limit(100),
+      .limit(1000),
   ])
 
   const briefings = ((briefingsResult.data ?? []) as Briefing[]).map((b) => ({
@@ -73,13 +79,13 @@ export default async function AllBriefingHistoryPage() {
                 : [
                     briefings.length > 0 && `${briefings.length} briefing${briefings.length !== 1 ? 's' : ''}`,
                     digests.length > 0 && `${digests.length} digest${digests.length !== 1 ? 's' : ''}`,
-                  ].filter(Boolean).join(' · ')}
+                  ].filter(Boolean).join(' · ') + ' · last 30 days'}
             </p>
           </div>
         </div>
       </header>
 
-      <DailyArchiveClient briefings={briefings} digests={digests} />
+      <DailyArchiveClient briefings={briefings} digests={digests} channelOrder={channelIds} />
       <PressNav />
     </div>
   )

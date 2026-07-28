@@ -12,14 +12,17 @@ const TZ = 'America/New_York'
 interface Props {
   briefings: (Briefing & { channel_name?: string })[]
   digests: Digest[]
+  // Channel ids in home-screen position order — the edition's section order
+  channelOrder?: string[]
 }
 
 interface ArchiveEntry {
   kind: 'briefing' | 'digest'
   id: string        // prefixed for React keys ('briefing-…' / 'digest-…')
   sourceId: string  // raw DB id, used for read-marking
+  channelId: string | null
   title: string // channel name, or 'Morning Digest'
-  subtitle: string | null
+  subtitle: string | null // digest: covered channels
   content: string
   sources: Source[]
   model: string
@@ -29,7 +32,7 @@ interface ArchiveEntry {
 
 interface DayGroup {
   key: string // YYYY-MM-DD in ET
-  label: string // e.g. "Friday, July 25, 2026"
+  label: string // e.g. "Tuesday, July 28, 2026"
   briefingCount: number
   digestCount: number
   entries: ArchiveEntry[]
@@ -64,19 +67,6 @@ function countsLabel(day: DayGroup) {
   return parts.join(', ')
 }
 
-function stripMarkdown(text: string): string {
-  return text
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/\*\*[\s\S]+?\*\*/g, (m) => m.slice(2, -2))
-    .replace(/\*[\s\S]+?\*/g, (m) => m.slice(1, -1))
-    .replace(/\[(.+?)\]\(.+?\)/g, '$1')
-    .replace(/`+/g, '')
-    .replace(/^[-*+]\s+/gm, '')
-    .replace(/^\d+\.\s+/gm, '')
-    .replace(/\n+/g, ' ')
-    .trim()
-}
-
 function SourcesFooter({ sources }: { sources: Source[] }) {
   if (sources.length === 0) return null
   return (
@@ -101,7 +91,7 @@ function SourcesFooter({ sources }: { sources: Source[] }) {
   )
 }
 
-// ── Full-screen combined reading view: the day's complete newspaper ─────────
+// ── Full-screen daily edition: the day's complete newspaper ─────────────────
 function DailyEditionView({ day, onClose }: { day: DayGroup; onClose: () => void }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
 
@@ -141,8 +131,8 @@ function DailyEditionView({ day, onClose }: { day: DayGroup; onClose: () => void
           const isCollapsed = collapsed[entry.id]
           return (
             <section key={entry.id}>
-              {/* Section divider between channels — the newspaper section break */}
-              <div className="flex items-center gap-3 mt-8 mb-3">
+              {/* Section divider between pieces — the newspaper section break */}
+              <div className="flex items-center gap-3 mt-8 mb-1">
                 <div className="flex-1 border-t-[3px] border-double border-press-hair" />
                 <button
                   onClick={() => setCollapsed((prev) => ({ ...prev, [entry.id]: !prev[entry.id] }))}
@@ -159,6 +149,9 @@ function DailyEditionView({ day, onClose }: { day: DayGroup; onClose: () => void
                 </button>
                 <div className="flex-1 border-t-[3px] border-double border-press-hair" />
               </div>
+              <p className="font-chrome text-[9px] uppercase tracking-[1.5px] text-press-faint text-center mb-2 truncate">
+                {entry.subtitle ? `${entry.subtitle} · ` : ''}{timeLabel(entry.created_at)}
+              </p>
 
               {isCollapsed ? (
                 <p className="font-georgia italic text-press-muted text-[12px] text-center mb-2">
@@ -186,11 +179,9 @@ function DailyEditionView({ day, onClose }: { day: DayGroup; onClose: () => void
   )
 }
 
-// ── Day-grouped archive list ────────────────────────────────────────────────
-export function DailyArchiveClient({ briefings, digests }: Props) {
+// ── Day list: one row per day, tap to open the edition ──────────────────────
+export function DailyArchiveClient({ briefings, digests, channelOrder = [] }: Props) {
   const [search, setSearch] = useState('')
-  const [expandedDay, setExpandedDay] = useState<string | null>(null)
-  const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null)
   const [readingDay, setReadingDay] = useState<string | null>(null)
   // Optimistic overlay of sourceIds marked read this session (DB write is async)
   const [localReadIds, setLocalReadIds] = useState<Set<string>>(new Set())
@@ -217,10 +208,9 @@ export function DailyArchiveClient({ briefings, digests }: Props) {
         kind: 'digest',
         id: `digest-${d.id}`,
         sourceId: d.id,
+        channelId: null,
         title: 'Morning Digest',
-        subtitle: d.channel_names.length > 0
-          ? `${d.channel_names.length} channel${d.channel_names.length !== 1 ? 's' : ''}`
-          : null,
+        subtitle: d.channel_names.length > 0 ? d.channel_names.join(' · ') : null,
         content: d.content,
         sources: d.sources ?? [],
         model: d.model,
@@ -231,6 +221,7 @@ export function DailyArchiveClient({ briefings, digests }: Props) {
         kind: 'briefing',
         id: `briefing-${b.id}`,
         sourceId: b.id,
+        channelId: b.channel_id,
         title: b.channel_name ?? 'Briefing',
         subtitle: null,
         content: b.content,
@@ -259,16 +250,24 @@ export function DailyArchiveClient({ briefings, digests }: Props) {
       else day.briefingCount++
     }
 
-    // Within a day: digest leads, then briefings in generation order (morning first)
+    // Edition order: digest(s) lead (the front page), then briefings in
+    // home-screen channel-position order — a fixed section sequence, since
+    // parallel cron generation makes creation timestamps arbitrary. Multiple
+    // same-channel items read chronologically within their section.
+    const positionOf = new Map(channelOrder.map((id, i) => [id, i]))
     for (const day of byDay.values()) {
       day.entries.sort((a, b) => {
         if (a.kind !== b.kind) return a.kind === 'digest' ? -1 : 1
+        if (a.kind === 'digest') return a.created_at.localeCompare(b.created_at)
+        const pa = positionOf.get(a.channelId ?? '') ?? Number.MAX_SAFE_INTEGER
+        const pb = positionOf.get(b.channelId ?? '') ?? Number.MAX_SAFE_INTEGER
+        if (pa !== pb) return pa - pb
         return a.created_at.localeCompare(b.created_at)
       })
     }
 
     return [...byDay.values()].sort((a, b) => b.key.localeCompare(a.key))
-  }, [briefings, digests, search])
+  }, [briefings, digests, search, channelOrder])
 
   const readingDayGroup = days.find((d) => d.key === readingDay) ?? null
 
@@ -314,114 +313,37 @@ export function DailyArchiveClient({ briefings, digests }: Props) {
       )}
       {days.length > 0 && <div className="press-rule-h" />}
 
-      {/* Day rows */}
+      {/* Day rows — tap to open that day's edition */}
       {days.map((day) => {
-        const isExpanded = expandedDay === day.key
         const dayUnread = day.entries.filter(entryUnread).length
         return (
-          <div key={day.key} className="border-b-[0.5px] border-press-hair">
-            <div className="flex items-center gap-3 px-1 py-4">
-              <button
-                onClick={() => setExpandedDay(isExpanded ? null : day.key)}
-                className="flex-1 min-w-0 flex items-center gap-3 text-left hover:bg-white/30 transition-colors -my-4 py-4"
-                aria-expanded={isExpanded}
-              >
-                <svg
-                  className={`flex-shrink-0 w-4 h-4 text-press-pin transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
-                  fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-                <span className="min-w-0">
-                  <span className={`block font-georgia text-[16px] leading-snug ${dayUnread > 0 ? 'text-press-ink' : 'text-press-body'}`}>
-                    {day.label}
-                  </span>
-                  <span className="block font-chrome text-[10px] uppercase tracking-[1px] text-press-muted mt-0.5">
-                    {countsLabel(day)}
-                    {dayUnread > 0 && (
-                      <span className="text-press-accent font-semibold"> · {dayUnread} unread</span>
-                    )}
-                  </span>
-                </span>
-              </button>
-              <button
-                onClick={() => { setReadingDay(day.key); markEntriesRead(day.entries) }}
-                className="flex-shrink-0 border-[0.5px] border-press-hair text-press-accent hover:bg-press-accent/10 font-chrome text-[10px] uppercase tracking-[1.5px] font-semibold px-3.5 py-2 transition-colors"
-              >
-                Read all
-              </button>
-            </div>
-
-            {/* Inline individual entries */}
-            {isExpanded && (
-              <div className="border-t-[0.5px] border-press-hair pl-4">
-                {day.entries.map((entry) => {
-                  const entryOpen = expandedEntryId === entry.id
-                  const unread = entryUnread(entry)
-                  const preview = stripMarkdown(entry.content).slice(0, 160)
-                  return (
-                    <div key={entry.id} className="border-b-[0.5px] border-press-hair last:border-b-0">
-                      <button
-                        onClick={() => {
-                          setExpandedEntryId(entryOpen ? null : entry.id)
-                          if (!entryOpen) markEntriesRead([entry])
-                        }}
-                        className="w-full text-left px-1 py-3 flex items-start gap-3 hover:bg-white/30 transition-colors"
-                        aria-expanded={entryOpen}
-                      >
-                        <svg
-                          className={`flex-shrink-0 mt-0.5 w-3.5 h-3.5 text-press-pin transition-transform duration-200 ${entryOpen ? 'rotate-90' : ''}`}
-                          fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                        <span className="flex-1 min-w-0">
-                          <span className="flex items-center gap-2.5 flex-wrap mb-1">
-                            {unread && (
-                              <span className="w-1.5 h-1.5 rounded-full bg-press-accent flex-shrink-0" aria-label="Unread" />
-                            )}
-                            <span className="press-label">{entry.title}</span>
-                            {entry.subtitle && (
-                              <span className="font-chrome text-[10px] text-press-faint">{entry.subtitle}</span>
-                            )}
-                            <span className="font-chrome text-[10px] uppercase tracking-[1px] text-press-muted">
-                              {timeLabel(entry.created_at)}
-                            </span>
-                            {entry.sources.length > 0 && (
-                              <span className="font-chrome text-[10px] text-press-faint">
-                                · {entry.sources.length} source{entry.sources.length !== 1 ? 's' : ''}
-                              </span>
-                            )}
-                          </span>
-                          {!entryOpen && (
-                            <span className={`block font-georgia text-[13px] leading-[1.65] line-clamp-2 ${unread ? 'text-press-ink' : 'text-press-body'}`}>
-                              {preview}
-                              {entry.content.length > 160 ? '…' : ''}
-                            </span>
-                          )}
-                        </span>
-                      </button>
-
-                      {entryOpen && (
-                        <div className="border-t-[0.5px] border-press-hair px-1 py-4">
-                          <PressArticle
-                            content={entry.content}
-                            channelName={entry.title}
-                            sourceDate={entry.created_at}
-                          />
-                          <SourcesFooter sources={entry.sources} />
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
+          <button
+            key={day.key}
+            onClick={() => { setReadingDay(day.key); markEntriesRead(day.entries) }}
+            className="w-full text-left border-b-[0.5px] border-press-hair px-1 py-4 flex items-center gap-3 hover:bg-white/30 transition-colors"
+          >
+            {dayUnread > 0 && (
+              <span className="w-1.5 h-1.5 rounded-full bg-press-accent flex-shrink-0" aria-label="Unread" />
             )}
-          </div>
+            <span className="flex-1 min-w-0">
+              <span className={`block font-georgia text-[16px] leading-snug ${dayUnread > 0 ? 'text-press-ink' : 'text-press-body'}`}>
+                {day.label}
+              </span>
+              <span className="block font-chrome text-[10px] uppercase tracking-[1px] text-press-muted mt-0.5">
+                {countsLabel(day)}
+                {dayUnread > 0 && (
+                  <span className="text-press-accent font-semibold"> · {dayUnread} unread</span>
+                )}
+              </span>
+            </span>
+            <svg className="flex-shrink-0 w-4 h-4 text-press-pin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
         )
       })}
 
-      {/* Combined daily reading view */}
+      {/* The day's edition */}
       {readingDayGroup && (
         <DailyEditionView day={readingDayGroup} onClose={() => setReadingDay(null)} />
       )}
