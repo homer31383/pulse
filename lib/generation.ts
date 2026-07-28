@@ -94,7 +94,9 @@ async function runWebSearchStream(params: {
   const searchBudgetNote =
     `\n\nYou have a hard limit of ${maxSearches} web searches for this task — plan your queries to fit it. ` +
     `If a search returns an error or the limit is reached, do NOT retry, wait, or mention the limit: ` +
-    `immediately write the briefing from the results you already have.`
+    `immediately write the briefing from the results you already have. ` +
+    `Never narrate your research process — write no text between searches or tool calls. ` +
+    `Your only text output is the finished briefing itself.`
 
   // Hard bounds so a stalled or grinding request fails cleanly instead of
   // hanging until a platform timeout: an overall deadline, plus an idle
@@ -118,7 +120,26 @@ async function runWebSearchStream(params: {
   }
   resetIdle()
 
+  // Usage accumulates across pause_turn continuations (each is its own request)
+  let totalInput = 0
+  let totalOutput = 0
+  let totalCacheW = 0
+  let totalCacheR = 0
+  let totalSearches = 0
+
+  // Conversation grows if the server tool loop pauses and we resume
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const messages: any[] = [
+    {
+      role: 'user',
+      content: [{ type: 'text', text: userMessage, cache_control: { type: 'ephemeral' } }],
+    },
+  ]
+  const MAX_CONTINUATIONS = 3
+  let continuations = 0
+
   try {
+    while (true) {
     // web_search_20260209 (GA, no beta header): dynamic filtering trims search
     // results before they enter the context window. max_uses caps the search
     // loop — each search iteration re-processes all prior results, so cost
@@ -133,14 +154,11 @@ async function runWebSearchStream(params: {
         model,
         max_tokens: maxTokens,
         system: [{ type: 'text', text: system + searchBudgetNote, cache_control: { type: 'ephemeral' } }],
-        messages: [
-          {
-            role: 'user',
-            content: [{ type: 'text', text: userMessage, cache_control: { type: 'ephemeral' } }],
-          },
-        ],
+        messages,
+        // max_uses is per request — shrink it on continuations so the total
+        // search budget holds across pause_turn resumes
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: maxSearches }] as any,
+        tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: Math.max(1, maxSearches - totalSearches) }] as any,
       },
       { signal: controller.signal },
     )
@@ -205,14 +223,31 @@ async function runWebSearchStream(params: {
     const finalMsg = await messageStream.finalMessage()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const usage = finalMsg.usage as any
+    totalInput += usage.input_tokens ?? 0
+    totalOutput += usage.output_tokens ?? 0
+    totalCacheW += usage.cache_creation_input_tokens ?? 0
+    totalCacheR += usage.cache_read_input_tokens ?? 0
+    totalSearches += usage.server_tool_use?.web_search_requests ?? 0
+
+    // The server-side tool loop caps its iterations per request; heavy
+    // search+filtering turns can hit the cap mid-answer (stop_reason
+    // "pause_turn"). Resume by appending the assistant turn and re-sending —
+    // otherwise the briefing persists as a truncated stub.
+    if ((finalMsg.stop_reason as string) === 'pause_turn' && continuations < MAX_CONTINUATIONS) {
+      continuations++
+      messages.push({ role: 'assistant', content: finalMsg.content })
+      continue
+    }
+
     return {
       content,
       sources,
-      inputTokens: usage.input_tokens ?? 0,
-      outputTokens: usage.output_tokens ?? 0,
-      cacheCreationTokens: usage.cache_creation_input_tokens ?? 0,
-      cacheReadTokens: usage.cache_read_input_tokens ?? 0,
-      webSearchCount: usage.server_tool_use?.web_search_requests ?? 0,
+      inputTokens: totalInput,
+      outputTokens: totalOutput,
+      cacheCreationTokens: totalCacheW,
+      cacheReadTokens: totalCacheR,
+      webSearchCount: totalSearches,
+    }
     }
   } catch (err) {
     if (timedOutReason) {
