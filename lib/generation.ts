@@ -253,6 +253,19 @@ async function runWebSearchStream(params: {
         `${sources.length} sources collected, ${totalOutput} output tokens spent)`
       )
     }
+    // Truncation guard: hitting max_tokens mid-article saves a briefing that
+    // cuts off mid-sentence — worse than no briefing, since nothing flags it
+    // as broken. Same recovery path as the empty-stub case above.
+    if ((finalMsg.stop_reason as string) === 'max_tokens') {
+      console.warn(
+        `[generation] truncated at max_tokens: content=${content.length} chars, ` +
+        `sources=${sources.length}, output_tokens=${totalOutput}, continuations=${continuations}`
+      )
+      throw new Error(
+        `Generation truncated at the max_tokens cap (${content.length} chars written, ` +
+        `${totalOutput} output tokens spent)`
+      )
+    }
     if (finalMsg.stop_reason !== 'end_turn') {
       console.warn(`[generation] non-end_turn completion: stop_reason=${finalMsg.stop_reason}, content=${content.length} chars`)
     }
@@ -366,9 +379,11 @@ export async function generateChannelBriefing(opts: {
     const { content, sources, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, webSearchCount } =
       await runWebSearchStream({
         model,
-        // 8000: max_tokens covers adaptive thinking + text. Thinking-heavy
-        // channels exhausted 6000 before writing any article text.
-        maxTokens: 8000,
+        // 12000: max_tokens covers adaptive thinking + text, per stream
+        // segment. Thinking-heavy channels exhausted 6000 before writing any
+        // article text; long-form editions truncated mid-article at 8000.
+        // Unused headroom costs nothing.
+        maxTokens: 12000,
         maxSearches: 6,
         system: systemPrompt,
         userMessage,
