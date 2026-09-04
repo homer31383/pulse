@@ -60,6 +60,9 @@ export function QueueProvider({ children }: { children: React.ReactNode }) {
   const currentIdRef = useRef(currentId)
   const lastEndedSeq = useRef(0)
   const playedThisSession = useRef(0)
+  // Set once the engine reports the current item playing. An `ended` that
+  // arrives before that (e.g. from the audio unlock clip) is not a completion.
+  const currentStarted = useRef(false)
   useEffect(() => { itemsRef.current = items }, [items])
   useEffect(() => { currentIdRef.current = currentId }, [currentId])
 
@@ -146,6 +149,7 @@ export function QueueProvider({ children }: { children: React.ReactNode }) {
     setError(null)
     setFinished(null)
     setCurrentId(item.id)
+    currentStarted.current = false
     const speechId = speechIdOf(item)
     try {
       const settings = await fetchTtsSettings()
@@ -252,6 +256,12 @@ export function QueueProvider({ children }: { children: React.ReactNode }) {
     setCurrentId(null)
   }, [speech, saveProgress])
 
+  // Remember that the current item genuinely started playing
+  useEffect(() => {
+    if (!current || speech.status !== 'playing' || speech.activeId !== speechIdOf(current)) return
+    currentStarted.current = true
+  }, [current, speech.status, speech.activeId])
+
   // ── Auto-advance on natural end ──────────────────────────────────────────────
   useEffect(() => {
     const ended = speech.ended
@@ -260,6 +270,7 @@ export function QueueProvider({ children }: { children: React.ReactNode }) {
     const cur = currentIdRef.current
     const item = cur ? itemsRef.current.find((i) => i.id === cur) : null
     if (!item || speechIdOf(item) !== ended.id) return
+    if (!currentStarted.current) return // never reached playback — not a completion
 
     // Completed: mark played (the server also marks it read), then move on
     playedThisSession.current += 1

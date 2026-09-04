@@ -166,8 +166,13 @@ export function SpeechProvider({ children }: { children: React.ReactNode }) {
       }
     })
     audio.addEventListener('ended', () => {
+      // The silent unlock clip (prepareAudio) also fires 'ended' — a few ms
+      // after play() — while the real track is still being fetched. Only a
+      // track that actually reached playback counts as an item ending;
+      // otherwise the queue would "complete" the item as it starts.
+      if (!audio.src || audio.src.startsWith('data:')) return
       setState((prev) =>
-        prev.provider === 'elevenlabs' && prev.status !== 'idle' && prev.activeId
+        prev.provider === 'elevenlabs' && (prev.status === 'playing' || prev.status === 'paused') && prev.activeId
           ? endedState(prev, prev.activeId)
           : prev,
       )
