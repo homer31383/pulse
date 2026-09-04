@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { PressArticle } from './press/PressArticle'
+import { AudioPlayer, SpokenArticle } from './press/AudioPlayer'
 import type { Briefing, Digest, Source } from '@/lib/types'
 
 // Day boundaries follow Eastern Time (matches the scheduler) so SSR and the
@@ -159,11 +160,20 @@ function DailyEditionView({ day, onClose }: { day: DayGroup; onClose: () => void
                 </p>
               ) : (
                 <>
-                  <PressArticle
+                  <AudioPlayer
+                    id={`${entry.kind}:${entry.sourceId}`}
+                    kind={entry.kind}
+                    itemId={entry.sourceId}
                     content={entry.content}
-                    channelName={entry.title}
-                    sourceDate={entry.created_at}
+                    className="mb-3"
                   />
+                  <SpokenArticle id={`${entry.kind}:${entry.sourceId}`}>
+                    <PressArticle
+                      content={entry.content}
+                      channelName={entry.title}
+                      sourceDate={entry.created_at}
+                    />
+                  </SpokenArticle>
                   <SourcesFooter sources={entry.sources} />
                 </>
               )}

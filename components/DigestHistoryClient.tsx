@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { PressArticle } from './press/PressArticle'
+import { AudioPlayer, SpokenArticle } from './press/AudioPlayer'
 import type { DigestWithCost, Source } from '@/lib/types'
 import { formatCost } from '@/lib/cost'
 
@@ -324,11 +325,20 @@ export function DigestHistoryClient({ digests: initialDigests }: Props) {
                 </div>
 
                 {/* Content */}
-                <PressArticle
+                <AudioPlayer
+                  id={`digest:${d.id}`}
+                  kind="digest"
+                  itemId={d.id}
                   content={d.content}
-                  channelName="Morning Digest"
-                  sourceDate={d.created_at}
+                  className="mb-3"
                 />
+                <SpokenArticle id={`digest:${d.id}`}>
+                  <PressArticle
+                    content={d.content}
+                    channelName="Morning Digest"
+                    sourceDate={d.created_at}
+                  />
+                </SpokenArticle>
 
                 {/* Sources */}
                 {d.sources && d.sources.length > 0 && (

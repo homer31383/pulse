@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { PressArticle } from './press/PressArticle'
+import { AudioPlayer, SpokenArticle } from './press/AudioPlayer'
 import type { Briefing } from '@/lib/types'
 
 interface Props {
@@ -166,13 +167,21 @@ export function BriefingHistoryClient({ briefings, channelName }: Props) {
             {/* Expanded content */}
             {isExpanded && (
               <div className="border-t-[0.5px] border-press-hair">
+                <AudioPlayer
+                  id={`briefing:${briefing.id}`}
+                  kind="briefing"
+                  itemId={briefing.id}
+                  content={briefing.content}
+                />
                 {/* Article body */}
                 <div className="px-1 py-5">
-                  <PressArticle
-                    content={briefing.content}
-                    channelName={briefing.channel_name ?? channelName ?? null}
-                    sourceDate={briefing.created_at}
-                  />
+                  <SpokenArticle id={`briefing:${briefing.id}`}>
+                    <PressArticle
+                      content={briefing.content}
+                      channelName={briefing.channel_name ?? channelName ?? null}
+                      sourceDate={briefing.created_at}
+                    />
+                  </SpokenArticle>
                 </div>
 
                 {/* Sources */}

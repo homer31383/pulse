@@ -14,6 +14,7 @@ import {
   TtsNotConfiguredError,
   getCachedAudio,
   isTtsConfigured,
+  listVoices,
   loadTtsItem,
   signedAudioUrl,
   synthesizeItem,
@@ -38,8 +39,13 @@ function parseTarget(kind: string | null, id: string | null): { kind: TtsKind; i
   return { kind, id }
 }
 
-function voiceName(voiceId: string): string {
-  return ELEVENLABS_VOICES.find((v) => v.id === voiceId)?.name ?? 'Custom voice'
+// Curated list first, then the account's live premade voices (the settings
+// picker offers both), so a non-curated pick still shows its real name.
+async function voiceName(voiceId: string): Promise<string> {
+  const curated = ELEVENLABS_VOICES.find((v) => v.id === voiceId)
+  if (curated) return curated.name
+  const { voices } = await listVoices()
+  return voices.find((v) => v.id === voiceId)?.name ?? 'Custom voice'
 }
 
 // GET /api/tts/elevenlabs?kind=briefing&id=<uuid>[&voiceId=…]
@@ -64,7 +70,7 @@ export async function GET(req: NextRequest) {
     model,
     modelLabel: ELEVENLABS_MODELS[model].label,
     voiceId,
-    voiceName: voiceName(voiceId),
+    voiceName: await voiceName(voiceId),
     audio: cached
       ? {
           url: await signedAudioUrl(cached.storage_path),

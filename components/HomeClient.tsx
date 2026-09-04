@@ -974,11 +974,12 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
           sharingEnabled={settings.sharing_enabled}
           feedbackEnabled={settings.feedback_enabled}
           discussEnabled={settings.discuss_enabled}
-          ttsEnabled={settings.tts_enabled}
-          defaultVoice={settings.tts_voice}
-          defaultSpeed={settings.tts_speed}
-          ttsProvider={settings.tts_provider}
-          elevenLabsVoiceId={settings.tts_elevenlabs_voice_id}
+          ttsSettings={{
+            provider: settings.tts_provider === 'elevenlabs' ? 'elevenlabs' : 'browser',
+            voiceUri: settings.tts_voice ?? null,
+            elevenLabsVoiceId: settings.tts_elevenlabs_voice_id ?? null,
+            speed: Number(settings.tts_speed) || 1,
+          }}
         />
       )}
 

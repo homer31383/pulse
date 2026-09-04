@@ -2,7 +2,8 @@
 
 import { useEffect, useRef } from 'react'
 import { BriefingCard } from './BriefingCard'
-import type { BriefingState, TtsProvider } from '@/lib/types'
+import type { BriefingState } from '@/lib/types'
+import type { TtsSettings } from './press/AudioPlayer'
 
 interface BriefingSheetProps {
   openIds: string[]
@@ -14,11 +15,7 @@ interface BriefingSheetProps {
   sharingEnabled?: boolean
   feedbackEnabled?: boolean
   discussEnabled?: boolean
-  ttsEnabled?: boolean
-  defaultVoice?: string | null
-  defaultSpeed?: number
-  ttsProvider?: TtsProvider
-  elevenLabsVoiceId?: string | null
+  ttsSettings?: TtsSettings
 }
 
 function StatusDot({ status }: { status: BriefingState['status'] }) {
@@ -44,11 +41,7 @@ export function BriefingSheet({
   sharingEnabled,
   feedbackEnabled,
   discussEnabled,
-  ttsEnabled,
-  defaultVoice,
-  defaultSpeed,
-  ttsProvider,
-  elevenLabsVoiceId,
+  ttsSettings,
 }: BriefingSheetProps) {
   const tabBarRef = useRef<HTMLDivElement>(null)
 
@@ -154,11 +147,7 @@ export function BriefingSheet({
               sharingEnabled={sharingEnabled}
               feedbackEnabled={feedbackEnabled}
               discussEnabled={discussEnabled}
-              ttsEnabled={ttsEnabled}
-              defaultVoice={defaultVoice}
-              defaultSpeed={defaultSpeed}
-              ttsProvider={ttsProvider}
-              elevenLabsVoiceId={elevenLabsVoiceId}
+              ttsSettings={ttsSettings}
             />
           </div>
         </div>

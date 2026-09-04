@@ -222,7 +222,6 @@ export function SettingsClient({ initialSettings, channels = [], costBasis }: Pr
   const [tickerItems, setTickerItems] = useState<TickerItem[]>(initialSettings.ticker_items ?? [])
 
   // ── TTS ───────────────────────────────────────────────────────────────────
-  const [ttsEnabled, setTtsEnabled] = useState(initialSettings.tts_enabled)
   const [ttsVoice, setTtsVoice] = useState<string | null>(initialSettings.tts_voice)
   const [ttsSpeed, setTtsSpeed] = useState<number>(initialSettings.tts_speed ?? 1)
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
@@ -670,17 +669,10 @@ export function SettingsClient({ initialSettings, channels = [], costBasis }: Pr
       <section className="space-y-3">
         <div>
           <h2 className="font-display text-base font-normal text-ink-300">Audio</h2>
-          <p className="text-xs text-ink-50 mt-0.5">Listen to briefings with sentence-level highlighting. Standard uses your browser&apos;s built-in speech engine at no cost; Premium generates natural audio with ElevenLabs.</p>
+          <p className="text-xs text-ink-50 mt-0.5">Every briefing has a Listen button with sentence highlighting. Standard uses your browser&apos;s built-in speech engine at no cost; Premium generates natural audio with ElevenLabs.</p>
         </div>
         <div className="bg-cream-50 border border-cream-300 rounded-2xl px-4 divide-y divide-cream-300 shadow-[0_1px_4px_rgba(0,0,0,0.05)]">
-          <ToggleRow
-            label="Text-to-speech"
-            description="Play any completed briefing as audio with sentence highlighting."
-            checked={ttsEnabled}
-            onChange={(v) => { setTtsEnabled(v); save({ tts_enabled: v }) }}
-          />
-          {ttsEnabled && (
-            <div className="py-4 space-y-4">
+          <div className="py-4 space-y-4">
               {/* Provider selector */}
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-ink-100">Voice engine</label>
@@ -779,7 +771,6 @@ export function SettingsClient({ initialSettings, channels = [], costBasis }: Pr
                 </div>
               </div>
             </div>
-          )}
         </div>
       </section>
 
