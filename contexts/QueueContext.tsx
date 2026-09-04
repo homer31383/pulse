@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useSpeech, type AudioTrack } from '@/contexts/SpeechContext'
 import { fetchTtsSettings } from '@/contexts/TtsSettings'
-import { stripMarkdown } from '@/lib/speech'
+import { buildSpeechScript } from '@/lib/speechScript'
 import type { ListenQueueItem, QueueCostSummary } from '@/lib/types'
 
 // The Listen Queue: the one playback system. It owns the ordered list (from
@@ -155,8 +155,8 @@ export function QueueProvider({ children }: { children: React.ReactNode }) {
       const settings = await fetchTtsSettings()
       const res = await fetch(`/api/queue/${item.id}/content`)
       if (!res.ok) throw new Error('This item is no longer available')
-      const { content } = (await res.json()) as { content: string }
-      const plain = stripMarkdown(content)
+      const { content, channelNames } = (await res.json()) as { content: string; channelNames?: string[] }
+      const script = buildSpeechScript(content, item.kind, { channelNames })
       const fromSentence = resume ? item.progress_sentence : 0
 
       if (settings.provider === 'elevenlabs') {
@@ -185,16 +185,17 @@ export function QueueProvider({ children }: { children: React.ReactNode }) {
         speech.cancelLoading()
         setError('Premium audio isn\'t configured on the server — using the standard voice.')
       }
-      speech.play(speechId, plain, settings.voiceUri, settings.speed, fromSentence)
+      speech.play(speechId, script.text, settings.voiceUri, settings.speed, fromSentence, script.chapters)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not play this item'
       // Premium trouble → standard voice, so the queue keeps moving
       try {
         const settings = await fetchTtsSettings()
         const res = await fetch(`/api/queue/${item.id}/content`)
-        const { content } = (await res.json()) as { content: string }
+        const { content, channelNames } = (await res.json()) as { content: string; channelNames?: string[] }
+        const script = buildSpeechScript(content, item.kind, { channelNames })
         speech.cancelLoading()
-        speech.play(speechId, stripMarkdown(content), settings.voiceUri, settings.speed, resume ? item.progress_sentence : 0)
+        speech.play(speechId, script.text, settings.voiceUri, settings.speed, resume ? item.progress_sentence : 0, script.chapters)
         setError(`${message} — playing with the standard voice.`)
       } catch {
         speech.cancelLoading()

@@ -2,7 +2,8 @@
 // Storage, and TTS spend logging. Never import in 'use client' files.
 import { supabase } from '@/lib/supabase'
 import { logUsage } from '@/lib/usage'
-import { splitSentences, stripMarkdown } from '@/lib/speech'
+import { splitSentences } from '@/lib/speech'
+import { SPEECH_SCRIPT_VERSION, buildSpeechScript, locateChapters, type Chapter } from '@/lib/speechScript'
 import {
   ELEVENLABS_DEFAULT_MODEL,
   ELEVENLABS_MODELS,
@@ -41,7 +42,9 @@ export function isTtsConfigured(): boolean {
 export interface TtsItem {
   kind: TtsKind
   id: string
-  plain: string        // stripMarkdown(content) — the text that gets spoken
+  content: string      // stored markdown
+  plain: string        // the speech script text — what actually gets spoken
+  channelNames: string[]
   channelId: string | null
   channelName: string
 }
@@ -57,11 +60,14 @@ export async function loadTtsItem(kind: TtsKind, id: string): Promise<TtsItem | 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const channel = (data as any).channels as { name?: string } | { name?: string }[] | null
     const channelName = (Array.isArray(channel) ? channel[0]?.name : channel?.name) ?? 'Briefing'
-    return { kind, id, plain: stripMarkdown(data.content ?? ''), channelId: data.channel_id, channelName }
+    const content = data.content ?? ''
+    return { kind, id, content, plain: buildSpeechScript(content, 'briefing').text, channelNames: [], channelId: data.channel_id, channelName }
   }
-  const { data } = await supabase.from('digests').select('id, content').eq('id', id).single()
+  const { data } = await supabase.from('digests').select('id, content, channel_names').eq('id', id).single()
   if (!data) return null
-  return { kind, id, plain: stripMarkdown(data.content ?? ''), channelId: null, channelName: 'Digest' }
+  const content = data.content ?? ''
+  const channelNames = (data.channel_names ?? []) as string[]
+  return { kind, id, content, plain: buildSpeechScript(content, 'digest', { channelNames }).text, channelNames, channelId: null, channelName: 'Digest' }
 }
 
 // ── Cache rows ────────────────────────────────────────────────────────────────
@@ -79,6 +85,8 @@ export interface TtsAudioRow {
   cost_usd: number
   sentences: string[]
   sentence_times: number[]
+  chapters: Chapter[]
+  script_version: number
   created_at: string
 }
 
@@ -92,6 +100,9 @@ export async function getCachedAudio(
     .eq('item_id', itemId)
     .eq('voice_id', voiceId)
     .eq('model_id', modelId)
+    // Older script versions (plain text, no signposts/chapters) are misses:
+    // regenerated on next play, overwriting the same storage object.
+    .eq('script_version', SPEECH_SCRIPT_VERSION)
     .maybeSingle()
   return (data as TtsAudioRow | null) ?? null
 }
@@ -208,9 +219,12 @@ export async function synthesizeItem(opts: {
   if (cached) return { row: cached, url: audioUrlFor(cached), cached: true }
 
   apiKey() // fail fast before any work
-  const chunks = chunkText(item.plain, opts.chunkCap ?? ELEVENLABS_MODELS[modelId].maxChars)
+  const script = buildSpeechScript(item.content, item.kind, { channelNames: item.channelNames })
+  const chunks = chunkText(script.text, opts.chunkCap ?? ELEVENLABS_MODELS[modelId].maxChars)
   const full = chunks.join('\n\n')
   const { sentences, starts } = splitSentences(full)
+  // Chapter markers → sentence indices in the (possibly re-flowed) full text
+  const chapters = full === script.text ? script.chapters : locateChapters(script, sentences)
 
   // Char offset of each chunk within `full`
   const chunkStarts: number[] = []
@@ -278,6 +292,8 @@ export async function synthesizeItem(opts: {
         cost_usd: costUsd,
         sentences,
         sentence_times: sentenceTimes,
+        chapters,
+        script_version: SPEECH_SCRIPT_VERSION,
       },
       { onConflict: 'kind,item_id,voice_id,model_id' },
     )

@@ -1,6 +1,6 @@
 // Server-only: the Listen Queue (migration 019). Never import in 'use client'.
 import { supabase } from '@/lib/supabase'
-import { stripMarkdown } from '@/lib/speech'
+import { SPEECH_SCRIPT_VERSION, buildSpeechScript } from '@/lib/speechScript'
 import { ELEVENLABS_DEFAULT_MODEL, ELEVENLABS_DEFAULT_VOICE_ID, estimateTtsCost } from '@/lib/elevenlabs'
 import type { ListenQueueItem, QueueCostSummary, TtsProvider } from '@/lib/types'
 
@@ -160,6 +160,7 @@ interface ItemMeta {
   created_at: string
   content: string
   channel_id: string | null
+  channelNames: string[]
 }
 
 async function loadMeta(rows: QueueRow[]): Promise<Map<string, ItemMeta>> {
@@ -173,12 +174,12 @@ async function loadMeta(rows: QueueRow[]): Promise<Map<string, ItemMeta>> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   for (const row of (b.data ?? []) as any[]) {
     const c = Array.isArray(row.channels) ? row.channels[0] : row.channels
-    meta.set(`briefing:${row.id}`, { title: c?.name ?? 'Briefing', subtitle: null, created_at: row.created_at, content: row.content ?? '', channel_id: row.channel_id })
+    meta.set(`briefing:${row.id}`, { title: c?.name ?? 'Briefing', subtitle: null, created_at: row.created_at, content: row.content ?? '', channel_id: row.channel_id, channelNames: [] })
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   for (const row of (d.data ?? []) as any[]) {
     const names = (row.channel_names ?? []) as string[]
-    meta.set(`digest:${row.id}`, { title: 'Morning Digest', subtitle: names.join(', ') || null, created_at: row.created_at, content: row.content ?? '', channel_id: null })
+    meta.set(`digest:${row.id}`, { title: 'Morning Digest', subtitle: names.join(', ') || null, created_at: row.created_at, content: row.content ?? '', channel_id: null, channelNames: names })
   }
   return meta
 }
@@ -209,13 +210,14 @@ export async function listQueue(profileId: string, tts: { provider: TtsProvider;
       .select('kind, item_id')
       .eq('voice_id', voiceId)
       .eq('model_id', ELEVENLABS_DEFAULT_MODEL)
+      .eq('script_version', SPEECH_SCRIPT_VERSION)
       .in('item_id', live.map((r) => r.item_id))
     for (const c of (cached ?? []) as { kind: string; item_id: string }[]) cachedKeys.add(`${c.kind}:${c.item_id}`)
   }
 
   const items: ListenQueueItem[] = live.map((r) => {
     const m = meta.get(`${r.kind}:${r.item_id}`)!
-    const plain = stripMarkdown(m.content)
+    const plain = buildSpeechScript(m.content, r.kind, { channelNames: m.channelNames }).text
     const words = plain.split(/\s+/).filter(Boolean).length
     return {
       id: r.id,
@@ -254,7 +256,7 @@ export async function listQueue(profileId: string, tts: { provider: TtsProvider;
 }
 
 export async function getQueueItemContent(profileId: string, queueId: string): Promise<{
-  queueId: string; kind: QueueKind; itemId: string; title: string; content: string
+  queueId: string; kind: QueueKind; itemId: string; title: string; content: string; channelNames: string[]
 } | null> {
   const { data } = await supabase.from('listen_queue').select('*').eq('id', queueId).eq('profile_id', profileId).maybeSingle()
   if (!data) return null
@@ -262,5 +264,5 @@ export async function getQueueItemContent(profileId: string, queueId: string): P
   const meta = await loadMeta([row])
   const m = meta.get(`${row.kind}:${row.item_id}`)
   if (!m) return null
-  return { queueId: row.id, kind: row.kind, itemId: row.item_id, title: m.title, content: m.content }
+  return { queueId: row.id, kind: row.kind, itemId: row.item_id, title: m.title, content: m.content, channelNames: m.channelNames }
 }

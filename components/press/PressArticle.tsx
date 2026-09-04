@@ -103,57 +103,7 @@ export const PRESS_MD_COMPONENTS: Components = {
   },
 }
 
-interface Section {
-  title: string | null // null for the lead block before any heading
-  body: string
-  isAside: boolean     // Key Takeaways / analysis → analyst-note treatment
-}
-
-const ASIDE_TITLE = /takeaway|analys|insight|outlook|assessment|bottom line/i
-
-// Split markdown into an optional headline, then ## sections. Code fences kept intact.
-export function parsePressSections(md: string): { headline: string | null; sections: Section[] } {
-  const lines = md.split('\n')
-  let headline: string | null = null
-  const sections: Section[] = []
-  let currentTitle: string | null = null
-  let currentBody: string[] = []
-  let inFence = false
-  let seenContent = false
-
-  function flush() {
-    const body = currentBody.join('\n').trim()
-    if (body || currentTitle) {
-      sections.push({
-        title: currentTitle,
-        body,
-        isAside: currentTitle !== null && ASIDE_TITLE.test(currentTitle),
-      })
-    }
-    currentBody = []
-  }
-
-  for (const line of lines) {
-    if (/^\s*(```|~~~)/.test(line)) inFence = !inFence
-
-    if (!inFence && !seenContent && /^#\s+(?!#)/.test(line.trim())) {
-      headline = line.trim().replace(/^#\s+/, '')
-      seenContent = true
-      continue
-    }
-    if (!inFence && /^##\s+(?!#)/.test(line.trim())) {
-      flush()
-      currentTitle = line.trim().replace(/^##\s+/, '')
-      seenContent = true
-      continue
-    }
-    if (line.trim() !== '') seenContent = true
-    currentBody.push(line)
-  }
-  flush()
-
-  return { headline, sections }
-}
+import { parsePressSections, type PressSection as Section } from '@/lib/press-sections'
 
 interface Props {
   content: string

@@ -106,6 +106,27 @@ export function ExpandedPlayer() {
               </div>
             </div>
 
+            {/* Chapters — jump-to points within this item */}
+            {active && speech.chapters.length > 1 && (
+              <div className="flex gap-1.5 overflow-x-auto py-2 -mx-1 px-1" style={{ scrollbarWidth: 'none' }} aria-label="Chapters">
+                {speech.chapters.map((c, i) => (
+                  <button
+                    key={`${i}-${c.sentenceIndex}`}
+                    onClick={() => speech.seekToSentence(c.sentenceIndex)}
+                    title={c.label}
+                    className={[
+                      'flex-shrink-0 max-w-[180px] truncate font-chrome text-[10px] uppercase tracking-[1px] px-2.5 py-1 rounded-full border transition-colors',
+                      i === speech.currentChapterIndex
+                        ? 'border-press-accent bg-press-accent/10 text-press-accent'
+                        : 'border-press-hair text-press-muted hover:border-press-accent/60 hover:text-press-accent',
+                    ].join(' ')}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Transport */}
             <div className="flex items-center justify-center gap-1 mt-2">
               <button onClick={() => speech.skip(-15)} disabled={!active} title="Back 15s" className={btn}>

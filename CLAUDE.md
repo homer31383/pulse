@@ -29,7 +29,7 @@ npm install
 npm run dev
 ```
 
-Run all migrations in `supabase/migrations/` in order (001 through 019) in the Supabase SQL editor. Optionally run `supabase/seed.sql` for sample channels.
+Run all migrations in `supabase/migrations/` in order (001 through 020) in the Supabase SQL editor. Optionally run `supabase/seed.sql` for sample channels.
 
 ## File Structure
 
@@ -121,6 +121,8 @@ lib/
   anthropic.ts  — Anthropic client + DEFAULT_MODEL constant
   generation.ts — Shared briefing/digest generation (prompts, web-search stream, persist, usage) used by SSE routes AND the cron route
   cost.ts       — Token cost calculation and formatting
+  press-sections.ts — Shared markdown parser: headline + ## sections + aside detection (renderer and speech)
+  speechScript.ts   — Spoken script builder: signposts + chapter markers for both TTS providers
   elevenlabs.ts — Client-safe ElevenLabs constants (models, prices, curated voices), chunkText(), cost estimate
   tts.ts        — Server-only ElevenLabs synthesis, Supabase Storage audio cache, TTS usage logging, cleanup
   queue.ts      — Server-only Listen Queue: enqueue, list (+cost), reorder, progress, batch sort, cleanup
@@ -253,6 +255,8 @@ The queue is "what's next" — each item can be listened to or read — and the 
 - **Player**: `components/press/MiniPlayer.tsx` — docked bottom bar visible whenever the queue is non-empty (above the home generate bar): monogram, title, "3 of 7", progress line along the top edge, prev / play-pause / next; tapping the bar expands. `ExpandedPlayer.tsx` — bottom sheet (same slide-up as the briefing sheet): large monogram, title, "channel · 3 of 7", scrubbable progress with elapsed/remaining (browser voice: sentences), rewind/forward 15s (browser: ±2 sentences), prev/play/next, speed pill, then the queue (`QueueList`: tap = jump, "Read" = open `/read/{kind}/{id}` without touching playback, × = remove, drag = reorder). Expand/collapse is UI state only. **End of queue**: the bar shows "Queue finished · N played, marked read" with a dismiss ×, rather than vanishing mid-interaction; it hides on dismiss, and an empty queue hides the bar.
 - **Completion gotcha**: `prepareAudio()` plays a 0-sample data-URI WAV to unlock iOS audio, and that clip fires the element's `ended` event a few ms later — before the real track arrives. The engine ignores `ended` while `src` is a data URI or status is `loading`, and the queue only treats `ended` as completion after it has seen the item `playing` (`currentStarted`). Without both guards, pressing play on a Premium item jumped straight to "Queue finished" while audio was starting (Sept 4 2026 bug).
 - **Reading mode**: `/read/[kind]/[id]` (`ReadArticleClient`) is the per-item reading view; reaching the end of the article marks it read (IntersectionObserver sentinel → `/api/read`). Reading does **not** complete the queue item — only listening to the end does; the Listen bar's "In queue · Remove" and the row × are the "skimmed it, don't need the audio" override.
+- **Spoken script + chapters** (`lib/speechScript.ts`, both providers): the TTS input is a script built from the article's structure (`lib/press-sections.ts`, the same parser the broadsheet renderer uses), not the raw text. Verbal signposts are inserted as their own sentences: the headline as a beat, "Analyst note." before an aside, "First story: {channel}." / "Next story: …" before each digest story, a briefing's section title as a beat, and `#` sub-headlines inside a section body (multi-film Special Editions) as beats. The preceding paragraph is terminated with a period if it trails off, so a label always starts its own sentence. Leaked pre-headline narration in old archived briefings is dropped from speech. Stored content and display are untouched; the sentence-highlight view shows the labels because it is built from the same script. `chapters` = `{label, sentenceIndex}[]`; a digest's channel names are passed as `neverAside` so a channel called "… Outlook" is a story, not an analyst note.
+- **Jump-to**: `speech.seekToSentence(i)` — Premium seeks `audio.currentTime` to the cached `sentence_times[i]`; Standard restarts the utterance at sentence `i`. The expanded player shows chapter chips under the scrub bar (current chapter derived from the current sentence). Premium cache rows carry `chapters` and `script_version` (migration 020); `SPEECH_SCRIPT_VERSION` is part of the cache lookup, so audio generated from an older script regenerates on next play (same storage path, overwritten). After chunking, chapters are re-located by matching label sentences (`locateChapters`).
 - **Article bar** (`AudioPlayer`): Listen/Pause shortcut (Listen = queue it if needed + play through the queue), length, provider, sentence position, and the queue toggle. No inline transport — that lives in the player. `SpokenArticle` swaps in the highlighted view while an article is being read aloud, on every surface.
 - `/listen` is the full-page version of the queue (Play all/Resume, cost line, list, Played section with Re-queue), linked from PressNav.
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { stripMarkdown } from '@/lib/speech'
+import { buildSpeechScript } from '@/lib/speechScript'
 import { useSpeech } from '@/contexts/SpeechContext'
 import { useQueue } from '@/contexts/QueueContext'
 import { useTtsSettings as useTtsSettingsHook, type TtsSettings as TtsSettingsType } from '@/contexts/TtsSettings'
@@ -46,7 +46,7 @@ export function AudioPlayer({ id, kind, itemId, content, settings: given, classN
     if (isPlaying) { speech.pause(); return }
     if (isPaused) { speech.resume(); return }
     if (itemId) void queue.playFromArticle(kind, itemId)
-    else speech.play(id, stripMarkdown(content), settings.voiceUri, settings.speed) // unsaved live card
+    else { const sc = buildSpeechScript(content, kind); speech.play(id, sc.text, settings.voiceUri, settings.speed, 0, sc.chapters) } // unsaved live card
   }
 
   const providerLabel = settings.provider === 'elevenlabs' ? 'Premium' : 'Standard'

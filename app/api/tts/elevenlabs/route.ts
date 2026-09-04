@@ -76,6 +76,7 @@ export async function GET(req: NextRequest) {
           url: audioUrlFor(cached),
           sentences: cached.sentences,
           sentenceTimes: cached.sentence_times,
+          chapters: cached.chapters ?? [],
           duration: cached.duration_seconds,
         }
       : null,
@@ -103,7 +104,7 @@ export async function POST(req: NextRequest) {
       cost: cached ? 0 : row.cost_usd,
       chars: row.char_count,
       chunks: row.chunk_count,
-      audio: { url, sentences: row.sentences, sentenceTimes: row.sentence_times, duration: row.duration_seconds },
+      audio: { url, sentences: row.sentences, sentenceTimes: row.sentence_times, chapters: row.chapters ?? [], duration: row.duration_seconds },
     })
   } catch (err) {
     if (err instanceof TtsNotConfiguredError) return NextResponse.json({ error: err.message }, { status: 503 })

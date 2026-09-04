@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useRef, useState, useCallback, useEffect } from 'react'
 import { splitSentences } from '@/lib/speech'
-import type { TtsProvider } from '@/lib/types'
+import type { Chapter, TtsProvider } from '@/lib/types'
 
 // The transport engine. Two backends behind one interface:
 //   browser    — SpeechSynthesis utterances; sentence position from onboundary
@@ -28,6 +28,7 @@ interface SpeechState {
   voiceUri: string | null    // browser voice, reused on resume/setRate
   audioTime: number          // audio only, throttled to ~2 updates/s
   audioDuration: number      // audio only (0 until metadata loads)
+  chapters: Chapter[]        // jump-to points (sentence indices) for the active item
   // Set (with a fresh seq) each time an item plays to its natural end —
   // never on stop()/pause(). The queue watches this to advance.
   ended: { id: string; seq: number } | null
@@ -37,6 +38,7 @@ export interface AudioTrack {
   url: string
   sentences: string[]
   sentenceTimes: number[]
+  chapters?: Chapter[]
 }
 
 export interface SpeechPosition {
@@ -52,7 +54,7 @@ export interface SpeechProgress {
 }
 
 interface SpeechActions {
-  play: (id: string, plainText: string, voiceUri?: string | null, rate?: number, fromSentence?: number) => void
+  play: (id: string, plainText: string, voiceUri?: string | null, rate?: number, fromSentence?: number, chapters?: Chapter[]) => void
   // Premium flow: prepareAudio() synchronously inside a user gesture (shows
   // the loading state and unlocks audio on iOS), then playAudio() once the
   // track URL is back, or cancelLoading() on failure.
@@ -64,7 +66,9 @@ interface SpeechActions {
   stop: () => void
   setRate: (rate: number) => void
   seekFraction: (fraction: number) => void   // scrub
+  seekToSentence: (index: number) => void    // chapter jump (audio: its start time; browser: restart there)
   skip: (seconds: number) => void            // ±15s (browser: ±2 sentences)
+  currentChapterIndex: number                // -1 when no chapters
   getPosition: () => SpeechPosition
   progress: SpeechProgress
   currentSentenceIndex: number
@@ -89,6 +93,7 @@ const INITIAL_STATE: SpeechState = {
   voiceUri: null,
   audioTime: 0,
   audioDuration: 0,
+  chapters: [],
   ended: null,
 }
 
@@ -254,6 +259,7 @@ export function SpeechProvider({ children }: { children: React.ReactNode }) {
     voiceUri?: string | null,
     rate?: number,
     fromSentence = 0,
+    chapters: Chapter[] = [],
   ) => {
     cancelUtterance()
     stopAudio()
@@ -275,6 +281,7 @@ export function SpeechProvider({ children }: { children: React.ReactNode }) {
       charIndexOffset: offset,
       rate: effectiveRate,
       voiceUri: effectiveVoice,
+      chapters,
     }))
 
     speakFrom(id, sentences, starts, fromIdx, effectiveVoice, effectiveRate)
@@ -315,6 +322,7 @@ export function SpeechProvider({ children }: { children: React.ReactNode }) {
       currentCharIndex: startIdx,
       audioTime: fromSeconds,
       rate: effectiveRate,
+      chapters: track.chapters ?? [],
     }))
     audio.src = track.url
     audio.playbackRate = effectiveRate
@@ -389,6 +397,20 @@ export function SpeechProvider({ children }: { children: React.ReactNode }) {
     restartBrowserAt(Math.round(f * Math.max(0, cur.sentences.length - 1)))
   }, [restartBrowserAt])
 
+  const seekToSentence = useCallback((index: number) => {
+    const cur = stateRef.current
+    if (!cur.activeId) return
+    if (cur.provider === 'elevenlabs') {
+      const audio = audioRef.current
+      const t = cur.sentenceTimes[Math.min(Math.max(0, index), cur.sentenceTimes.length - 1)]
+      if (!audio || t === undefined) return
+      audio.currentTime = t
+      setState((prev) => ({ ...prev, audioTime: t, currentCharIndex: sentenceIndexAtTime(prev.sentenceTimes, t) }))
+      return
+    }
+    restartBrowserAt(index)
+  }, [restartBrowserAt])
+
   const skip = useCallback((seconds: number) => {
     const cur = stateRef.current
     if (cur.provider === 'elevenlabs') {
@@ -426,6 +448,11 @@ export function SpeechProvider({ children }: { children: React.ReactNode }) {
 
   // ── Derived ─────────────────────────────────────────────────────────────────
   const currentSentenceIndex = getSentenceIndex(state.sentenceStarts, state.currentCharIndex)
+  let currentChapterIndex = -1
+  for (let i = 0; i < state.chapters.length; i++) {
+    if (state.chapters[i].sentenceIndex <= currentSentenceIndex) currentChapterIndex = i
+    else break
+  }
   const progress: SpeechProgress = state.provider === 'elevenlabs'
     ? {
         unit: 'seconds',
@@ -452,10 +479,12 @@ export function SpeechProvider({ children }: { children: React.ReactNode }) {
       stop,
       setRate,
       seekFraction,
+      seekToSentence,
       skip,
       getPosition,
       progress,
       currentSentenceIndex,
+      currentChapterIndex,
     }}>
       {children}
     </SpeechContext.Provider>

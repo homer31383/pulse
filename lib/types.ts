@@ -159,6 +159,12 @@ export type ScheduleOutput = 'briefings' | 'digest' | 'both'
 
 export type TtsProvider = 'browser' | 'elevenlabs'
 
+// A jump-to point inside a spoken item (see lib/speechScript.ts)
+export interface Chapter {
+  label: string
+  sentenceIndex: number
+}
+
 // ── Listen Queue (migration 019) ─────────────────────────────────────────────
 export interface ListenQueueItem {
   id: string                       // queue row id
