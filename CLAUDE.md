@@ -29,7 +29,7 @@ npm install
 npm run dev
 ```
 
-Run all migrations in `supabase/migrations/` in order (001 through 018) in the Supabase SQL editor. Optionally run `supabase/seed.sql` for sample channels.
+Run all migrations in `supabase/migrations/` in order (001 through 019) in the Supabase SQL editor. Optionally run `supabase/seed.sql` for sample channels.
 
 ## File Structure
 
@@ -44,6 +44,8 @@ app/
   notes/page.tsx                — Saved notes/clips page (client component)
   pinned/page.tsx               — Pinned insights page (client component)
   briefing-history/page.tsx     — "The Archive": briefings + digests grouped by day (DailyArchiveClient)
+  listen/page.tsx               — Listen Queue page
+  read/[kind]/[id]/page.tsx     — Reading view for one briefing/digest (queue "Read" links land here)
   share/[slug]/page.tsx         — Public shared briefing view (server component)
   settings/page.tsx             — Settings page wrapper
   digest-history/page.tsx       — Digest history page
@@ -77,6 +79,9 @@ app/
     usage/route.ts                       — GET: usage stats (totals, daily, by-channel)
     tts/elevenlabs/route.ts              — GET: premium-audio cost estimate / cached track; POST: generate (or fetch cached) audio
     tts/elevenlabs/voices/route.ts       — GET: curated + live premade ElevenLabs voices
+    queue/route.ts                       — Listen Queue: GET list + cost summary, POST add, PATCH reorder
+    queue/[id]/route.ts                  — PATCH progress/played (played also marks read), DELETE
+    queue/[id]/content/route.ts          — GET item text for playback
     settings/route.ts                    — GET/PATCH settings (profile-scoped)
     profiles/route.ts                    — GET list, POST create profile
     cron/scheduled-briefings/route.ts    — GET (Vercel Cron, hourly): pre-generate scheduled briefings/digests
@@ -96,10 +101,17 @@ components/
   DigestHistoryClient.tsx     — Digest history with expand/PDF/delete
   WeeklySummaryHistoryClient.tsx — Weekly summary history
   MarkdownRenderer.tsx        — Shared markdown renderer (links open in new tab; used by utility pages)
+  ListenQueueClient.tsx       — /listen page body: Play all/Resume, cost line, QueueList, Played section
+  ReadArticleClient.tsx       — /read/[kind]/[id] reading view: Listen bar + article + end-of-article read sentinel
   press/
+    AudioPlayer.tsx           — Per-article Listen bar (both TTS providers) + SpokenArticle highlight wrapper + Queue toggle
+    MiniPlayer.tsx            — Docked mini player (visible whenever the queue is non-empty)
+    ExpandedPlayer.tsx        — Full player sheet: transport, scrub, speed, queue list
+    QueueList.tsx             — Sortable "up next" list (jump / Read / remove) + QueueCostLine
+    PlayerDock.tsx            — Mini + Expanded, mounted once in the root layout
     Masthead.tsx              — PULSE nameplate, subtitle, dateline rules
     TickerBar.tsx             — Key-figures bar under the masthead (settings.ticker_items)
-    PressNav.tsx              — Bottom nav: Today/History/Pinned/Channels/Settings
+      PressNav.tsx              — Bottom nav: Today/History/Listen/Pinned/Channels/Settings
     PressArticle.tsx          — Broadsheet article renderer: section rules, analyst-note asides, two-column, per-section pin (PRESS_MD_COMPONENTS exported for reuse)
   SpeechProviderWrapper.tsx   — TTS context provider
 
@@ -111,6 +123,7 @@ lib/
   cost.ts       — Token cost calculation and formatting
   elevenlabs.ts — Client-safe ElevenLabs constants (models, prices, curated voices), chunkText(), cost estimate
   tts.ts        — Server-only ElevenLabs synthesis, Supabase Storage audio cache, TTS usage logging, cleanup
+  queue.ts      — Server-only Listen Queue: enqueue, list (+cost), reorder, progress, batch sort, cleanup
   usage.ts      — Server-side usage logging to Supabase
   speech.ts     — stripMarkdown() and splitSentences() for TTS
 ```
@@ -182,6 +195,7 @@ Two backends behind one player (`contexts/SpeechContext.tsx`): the free browser 
 - **Model**: `ELEVENLABS_DEFAULT_MODEL = eleven_flash_v2_5` ($0.05/1K chars, 40k-char cap → a briefing is one request). `ELEVENLABS_MODELS` carries per-model caps/prices; switching to Multilingual v2 (10k) or v3 (5k, $0.10/1K) makes `chunkText()` kick in automatically.
 - **Chunking** (`lib/elevenlabs.ts` `chunkText`): paragraph boundaries first, sentence boundaries for oversize paragraphs, balanced chunk sizes (no tiny tail — voice consistency is per request). Chunks are synthesized sequentially with `previous_text`/`next_text`/`previous_request_ids` (ElevenLabs request stitching), MP3 segments concatenated (ID3 headers stripped) into one file, and per-chunk timings shifted by cumulative duration.
 - **Highlighting**: exact, from the `with-timestamps` endpoint's character alignment reduced server-side to per-sentence start times over `chunks.join('\n\n')`. The `tts_audio` row stores both the sentences and their times; the client displays the server's sentences during premium playback so the two can never drift.
+- **Playback URL**: `/api/tts/audio/[tts_audio.id]` streams the cached MP3 same-origin with HTTP Range support (206 + `Content-Range` + `Accept-Ranges`). Supabase's signed-download URL answers a Range request with 206 but no `Content-Range`/`Accept-Ranges`, which Chrome's media pipeline treats as a stalled load — never hand the storage URL to `<audio>` directly. (`signedAudioUrl` remains for server-side use.) Note: the Claude-in-Chrome automation profile cannot play any media element (blob and data URIs stall too), so premium playback is only verifiable in a normal browser; the standard voice and the queue layer were verified there
 - **Cache**: private Storage bucket `tts-audio` (created on first use, 64 kbps mono MP3 ≈ 4 MB per 9-minute briefing), keyed `{kind}/{id}/{voice}.{model}.mp3`, one row per (kind, item_id, voice_id, model_id) in `tts_audio`. Re-listening never regenerates. Storage has no cascade: the briefing/digest/channel DELETE routes and the retention cleanup in `app/page.tsx` call `deleteTtsAudio()`.
 - **Cost**: logged to `usage_logs` as `call_type = 'tts'`, `model = 'elevenlabs/<model>'`, `input_tokens` = characters billed, with the channel name — so it appears in the dashboard totals and per-channel breakdown. The settings-page estimator filters to `briefing`/`digest` and ignores it.
 - Settings: `tts_voice` (browser voice URI), `tts_speed`, `tts_provider`, `tts_elevenlabs_voice_id` (`tts_enabled` is legacy/unused). Curated voice ids live in `ELEVENLABS_VOICES` (verified against the account's `/v1/voices` on 2026-09-04; Rachel is no longer premade); the picker merges the account's live premade voices when the key is set.
@@ -227,6 +241,19 @@ The reading experience (BriefingCard/BriefingSheet), home screen, history/archiv
 - **PressArticle** splits briefing markdown by `##` headings: leading `#` → Georgia headline; sections titled like "Key Takeaways"/analysis → "Analyst note" aside (tinted bg, accent left border); other sections get a label+rule header with a bookmark pin (posts to `/api/pins`); long sections flow into two CSS columns on desktop; a fold line appears mid-article when ≥5 sections. No cards anywhere in reading views — hairline rules only.
 - **TickerBar**: figures under the home masthead from `settings.ticker_items` (migration 014, JSONB `{label, value, change}`), edited manually in Settings → Ticker Bar. Hidden when empty.
 - **PressNav**: bottom nav on press pages. "Channels" links to `/channels/new/config`.
+
+## Listen Queue (migration 019)
+
+The queue is "what's next" — each item can be listened to or read — and the persistent player is the primary way through it. One playback system: article Listen buttons route through the queue.
+- **Table `listen_queue`**: (profile_id, kind, item_id) unique; `position` (play order), `source` ('scheduled' | 'live' | 'manual'), `played_at` (NULL = unplayed), resume state on the row (`progress_sentence` browser voice / `progress_seconds` premium, `last_played_at`). Current position across devices is derived: the unplayed row touched most recently, else the first. Polymorphic (no FK): the briefing/digest/channel DELETE routes and the retention sweep call `removeQueueItemsFor()`; `listQueue()` drops orphans; played rows prune after 30 days.
+- **Auto-queue**: `lib/generation.ts` enqueues every persisted briefing/digest (scheduled and live); the cron calls `sortBatch()` afterwards so a batch plays in edition order (digest first, briefings by channel position) behind older unplayed items.
+- **On-demand audio**: nothing is generated when a batch lands. An uncached premium item generates (and caches) the first time it is played, with a loading state in the player; a generation failure falls back to the standard voice so the queue keeps moving. No per-item cost prompt — the expanded player shows the remaining uncached estimate above the list (`QueueCostLine`, via `estimateTtsCost`).
+- **API**: `GET /api/queue` (items + cost summary), `POST` add {kind, itemId} (re-queues a played item at the end), `PATCH` reorder {orderedIds}; `/api/queue/[id]` PATCH progress / `played: true` (also sets `read_at` — listening to the end counts as reading) and DELETE; `/api/queue/[id]/content` returns the text when playback starts.
+- **Tree**: `RootLayout → SpeechProvider (transport engine: status, sentence index, progress, seek/skip, ended signal) → QueueProvider (list, current item, auto-advance, resume, expanded/collapsed) → page + PlayerDock`. `contexts/QueueContext.tsx` is the single playback entry point (`playFromArticle`, `playItem`, `playAll`, `togglePlay`, `next/prev`); progress saves every 15s and on pause/tab hide/unload.
+- **Player**: `components/press/MiniPlayer.tsx` — docked bottom bar visible whenever the queue is non-empty (above the home generate bar): monogram, title, "3 of 7", progress line along the top edge, prev / play-pause / next; tapping the bar expands. `ExpandedPlayer.tsx` — bottom sheet (same slide-up as the briefing sheet): large monogram, title, "channel · 3 of 7", scrubbable progress with elapsed/remaining (browser voice: sentences), rewind/forward 15s (browser: ±2 sentences), prev/play/next, speed pill, then the queue (`QueueList`: tap = jump, "Read" = open `/read/{kind}/{id}` without touching playback, × = remove, drag = reorder). Expand/collapse is UI state only. **End of queue**: the bar shows "Queue finished · N played, marked read" with a dismiss ×, rather than vanishing mid-interaction; it hides on dismiss, and an empty queue hides the bar.
+- **Reading mode**: `/read/[kind]/[id]` (`ReadArticleClient`) is the per-item reading view; reaching the end of the article marks it read (IntersectionObserver sentinel → `/api/read`). Reading does **not** complete the queue item — only listening to the end does; the Listen bar's "In queue · Remove" and the row × are the "skimmed it, don't need the audio" override.
+- **Article bar** (`AudioPlayer`): Listen/Pause shortcut (Listen = queue it if needed + play through the queue), length, provider, sentence position, and the queue toggle. No inline transport — that lives in the player. `SpokenArticle` swaps in the highlighted view while an article is being read aloud, on every surface.
+- `/listen` is the full-page version of the queue (Play all/Resume, cost line, list, Played section with Re-queue), linked from PressNav.
 
 ## Read/Unread Tracking
 

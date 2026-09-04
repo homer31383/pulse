@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { generateChannelBriefing, generateProfileDigest } from '@/lib/generation'
+import { sortBatch } from '@/lib/queue'
 import type { Channel } from '@/lib/types'
 
 // Web-search generation can take minutes; channels run in parallel
@@ -201,6 +202,7 @@ export async function GET(req: NextRequest) {
       console.log(
         `[cron] profile ${profileId}: generating ${tasks.length} item(s) in parallel: ${tasks.map((t) => t.label).join(', ')}`
       )
+      const runStartedAt = new Date().toISOString()
       const settled = await Promise.allSettled(tasks.map((t) => t.run()))
 
       const succeeded: string[] = []
@@ -218,6 +220,12 @@ export async function GET(req: NextRequest) {
         `[cron] profile ${profileId}: ${succeeded.length}/${tasks.length} generated` +
         (failed.length ? ` (${failed.length} failed — next hourly run will retry within the catch-up window)` : '')
       )
+      // Items joined the Listen Queue in completion order; put this batch in
+      // edition order (digest first, then briefings by channel position)
+      if (succeeded.length > 1) {
+        await sortBatch(profileId, runStartedAt).catch((err) =>
+          console.warn(`[cron] profile ${profileId}: queue sort failed — ${(err as Error).message}`))
+      }
 
       results.push({
         profileId,

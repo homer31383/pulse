@@ -159,6 +159,38 @@ export type ScheduleOutput = 'briefings' | 'digest' | 'both'
 
 export type TtsProvider = 'browser' | 'elevenlabs'
 
+// ── Listen Queue (migration 019) ─────────────────────────────────────────────
+export interface ListenQueueItem {
+  id: string                       // queue row id
+  kind: 'briefing' | 'digest'
+  item_id: string
+  position: number
+  source: 'scheduled' | 'live' | 'manual'
+  added_at: string
+  played_at: string | null         // NULL = unplayed
+  progress_sentence: number        // resume point, standard voice
+  progress_seconds: number         // resume point, premium audio
+  last_played_at: string | null
+  // Denormalised for display
+  title: string
+  subtitle: string | null
+  created_at: string
+  channel_id: string | null
+  chars: number                    // stripped-text length (drives the cost estimate)
+  minutes: number                  // ~reading time
+  cached: boolean                  // premium audio already generated for the current voice
+}
+
+export interface QueueCostSummary {
+  provider: TtsProvider
+  unplayed: number
+  chars: number
+  minutes: number
+  cachedCount: number
+  uncachedChars: number
+  estimatedCost: number            // premium only; 0 for the browser voice
+}
+
 // A figure shown in the broadsheet ticker bar (values maintained in settings)
 export interface TickerItem {
   label: string

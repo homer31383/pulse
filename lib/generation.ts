@@ -4,6 +4,7 @@ import { anthropic, resolveModel } from '@/lib/anthropic'
 import { supabase } from '@/lib/supabase'
 import { calculateCost } from '@/lib/cost'
 import { logUsage } from '@/lib/usage'
+import { enqueue } from '@/lib/queue'
 import type { Channel, Source } from '@/lib/types'
 
 export const BRIEFING_DENSITY_INSTRUCTIONS: Record<string, string> = {
@@ -636,6 +637,13 @@ export async function generateChannelBriefing(opts: {
       ...usageExtras,
     }).catch(() => {})
 
+    // Listen Queue: scheduled batches and live generations both join it
+    // (the cron re-sorts a batch into edition order once it settles)
+    if (briefingResult.data?.id) {
+      enqueue(profileId, 'briefing', briefingResult.data.id, scheduled ? 'scheduled' : 'live').catch((err) =>
+        console.warn('[queue] enqueue failed:', (err as Error).message))
+    }
+
     return {
       id: briefingResult.data?.id,
       content,
@@ -732,6 +740,11 @@ export async function generateProfileDigest(opts: {
       costUsd,
       ...usageExtras,
     }).catch(() => {})
+
+    if (digestRow?.id) {
+      enqueue(profileId, 'digest', digestRow.id, scheduled ? 'scheduled' : 'live').catch((err) =>
+        console.warn('[queue] enqueue failed:', (err as Error).message))
+    }
 
     return {
       id: digestRow?.id,

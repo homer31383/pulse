@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 const NAV_ITEMS = [
   { label: 'Today', href: '/' },
   { label: 'History', href: '/briefing-history' },
+  { label: 'Listen', href: '/listen' },
   { label: 'Pinned', href: '/pinned' },
   { label: 'Channels', href: '/channels/new/config' },
   { label: 'Settings', href: '/settings' },

@@ -96,6 +96,14 @@ export async function getCachedAudio(
   return (data as TtsAudioRow | null) ?? null
 }
 
+// Playback URL: the app's own range-capable stream (app/api/tts/audio/[id]).
+// Chrome's <audio> stalled on Supabase's signed-download URL; same-origin
+// streaming with explicit Content-Length/Accept-Ranges plays and seeks.
+export function audioUrlFor(row: { id: string }): string {
+  return `/api/tts/audio/${row.id}`
+}
+
+// Direct signed URL (server-to-server use, e.g. tests)
 export async function signedAudioUrl(storagePath: string): Promise<string> {
   const { data, error } = await supabase.storage.from(TTS_BUCKET).createSignedUrl(storagePath, SIGNED_URL_TTL_S)
   if (error || !data) throw new Error(`Could not sign audio URL: ${error?.message ?? 'unknown'}`)
@@ -197,7 +205,7 @@ export async function synthesizeItem(opts: {
   const { item, voiceId } = opts
 
   const cached = await getCachedAudio(item.kind, item.id, voiceId, modelId)
-  if (cached) return { row: cached, url: await signedAudioUrl(cached.storage_path), cached: true }
+  if (cached) return { row: cached, url: audioUrlFor(cached), cached: true }
 
   apiKey() // fail fast before any work
   const chunks = chunkText(item.plain, opts.chunkCap ?? ELEVENLABS_MODELS[modelId].maxChars)
@@ -291,7 +299,7 @@ export async function synthesizeItem(opts: {
     costUsd,
   }).catch(() => {})
 
-  return { row: row as TtsAudioRow, url: await signedAudioUrl(storagePath), cached: false }
+  return { row: row as TtsAudioRow, url: audioUrlFor(row as TtsAudioRow), cached: false }
 }
 
 // ── Cleanup ───────────────────────────────────────────────────────────────────

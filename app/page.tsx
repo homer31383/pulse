@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { HomeClient } from '@/components/HomeClient'
 import { SETTINGS_DEFAULTS } from '@/app/api/settings/route'
 import { deleteTtsAudio } from '@/lib/tts'
+import { removeQueueItemsFor } from '@/lib/queue'
 import type { Channel, ChannelGroup, AppSettings, Profile, Briefing, Digest } from '@/lib/types'
 
 // Always fetch fresh channel list and settings
@@ -102,6 +103,7 @@ export default async function HomePage() {
         if (ids.length > 0) {
           await supabase.from('briefings').delete().in('id', ids)
           await deleteTtsAudio('briefing', ids)
+          await removeQueueItemsFor('briefing', ids)
         }
       }
       const { data: oldDigests } = await supabase
@@ -110,6 +112,7 @@ export default async function HomePage() {
       if (digestIds.length > 0) {
         await supabase.from('digests').delete().in('id', digestIds)
         await deleteTtsAudio('digest', digestIds)
+        await removeQueueItemsFor('digest', digestIds)
       }
     })().catch(() => {})
   }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { deleteTtsAudio } from '@/lib/tts'
+import { removeQueueItemsFor } from '@/lib/queue'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -46,5 +47,6 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   const briefingIds = (briefingRows ?? []).map((b: { id: string }) => b.id)
   deleteTtsAudio('briefing', briefingIds).catch(() => {})
+  removeQueueItemsFor('briefing', briefingIds).catch(() => {})
   return new NextResponse(null, { status: 204 })
 }

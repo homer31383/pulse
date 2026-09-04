@@ -16,7 +16,7 @@ import {
   isTtsConfigured,
   listVoices,
   loadTtsItem,
-  signedAudioUrl,
+  audioUrlFor,
   synthesizeItem,
   type TtsKind,
 } from '@/lib/tts'
@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
     voiceName: await voiceName(voiceId),
     audio: cached
       ? {
-          url: await signedAudioUrl(cached.storage_path),
+          url: audioUrlFor(cached),
           sentences: cached.sentences,
           sentenceTimes: cached.sentence_times,
           duration: cached.duration_seconds,
