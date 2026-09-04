@@ -25,10 +25,11 @@ npm install
 #   NEXT_PUBLIC_SUPABASE_URL=https://lnuxspwttddbbpomcekg.supabase.co
 #   SUPABASE_SERVICE_ROLE_KEY=<your key>
 #   ANTHROPIC_API_KEY=<your key>
+#   ELEVENLABS_API_KEY=<your key>   # optional: premium TTS; without it the app falls back to browser speech
 npm run dev
 ```
 
-Run all migrations in `supabase/migrations/` in order (001 through 017) in the Supabase SQL editor. Optionally run `supabase/seed.sql` for sample channels.
+Run all migrations in `supabase/migrations/` in order (001 through 018) in the Supabase SQL editor. Optionally run `supabase/seed.sql` for sample channels.
 
 ## File Structure
 
@@ -74,6 +75,8 @@ app/
     pins/[id]/route.ts                   — DELETE pinned insight
     read/route.ts                        — POST: batch mark briefings/digests read
     usage/route.ts                       — GET: usage stats (totals, daily, by-channel)
+    tts/elevenlabs/route.ts              — GET: premium-audio cost estimate / cached track; POST: generate (or fetch cached) audio
+    tts/elevenlabs/voices/route.ts       — GET: curated + live premade ElevenLabs voices
     settings/route.ts                    — GET/PATCH settings (profile-scoped)
     profiles/route.ts                    — GET list, POST create profile
     cron/scheduled-briefings/route.ts    — GET (Vercel Cron, hourly): pre-generate scheduled briefings/digests
@@ -106,6 +109,8 @@ lib/
   anthropic.ts  — Anthropic client + DEFAULT_MODEL constant
   generation.ts — Shared briefing/digest generation (prompts, web-search stream, persist, usage) used by SSE routes AND the cron route
   cost.ts       — Token cost calculation and formatting
+  elevenlabs.ts — Client-safe ElevenLabs constants (models, prices, curated voices), chunkText(), cost estimate
+  tts.ts        — Server-only ElevenLabs synthesis, Supabase Storage audio cache, TTS usage logging, cleanup
   usage.ts      — Server-side usage logging to Supabase
   speech.ts     — stripMarkdown() and splitSentences() for TTS
 ```
@@ -170,12 +175,18 @@ Channels are scoped to profiles via `profile_id`.
 
 ## Text-to-Speech (TTS)
 
-- Uses browser `SpeechSynthesis` API (no server-side TTS)
-- `SpeechProviderWrapper` provides context throughout the app
-- `BriefingCard` has play/pause button and speed controls (0.5x-2x)
-- `stripMarkdown()` cleans content for speech
-- `splitSentences()` provides byte offsets for sentence-level highlighting during playback
-- Settings: `tts_enabled`, `tts_voice` (browser voice name), `tts_speed`
+Two backends behind one player (`contexts/SpeechContext.tsx`): the free browser `SpeechSynthesis` engine (default) and premium ElevenLabs audio (opt-in). The card's play/pause/stop/speed controls are identical for both.
+
+- **Standard (browser)**: `SpeechSynthesisUtterance`; sentence highlighting from `onboundary` char offsets over `splitSentences(stripMarkdown(content))`. Stops on tab hide (ghost-audio workaround).
+- **Premium (ElevenLabs)**: settings `tts_provider = 'elevenlabs'` + `tts_elevenlabs_voice_id` (migration 018). Card flow: click play → `speech.prepareAudio()` synchronously (loading state + plays a silent WAV to unlock iOS autoplay) → `GET /api/tts/elevenlabs` → cached track plays immediately, otherwise an inline estimate ("7,842 characters · about $0.39 with Flash v2.5 · Rachel") with Generate / Standard voice buttons → `POST` generates → `speech.playAudio()` drives a single hidden `<audio>` element. Speed = `playbackRate` (never a regeneration). Keeps playing when the tab is hidden. Cards without a persisted id (still streaming) and servers without `ELEVENLABS_API_KEY` fall back to the browser voice.
+- **Model**: `ELEVENLABS_DEFAULT_MODEL = eleven_flash_v2_5` ($0.05/1K chars, 40k-char cap → a briefing is one request). `ELEVENLABS_MODELS` carries per-model caps/prices; switching to Multilingual v2 (10k) or v3 (5k, $0.10/1K) makes `chunkText()` kick in automatically.
+- **Chunking** (`lib/elevenlabs.ts` `chunkText`): paragraph boundaries first, sentence boundaries for oversize paragraphs, balanced chunk sizes (no tiny tail — voice consistency is per request). Chunks are synthesized sequentially with `previous_text`/`next_text`/`previous_request_ids` (ElevenLabs request stitching), MP3 segments concatenated (ID3 headers stripped) into one file, and per-chunk timings shifted by cumulative duration.
+- **Highlighting**: exact, from the `with-timestamps` endpoint's character alignment reduced server-side to per-sentence start times over `chunks.join('\n\n')`. The `tts_audio` row stores both the sentences and their times; the client displays the server's sentences during premium playback so the two can never drift.
+- **Cache**: private Storage bucket `tts-audio` (created on first use, 64 kbps mono MP3 ≈ 4 MB per 9-minute briefing), keyed `{kind}/{id}/{voice}.{model}.mp3`, one row per (kind, item_id, voice_id, model_id) in `tts_audio`. Re-listening never regenerates. Storage has no cascade: the briefing/digest/channel DELETE routes and the retention cleanup in `app/page.tsx` call `deleteTtsAudio()`.
+- **Cost**: logged to `usage_logs` as `call_type = 'tts'`, `model = 'elevenlabs/<model>'`, `input_tokens` = characters billed, with the channel name — so it appears in the dashboard totals and per-channel breakdown. The settings-page estimator filters to `briefing`/`digest` and ignores it.
+- Settings: `tts_enabled`, `tts_voice` (browser voice URI), `tts_speed`, `tts_provider`, `tts_elevenlabs_voice_id`. Curated voice ids live in `ELEVENLABS_VOICES` (verified against the account's `/v1/voices` on 2026-09-04; Rachel is no longer premade); the picker merges the account's live premade voices when the key is set.
+- **Account tier matters**: the free ElevenLabs tier caps API usage at ~10k characters/month (one briefing) and returns 402 `paid_plan_required` for library (non-premade) voices. Real use needs a paid plan; the $0.05/1K Flash rate is the paid API price.
+- Test hooks: `synthesizeItem({ chunkCap })` forces chunking below the model cap; the e2e script (scratchpad `tts-e2e.mts`, run via `npx tsx` from `scripts/`) generates on a throwaway id, checks voices/timings/MP3/cache/cleanup, and removes everything it made.
 
 ## Cost Tracking
 

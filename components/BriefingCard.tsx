@@ -5,8 +5,9 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { formatCost, formatTokens } from '@/lib/cost'
 import { stripMarkdown } from '@/lib/speech'
-import { useSpeech } from '@/contexts/SpeechContext'
-import type { BriefingState, ConversationMessage, Source } from '@/lib/types'
+import { formatTtsCost } from '@/lib/elevenlabs'
+import { useSpeech, type AudioTrack } from '@/contexts/SpeechContext'
+import type { BriefingState, ConversationMessage, Source, TtsProvider } from '@/lib/types'
 import { MARKDOWN_COMPONENTS } from './MarkdownRenderer'
 import { PressArticle } from './press/PressArticle'
 
@@ -21,7 +22,17 @@ interface BriefingCardProps {
   ttsEnabled?: boolean
   defaultVoice?: string | null
   defaultSpeed?: number
+  ttsProvider?: TtsProvider
+  elevenLabsVoiceId?: string | null
   sheetMode?: boolean
+}
+
+interface TtsEstimate {
+  chars: number
+  estimatedCost: number
+  modelLabel: string
+  voiceName: string
+  voiceId: string
 }
 
 // Distinct publication names (hostnames) for the source footer
@@ -59,6 +70,8 @@ export function BriefingCard({
   ttsEnabled = false,
   defaultVoice = null,
   defaultSpeed = 1,
+  ttsProvider = 'browser',
+  elevenLabsVoiceId = null,
   sheetMode = false,
 }: BriefingCardProps) {
   const contentRef = useRef<HTMLDivElement>(null)
@@ -93,11 +106,75 @@ export function BriefingCard({
   const isPlaying = isActive && speech.status === 'playing'
   const isPaused = isActive && speech.status === 'paused'
 
+  // ── Premium (ElevenLabs) flow ──────────────────────────────────────────────
+  // Cached audio plays straight away. Otherwise the cost estimate is shown
+  // inline and nothing is generated until the reader confirms. Unpersisted
+  // cards (no id yet) and unconfigured servers fall back to the browser voice.
+  const [ttsEstimate, setTtsEstimate] = useState<TtsEstimate | null>(null)
+  const [ttsError, setTtsError] = useState<string | null>(null)
+  const ttsKind: 'briefing' | 'digest' = briefing.channelId === 'digest' ? 'digest' : 'briefing'
+  const usePremium = ttsProvider === 'elevenlabs' && !!briefing.briefingId
+  const isLoadingAudio = isActive && speech.status === 'loading'
+
+  function playBrowser() {
+    const plain = stripMarkdown(briefing.content)
+    speech.play(cardId, plain, defaultVoice, defaultSpeed)
+  }
+
+  async function startPremium() {
+    setTtsError(null)
+    setTtsEstimate(null)
+    speech.prepareAudio(cardId, defaultSpeed) // sync, inside the click gesture
+    try {
+      const q = new URLSearchParams({ kind: ttsKind, id: briefing.briefingId! })
+      if (elevenLabsVoiceId) q.set('voiceId', elevenLabsVoiceId)
+      const res = await fetch(`/api/tts/elevenlabs?${q}`)
+      const est = await res.json() as {
+        error?: string; configured?: boolean; audio?: AudioTrack | null
+        chars: number; estimatedCost: number; modelLabel: string; voiceName: string; voiceId: string
+      }
+      if (!res.ok) throw new Error(est.error || 'Could not check premium audio')
+      if (est.audio) { speech.playAudio(cardId, est.audio, defaultSpeed); return }
+      speech.cancelLoading()
+      if (!est.configured) {
+        setTtsError('Premium audio isn\'t configured on the server yet — using the standard voice.')
+        playBrowser()
+        return
+      }
+      setTtsEstimate({ chars: est.chars, estimatedCost: est.estimatedCost, modelLabel: est.modelLabel, voiceName: est.voiceName, voiceId: est.voiceId })
+    } catch (err) {
+      speech.cancelLoading()
+      setTtsError(err instanceof Error ? err.message : 'Premium audio failed')
+    }
+  }
+
+  async function generatePremium() {
+    const est = ttsEstimate
+    setTtsEstimate(null)
+    setTtsError(null)
+    speech.prepareAudio(cardId, defaultSpeed)
+    try {
+      const res = await fetch('/api/tts/elevenlabs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: ttsKind, id: briefing.briefingId, voiceId: est?.voiceId ?? elevenLabsVoiceId ?? undefined }),
+      })
+      const data = await res.json() as { error?: string; audio?: AudioTrack }
+      if (!res.ok || !data.audio) throw new Error(data.error || 'Audio generation failed')
+      speech.playAudio(cardId, data.audio, defaultSpeed)
+    } catch (err) {
+      speech.cancelLoading()
+      setTtsError(err instanceof Error ? err.message : 'Audio generation failed')
+    }
+  }
+
   function handleTtsPlayPause() {
     if (!isDone || !briefing.content) return
     if (!isActive) {
-      const plain = stripMarkdown(briefing.content)
-      speech.play(cardId, plain, defaultVoice, defaultSpeed)
+      if (usePremium) void startPremium()
+      else playBrowser()
+    } else if (isLoadingAudio) {
+      return
     } else if (isPlaying) {
       speech.pause()
     } else if (isPaused) {
@@ -384,6 +461,15 @@ export function BriefingCard({
         {/* TTS controls bar — visible when this card is active */}
         {ttsEnabled && isActive && (
           <div className="flex items-center gap-2 px-4 py-2 border-b-[0.5px] bg-press-accent/[0.05] border-press-hair">
+            {isLoadingAudio && (
+              <span className="flex items-center gap-1.5 font-chrome text-[11px] text-press-muted">
+                <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Generating audio…
+              </span>
+            )}
             {/* Speed pills */}
             <div className="flex items-center gap-1">
               {TTS_SPEEDS.map((s) => (
@@ -411,6 +497,41 @@ export function BriefingCard({
                 <path d="M6 6h12v12H6z" />
               </svg>
             </button>
+          </div>
+        )}
+
+        {/* Premium audio: cost confirmation before anything is generated */}
+        {ttsEstimate && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2 border-b-[0.5px] border-press-hair bg-press-accent/[0.05] font-chrome text-[11px] text-press-body">
+            <span>
+              Premium audio · {ttsEstimate.chars.toLocaleString()} characters · about {formatTtsCost(ttsEstimate.estimatedCost)} with {ttsEstimate.modelLabel} · {ttsEstimate.voiceName}
+            </span>
+            <span className="ml-auto flex items-center gap-2">
+              <button
+                onClick={() => void generatePremium()}
+                className="px-2.5 py-1 rounded-full bg-press-accent text-white hover:bg-press-accent/90 transition-colors"
+              >
+                Generate
+              </button>
+              <button
+                onClick={() => { setTtsEstimate(null); playBrowser() }}
+                className="px-2.5 py-1 rounded-full border border-press-hair text-press-muted hover:text-press-accent hover:border-press-accent/60 transition-colors"
+              >
+                Standard voice
+              </button>
+              <button
+                onClick={() => setTtsEstimate(null)}
+                aria-label="Dismiss"
+                className="px-1 text-press-faint hover:text-press-ink"
+              >
+                ×
+              </button>
+            </span>
+          </div>
+        )}
+        {ttsError && (
+          <div className="px-4 py-1.5 border-b-[0.5px] border-press-hair font-chrome text-[11px] text-press-down">
+            {ttsError}
           </div>
         )}
 

@@ -142,8 +142,10 @@ export interface AppSettings {
   discuss_enabled: boolean
   briefing_retention_days: number | null
   tts_enabled: boolean
-  tts_voice: string | null
+  tts_voice: string | null              // browser (Web Speech) voice URI
   tts_speed: number
+  tts_provider: TtsProvider             // 'browser' (free) | 'elevenlabs' (premium)
+  tts_elevenlabs_voice_id: string | null
   // Scheduled briefings (Vercel Cron)
   schedule_enabled: boolean
   schedule_time: string           // 'HH:MM' Eastern Time; generation runs on the hour
@@ -154,6 +156,8 @@ export interface AppSettings {
 }
 
 export type ScheduleOutput = 'briefings' | 'digest' | 'both'
+
+export type TtsProvider = 'browser' | 'elevenlabs'
 
 // A figure shown in the broadsheet ticker bar (values maintained in settings)
 export interface TickerItem {

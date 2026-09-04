@@ -977,6 +977,8 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
           ttsEnabled={settings.tts_enabled}
           defaultVoice={settings.tts_voice}
           defaultSpeed={settings.tts_speed}
+          ttsProvider={settings.tts_provider}
+          elevenLabsVoiceId={settings.tts_elevenlabs_voice_id}
         />
       )}
 

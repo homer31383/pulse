@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { deleteTtsAudio } from '@/lib/tts'
 
 interface Params {
   params: Promise<{ digestId: string }>
@@ -14,5 +15,6 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     .eq('id', digestId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  deleteTtsAudio('digest', [digestId]).catch(() => {})
   return NextResponse.json({ ok: true })
 }

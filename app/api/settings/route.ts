@@ -29,6 +29,8 @@ export const SETTINGS_DEFAULTS: AppSettings = {
   tts_enabled: false,
   tts_voice: null,
   tts_speed: 1,
+  tts_provider: 'browser',
+  tts_elevenlabs_voice_id: null,
   schedule_enabled: false,
   schedule_time: '06:00',
   schedule_interval_days: 1,
@@ -47,7 +49,7 @@ const ALLOWED_FIELDS = [
   'notifications_enabled', 'notification_time',
   'discuss_enabled',
   'briefing_retention_days',
-  'tts_enabled', 'tts_voice', 'tts_speed',
+  'tts_enabled', 'tts_voice', 'tts_speed', 'tts_provider', 'tts_elevenlabs_voice_id',
   'schedule_enabled', 'schedule_time', 'schedule_interval_days', 'schedule_channel_ids', 'schedule_output',
   'ticker_items',
 ] as const

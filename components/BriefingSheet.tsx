@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { BriefingCard } from './BriefingCard'
-import type { BriefingState } from '@/lib/types'
+import type { BriefingState, TtsProvider } from '@/lib/types'
 
 interface BriefingSheetProps {
   openIds: string[]
@@ -17,6 +17,8 @@ interface BriefingSheetProps {
   ttsEnabled?: boolean
   defaultVoice?: string | null
   defaultSpeed?: number
+  ttsProvider?: TtsProvider
+  elevenLabsVoiceId?: string | null
 }
 
 function StatusDot({ status }: { status: BriefingState['status'] }) {
@@ -45,6 +47,8 @@ export function BriefingSheet({
   ttsEnabled,
   defaultVoice,
   defaultSpeed,
+  ttsProvider,
+  elevenLabsVoiceId,
 }: BriefingSheetProps) {
   const tabBarRef = useRef<HTMLDivElement>(null)
 
@@ -153,6 +157,8 @@ export function BriefingSheet({
               ttsEnabled={ttsEnabled}
               defaultVoice={defaultVoice}
               defaultSpeed={defaultSpeed}
+              ttsProvider={ttsProvider}
+              elevenLabsVoiceId={elevenLabsVoiceId}
             />
           </div>
         </div>

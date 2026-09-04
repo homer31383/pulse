@@ -2,6 +2,7 @@ import { cookies } from 'next/headers'
 import { supabase } from '@/lib/supabase'
 import { HomeClient } from '@/components/HomeClient'
 import { SETTINGS_DEFAULTS } from '@/app/api/settings/route'
+import { deleteTtsAudio } from '@/lib/tts'
 import type { Channel, ChannelGroup, AppSettings, Profile, Briefing, Digest } from '@/lib/types'
 
 // Always fetch fresh channel list and settings
@@ -90,17 +91,27 @@ export default async function HomePage() {
     const cutoff = new Date()
     cutoff.setDate(cutoff.getDate() - settings.briefing_retention_days)
     const cutoffIso = cutoff.toISOString()
-    // Only delete briefings from channels in this profile
+    // Only delete briefings from channels in this profile. Cached premium
+    // audio is removed alongside (Storage has no cascade).
     const channelIds = channels.map((c) => c.id)
-    if (channelIds.length > 0) {
-      supabase.from('briefings').delete().in('channel_id', channelIds).lt('created_at', cutoffIso).then(() => {})
-    }
-    supabase
-      .from('digests')
-      .delete()
-      .eq('profile_id', currentProfileId)
-      .lt('created_at', cutoffIso)
-      .then(() => {})
+    void (async () => {
+      if (channelIds.length > 0) {
+        const { data: old } = await supabase
+          .from('briefings').select('id').in('channel_id', channelIds).lt('created_at', cutoffIso)
+        const ids = (old ?? []).map((b: { id: string }) => b.id)
+        if (ids.length > 0) {
+          await supabase.from('briefings').delete().in('id', ids)
+          await deleteTtsAudio('briefing', ids)
+        }
+      }
+      const { data: oldDigests } = await supabase
+        .from('digests').select('id').eq('profile_id', currentProfileId).lt('created_at', cutoffIso)
+      const digestIds = (oldDigests ?? []).map((d: { id: string }) => d.id)
+      if (digestIds.length > 0) {
+        await supabase.from('digests').delete().in('id', digestIds)
+        await deleteTtsAudio('digest', digestIds)
+      }
+    })().catch(() => {})
   }
 
   return (

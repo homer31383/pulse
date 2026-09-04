@@ -3,7 +3,8 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { formatCost } from '@/lib/cost'
-import type { AppSettings, BriefingDensity, Channel, ChannelScheduleOutput, ScheduleOutput, TickerItem } from '@/lib/types'
+import type { AppSettings, BriefingDensity, Channel, ChannelScheduleOutput, ScheduleOutput, TickerItem, TtsProvider } from '@/lib/types'
+import { ELEVENLABS_DEFAULT_MODEL, ELEVENLABS_MODELS, ELEVENLABS_VOICES, type ElevenLabsVoice } from '@/lib/elevenlabs'
 import type { UsageData } from '@/app/api/usage/route'
 
 const TTS_SPEEDS = [0.75, 1, 1.25, 1.5, 2] as const
@@ -225,6 +226,21 @@ export function SettingsClient({ initialSettings, channels = [], costBasis }: Pr
   const [ttsVoice, setTtsVoice] = useState<string | null>(initialSettings.tts_voice)
   const [ttsSpeed, setTtsSpeed] = useState<number>(initialSettings.tts_speed ?? 1)
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
+  // Premium (ElevenLabs) provider — voice list comes from the server so the
+  // account's live premade voices can be merged in when the key is set.
+  const [ttsProvider, setTtsProvider] = useState<TtsProvider>(initialSettings.tts_provider ?? 'browser')
+  const [elVoiceId, setElVoiceId] = useState<string | null>(initialSettings.tts_elevenlabs_voice_id ?? null)
+  const [elVoices, setElVoices] = useState<ElevenLabsVoice[]>(ELEVENLABS_VOICES)
+  const [elConfigured, setElConfigured] = useState<boolean | null>(null)
+  useEffect(() => {
+    fetch('/api/tts/elevenlabs/voices')
+      .then((r) => r.json())
+      .then((d: { configured?: boolean; voices?: ElevenLabsVoice[] }) => {
+        if (d.voices?.length) setElVoices(d.voices)
+        setElConfigured(!!d.configured)
+      })
+      .catch(() => setElConfigured(false))
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
@@ -654,7 +670,7 @@ export function SettingsClient({ initialSettings, channels = [], costBasis }: Pr
       <section className="space-y-3">
         <div>
           <h2 className="font-display text-base font-normal text-ink-300">Audio</h2>
-          <p className="text-xs text-ink-50 mt-0.5">Listen to briefings with sentence-level highlighting. Uses your browser&apos;s built-in speech engine — no extra cost.</p>
+          <p className="text-xs text-ink-50 mt-0.5">Listen to briefings with sentence-level highlighting. Standard uses your browser&apos;s built-in speech engine at no cost; Premium generates natural audio with ElevenLabs.</p>
         </div>
         <div className="bg-cream-50 border border-cream-300 rounded-2xl px-4 divide-y divide-cream-300 shadow-[0_1px_4px_rgba(0,0,0,0.05)]">
           <ToggleRow
@@ -665,29 +681,82 @@ export function SettingsClient({ initialSettings, channels = [], costBasis }: Pr
           />
           {ttsEnabled && (
             <div className="py-4 space-y-4">
-              {/* Voice selector */}
+              {/* Provider selector */}
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-ink-100">Voice</label>
-                <select
-                  value={ttsVoice ?? ''}
-                  onChange={(e) => {
-                    const val = e.target.value || null
-                    setTtsVoice(val)
-                    save({ tts_voice: val })
-                  }}
-                  className="w-full bg-cream-100 border border-cream-300 rounded-xl px-3 py-2 text-sm text-ink-200 focus:outline-none focus:border-brand-500/60 cursor-pointer"
-                >
-                  <option value="">Browser default</option>
-                  {voices.map((v) => (
-                    <option key={v.voiceURI} value={v.voiceURI}>
-                      {v.name}{v.lang ? ` (${v.lang})` : ''}
-                    </option>
+                <label className="text-xs font-medium text-ink-100">Voice engine</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { id: 'browser' as TtsProvider, label: 'Standard', hint: 'Free · browser voices' },
+                    { id: 'elevenlabs' as TtsProvider, label: 'Premium', hint: `ElevenLabs · ~$${ELEVENLABS_MODELS[ELEVENLABS_DEFAULT_MODEL].usdPer1kChars.toFixed(2)} per 1,000 characters` },
+                  ]).map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => { setTtsProvider(p.id); save({ tts_provider: p.id }) }}
+                      className={[
+                        'text-left px-3 py-2 rounded-xl border transition-colors',
+                        ttsProvider === p.id
+                          ? 'border-brand-500/60 bg-brand-600 text-white'
+                          : 'bg-cream-50 border-cream-300 text-ink-200 hover:border-cream-400',
+                      ].join(' ')}
+                    >
+                      <div className="text-sm font-medium">{p.label}</div>
+                      <div className={ttsProvider === p.id ? 'text-[11px] text-white/80' : 'text-[11px] text-ink-50'}>{p.hint}</div>
+                    </button>
                   ))}
-                </select>
-                {voices.length === 0 && (
-                  <p className="text-xs text-ink-50">Voices loading… (may take a moment on first visit)</p>
-                )}
+                </div>
               </div>
+
+              {ttsProvider === 'browser' ? (
+                /* Browser voice selector */
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-ink-100">Voice</label>
+                  <select
+                    value={ttsVoice ?? ''}
+                    onChange={(e) => {
+                      const val = e.target.value || null
+                      setTtsVoice(val)
+                      save({ tts_voice: val })
+                    }}
+                    className="w-full bg-cream-100 border border-cream-300 rounded-xl px-3 py-2 text-sm text-ink-200 focus:outline-none focus:border-brand-500/60 cursor-pointer"
+                  >
+                    <option value="">Browser default</option>
+                    {voices.map((v) => (
+                      <option key={v.voiceURI} value={v.voiceURI}>
+                        {v.name}{v.lang ? ` (${v.lang})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {voices.length === 0 && (
+                    <p className="text-xs text-ink-50">Voices loading… (may take a moment on first visit)</p>
+                  )}
+                </div>
+              ) : (
+                /* ElevenLabs voice selector */
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-ink-100">ElevenLabs voice</label>
+                  <select
+                    value={elVoiceId ?? ELEVENLABS_VOICES[0].id}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      setElVoiceId(val)
+                      save({ tts_elevenlabs_voice_id: val })
+                    }}
+                    className="w-full bg-cream-100 border border-cream-300 rounded-xl px-3 py-2 text-sm text-ink-200 focus:outline-none focus:border-brand-500/60 cursor-pointer"
+                  >
+                    {elVoices.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name}{v.description ? ` — ${v.description}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {elConfigured === false && (
+                    <p className="text-xs text-red-700">Not configured yet: add <code>ELEVENLABS_API_KEY</code> to the server environment. Playback falls back to the standard voice until then.</p>
+                  )}
+                  <p className="text-xs text-ink-50">
+                    {ELEVENLABS_MODELS[ELEVENLABS_DEFAULT_MODEL].label} · a typical briefing costs $0.30–0.45. You&apos;ll see the exact estimate before anything is generated, and each briefing is generated once per voice and cached for re-listening.
+                  </p>
+                </div>
+              )}
 
               {/* Speed selector */}
               <div className="space-y-1.5">
