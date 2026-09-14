@@ -83,6 +83,51 @@ export default async function DepartmentDocPage({ params }: PageProps) {
             ))}
           </p>
         )}
+        {/* Workflow docs (spec §11): a collapsed reference list, kept out of the
+            reading flow. Items click through to the full doc page. The badge
+            appears only when a referenced tool changed since save/verify. */}
+        <details className="mt-3 group rounded-lg border border-cream-300 bg-cream-50/70 open:bg-cream-50">
+          <summary className="flex items-center gap-2 px-3 py-2 text-sm text-ink-200 cursor-pointer select-none hover:text-press-accent [&::-webkit-details-marker]:hidden">
+            <svg className="w-3.5 h-3.5 text-ink-50 transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.25} d="M9 5l7 7-7 7" />
+            </svg>
+            <span className="font-medium">Workflows</span>
+            <span className="text-[11px] text-ink-50 tabular-nums">{workflows.length}</span>
+            {workflows.some((w) => w.stale) && (
+              <span className="text-[11px] text-press-down">{workflows.filter((w) => w.stale).length} possibly stale</span>
+            )}
+            <span className="ml-auto text-[11px] text-ink-50">saved from chat answers</span>
+          </summary>
+          <div className="border-t border-cream-300/70">
+            {workflows.length === 0 ? (
+              <p className="px-3 py-2.5 text-xs text-ink-50">None yet. Ask a workflow question in chat and use &ldquo;Save as workflow doc&rdquo; on the answer.</p>
+            ) : (
+              <ul className="divide-y divide-cream-300/70">
+                {workflows.map((w) => (
+                  <li key={w.id}>
+                    <Link
+                      href={`/post-pulse/departments/${department.slug}/workflows/${w.id}`}
+                      className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3 py-2 text-sm hover:bg-cream-100/70 transition-colors"
+                    >
+                      <span className="font-medium text-ink-300">{w.title}</span>
+                      {w.stale && (
+                        <span
+                          className="inline-flex items-center px-2 py-px rounded-full border border-press-down/30 bg-press-down/10 text-press-down text-[11px] font-medium"
+                          title={w.staleChanges.map((c) => `${c.toolName}: ${c.field}`).join(', ')}
+                        >
+                          Possibly stale
+                        </span>
+                      )}
+                      <span className="ml-auto text-[11px] text-ink-50">
+                        saved {new Date(w.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </details>
         <div className="mt-3 flex flex-wrap items-start gap-2">
           {/* In-context chat launch: resumes this department's latest session, or starts one */}
           <Link
@@ -170,47 +215,6 @@ export default async function DepartmentDocPage({ params }: PageProps) {
           </ul>
         </section>
       )}
-
-      {/* Workflow docs (spec §11): prompt-and-answer pairs saved from chat.
-          The badge appears only when a referenced tool changed since the doc
-          was saved or last verified — signal, not a neutral "last checked". */}
-      <section className="mb-8">
-        <div className="flex items-baseline gap-2 mb-2">
-          <h2 className="text-[10px] uppercase tracking-[1.5px] text-ink-50 font-medium">Workflows</h2>
-          <span className="text-[11px] text-ink-50">
-            {workflows.length} saved · save one from any chat answer
-          </span>
-        </div>
-        {workflows.length === 0 ? (
-          <p className="text-sm text-ink-50">
-            None yet. Ask a workflow question in chat and use &ldquo;Save as workflow doc&rdquo; on the answer.
-          </p>
-        ) : (
-          <ul className="rounded-xl border border-cream-300 bg-cream-50 divide-y divide-cream-300/70">
-            {workflows.map((w) => (
-              <li key={w.id}>
-                <Link
-                  href={`/post-pulse/departments/${department.slug}/workflows/${w.id}`}
-                  className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2.5 hover:bg-cream-100/70 transition-colors"
-                >
-                  <span className="font-medium text-ink-300">{w.title}</span>
-                  {w.stale && (
-                    <span
-                      className="inline-flex items-center px-2 py-px rounded-full border border-press-down/30 bg-press-down/10 text-press-down text-[11px] font-medium"
-                      title={w.staleChanges.map((c) => `${c.toolName}: ${c.field}`).join(', ')}
-                    >
-                      Possibly stale
-                    </span>
-                  )}
-                  <span className="ml-auto text-[11px] text-ink-50">
-                    saved {new Date(w.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
 
       {department.overview_doc.trim() ? (
         <AnchoredMarkdown content={department.overview_doc} />
