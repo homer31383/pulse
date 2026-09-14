@@ -103,21 +103,37 @@ export async function fetchToolChangelog(toolId: string): Promise<PpChangelogEnt
 
 export interface PpChangelogWithTool extends PpChangelogEntry {
   tool: { id: string; name: string; department_id: string } | null
+  department: { id: string; name: string; slug: string } | null
 }
 
-// Recent changes across every tool, newest first. Powers "what changed
-// since I last looked".
+function one<T>(v: T | T[] | null | undefined): T | null {
+  return Array.isArray(v) ? (v[0] ?? null) : (v ?? null)
+}
+
+// Recent changes across every tool and department, newest first. Powers
+// "what changed since I last looked".
 export async function fetchRecentChanges(limit = 100): Promise<PpChangelogWithTool[]> {
   const { data } = await supabase
     .from('pp_changelog')
-    .select('*, tool:pp_tools(id, name, department_id)')
+    .select('*, tool:pp_tools(id, name, department_id), department:pp_departments(id, name, slug)')
     .order('created_at', { ascending: false })
     .limit(limit)
   return ((data ?? []) as unknown[]).map((row) => {
-    const r = row as PpChangelogEntry & { tool: PpChangelogWithTool['tool'] | PpChangelogWithTool['tool'][] }
-    const tool = Array.isArray(r.tool) ? (r.tool[0] ?? null) : (r.tool ?? null)
-    return { ...r, tool }
+    const r = row as PpChangelogEntry & {
+      tool: PpChangelogWithTool['tool'] | PpChangelogWithTool['tool'][]
+      department: PpChangelogWithTool['department'] | PpChangelogWithTool['department'][]
+    }
+    return { ...r, target_type: r.target_type ?? 'tool', tool: one(r.tool), department: one(r.department) }
   })
+}
+
+export async function fetchDepartmentChangelog(departmentId: string): Promise<PpChangelogEntry[]> {
+  const { data } = await supabase
+    .from('pp_changelog')
+    .select('*')
+    .eq('department_id', departmentId)
+    .order('created_at', { ascending: false })
+  return (data ?? []) as PpChangelogEntry[]
 }
 
 export async function fetchPendingQueue(): Promise<PpQueueItem[]> {
@@ -154,9 +170,9 @@ export type QueueResolution =
 // other than the seed. Tool targets: apply the proposed columns, write one
 // pp_changelog row per field that actually changed, resolve the row. A
 // proposal with no proposed_tool_id creates a tool (needs name, department,
-// tier). Department targets (migration 023): same shape, but overview_doc is
-// replaced wholesale (spec §6a) and — since pp_changelog.tool_id is a NOT
-// NULL FK to pp_tools — department changes are not changelog-logged.
+// tier). Department targets (migration 023): same shape, overview_doc is
+// replaced wholesale (spec §6a), and since migration 025 the change logs to
+// pp_changelog with target_type='department' / department_id.
 export async function acceptQueueItem(queueId: string): Promise<QueueResolution> {
   const { data: item, error: itemErr } = await supabase
     .from('pp_queue')
@@ -222,7 +238,7 @@ async function acceptToolItem(item: PpQueueItem): Promise<QueueResolution> {
       if (before === after) continue
       update[field] = value
       changedFields.push(field)
-      logRows.push({ tool_id: current.id, field_changed: field, old_value: before, new_value: after, source })
+      logRows.push({ target_type: 'tool', tool_id: current.id, department_id: null, field_changed: field, old_value: before, new_value: after, source })
     }
 
     // Even a no-op acceptance is a verification: bump the verified stamp.
@@ -256,7 +272,9 @@ async function acceptToolItem(item: PpQueueItem): Promise<QueueResolution> {
   const { data: created, error: insErr } = await supabase.from('pp_tools').insert(insert).select('id').single()
   if (insErr) return { ok: false, status: 500, error: insErr.message }
   const { error: logErr } = await supabase.from('pp_changelog').insert({
+    target_type: 'tool',
     tool_id: created.id,
+    department_id: null,
     field_changed: 'created',
     old_value: null,
     new_value: String(changes.name),
@@ -271,6 +289,7 @@ async function acceptDepartmentItem(item: PpQueueItem): Promise<QueueResolution>
     Record<PpDepartmentEditableField, unknown>
   >
   const changedFields: string[] = []
+  const source = `${item.source}:${item.id}`
 
   if (item.proposed_department_id) {
     const { data: current, error: curErr } = await supabase
@@ -282,14 +301,24 @@ async function acceptDepartmentItem(item: PpQueueItem): Promise<QueueResolution>
     if (!current) return { ok: false, status: 404, error: 'Proposed department no longer exists' }
 
     const update: Record<string, unknown> = {}
+    const logRows: Omit<PpChangelogEntry, 'id' | 'created_at'>[] = []
     for (const [field, value] of Object.entries(changes)) {
-      if (stringifyValue(current[field]) === stringifyValue(value)) continue
+      const before = stringifyValue(current[field])
+      const after = stringifyValue(value)
+      if (before === after) continue
       update[field] = value
       changedFields.push(field)
+      // Same shape as tool entries; an overview_doc edit logs the whole
+      // before/after text, which is the audit trail spec §6a relies on.
+      logRows.push({ target_type: 'department', tool_id: null, department_id: current.id, field_changed: field, old_value: before, new_value: after, source })
     }
     if (Object.keys(update).length) {
       const { error: updErr } = await supabase.from('pp_departments').update(update).eq('id', current.id)
       if (updErr) return { ok: false, status: 500, error: updErr.message }
+    }
+    if (logRows.length) {
+      const { error: logErr } = await supabase.from('pp_changelog').insert(logRows)
+      if (logErr) return { ok: false, status: 500, error: logErr.message }
     }
     return { ok: true, targetType: 'department', toolId: null, departmentId: current.id, changedFields }
   }
@@ -308,6 +337,16 @@ async function acceptDepartmentItem(item: PpQueueItem): Promise<QueueResolution>
   }
   const { data: created, error: insErr } = await supabase.from('pp_departments').insert(insert).select('id').single()
   if (insErr) return { ok: false, status: 500, error: insErr.message }
+  const { error: logErr } = await supabase.from('pp_changelog').insert({
+    target_type: 'department',
+    tool_id: null,
+    department_id: created.id,
+    field_changed: 'created',
+    old_value: null,
+    new_value: insert.name,
+    source,
+  })
+  if (logErr) return { ok: false, status: 500, error: logErr.message }
   return { ok: true, targetType: 'department', toolId: null, departmentId: created.id, changedFields: ['created'] }
 }
 

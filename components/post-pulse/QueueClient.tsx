@@ -17,8 +17,8 @@ interface Props {
 }
 
 // Pending proposals with accept / reject. Accept applies the change to
-// pp_tools or pp_departments (server-side, lib/post-pulse.ts) and, for
-// tools, logs it; reject only resolves the row. Either way the layout is
+// pp_tools or pp_departments (server-side, lib/post-pulse.ts) and logs it
+// to pp_changelog; reject only resolves the row. Either way the layout is
 // refreshed so the sidebar badge and the dataset snapshot stay current.
 // Department overview_doc edits are shown whole, not diffed (spec §6a).
 export function QueueClient({ items: initial }: Props) {
@@ -225,9 +225,7 @@ export function QueueClient({ items: initial }: Props) {
               >
                 Reject
               </button>
-              <span className="ml-auto text-[11px] text-ink-50">
-                {targetTool ? 'Accept also stamps last verified' : isDept ? 'Department changes are not changelog-logged' : ''}
-              </span>
+              {targetTool && <span className="ml-auto text-[11px] text-ink-50">Accept also stamps last verified</span>}
             </footer>
           </article>
         )

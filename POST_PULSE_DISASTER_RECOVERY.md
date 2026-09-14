@@ -125,7 +125,6 @@ Only the REST key is available in some environments. The seed can be applied thr
 
 - **Scheduled automation** (spec §5): RSS sources (CG Channel, SideFX, Foundry, ActionVFX, superrendersfarm, VP Land) + a `web_search` pass per department, every two weeks plus a manual trigger, Haiku for extraction/dedup and Sonnet for tier judgment, confidence-based auto-publish vs queue. Stub route + cron entry exist.
 - **Layer 1 overview doc**: no table or view yet.
-- **Department changelog**: `pp_changelog.tool_id` is NOT NULL, so accepted department proposals leave no history row.
 
 ## 8. Research chat (built Sept 14 2026, migration 023)
 
@@ -134,5 +133,10 @@ Only the REST key is available in some environments. The seed can be applied thr
 - **Routes**: `POST /api/post-pulse/chat` (SSE), `GET/POST /api/post-pulse/chat/sessions`, `GET/PATCH{name}/DELETE /api/post-pulse/chat/sessions/[id]`. Pages: `/post-pulse/chat` (list), `/post-pulse/chat/[id]` (thread), `/post-pulse/chat/start?dept=slug[&fresh=1]` (resume-or-create, then redirect).
 - **Rules the prompt enforces**: confidence before proposals (ambiguity → clarifying question, no queue write); every proposal queues immediately (no in-chat confirm); department context is a default frame, not a filter; `overview_doc` edits are whole-doc replacements.
 - **Restore**: run 023 after 021/022; nothing else to seed. Sessions are user data with no backup beyond the table.
+
+## 9. Later migrations
+
+- **024** `pp_departments.last_researched_at` (timestamptz, nullable) — stamped by research runs; unused by the UI so far.
+- **025** `pp_changelog` generalised: `tool_id` nullable, `target_type` ('tool' | 'department', default 'tool'), `department_id` (fk, cascade), check constraint that exactly one id is set to match `target_type`, index on `department_id`. `acceptQueueItem` logs department accepts with the same field/old/new shape as tool rows (`overview_doc` rows hold the whole before/after text). Run 024 and 025 after 023.
 - **Per-department `comparison_attributes` refinement** after first real use.
 - **Phone layout verification** in a real browser (the automation profile couldn't resize the window).

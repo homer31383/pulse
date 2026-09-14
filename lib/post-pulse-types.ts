@@ -90,9 +90,13 @@ export interface PpTool {
   updated_at: string
 }
 
+// Since migration 025 a changelog row targets either a tool or a
+// department (exactly one id set, matching target_type).
 export interface PpChangelogEntry {
   id: string
-  tool_id: string
+  target_type: PpQueueTargetType
+  tool_id: string | null
+  department_id: string | null
   field_changed: string
   old_value: string | null
   new_value: string | null
