@@ -15,14 +15,13 @@ import Anthropic from '@anthropic-ai/sdk'
 import { anthropic, DEFAULT_MODEL } from '@/lib/anthropic'
 import { calculateCost } from '@/lib/cost'
 import { logUsage } from '@/lib/usage'
-import { supabase } from '@/lib/supabase'
-import { enqueue } from '@/lib/queue'
 import {
   applyToolUpdate,
   enqueueProposal,
   fetchKnownSourceUrls,
   fetchLatestFrontierScans,
   fetchPostPulseDataset,
+  recordDepartmentResearchRun,
   recordFrontierScan,
   saveDepartmentFollowUps,
   stampDepartmentsResearched,
@@ -78,11 +77,8 @@ const CONCURRENCY = Math.max(1, Number(process.env.PULSE_PP_RESEARCH_CONCURRENCY
 const EFFORT = (['low', 'medium', 'high', 'xhigh', 'max'].includes(process.env.PULSE_PP_RESEARCH_EFFORT ?? '')
   ? process.env.PULSE_PP_RESEARCH_EFFORT
   : 'medium') as 'low' | 'medium' | 'high' | 'xhigh' | 'max'
-const DEFAULT_PROFILE_ID = '00000000-0000-0000-0000-000000000001'
-// Briefings are profile-scoped in Pulse; the pp_* dataset is not. Research
-// briefings land in this profile's "Post Pulse Research" channel.
-const RESEARCH_PROFILE_ID = process.env.PULSE_PP_RESEARCH_PROFILE_ID ?? DEFAULT_PROFILE_ID
-export const RESEARCH_CHANNEL_NAME = 'Post Pulse Research'
+// Label on usage_logs rows (there is no Pulse channel behind it any more).
+const USAGE_LABEL = 'Post Pulse research'
 
 // Fields a research finding may change on an existing tool without a
 // human in the loop. Tier, status, name, department, and replacement links
@@ -586,205 +582,21 @@ async function publishFindings(
   return { published, queued, confirmed: Array.from(new Set(confirmed)), sourceUrls: Array.from(allUrls) }
 }
 
-// ── Briefing via Pulse's channel mechanism ──────────────────────────────
+// ── Run records (native; no Pulse crossover) ─────────────────────────────
+//
+// Each completed department pass is stored in pp_department_research_runs
+// (migration 029) and each frontier scan in pp_frontier_scans (028). That
+// is the only place research activity surfaces: /post-pulse/activity.
+// The earlier design wrote a briefing into a Pulse channel (home banner,
+// Listen Queue); reversed on 2026-09-14 — see POST_PULSE_SPEC.md §5.
 
-async function ensureResearchChannel(profileId: string): Promise<string | null> {
-  const { data: existing } = await supabase
-    .from('channels')
-    .select('id')
-    .eq('profile_id', profileId)
-    .eq('name', RESEARCH_CHANNEL_NAME)
-    .maybeSingle()
-  if (existing) return existing.id
-  const { data: maxRow } = await supabase
-    .from('channels')
-    .select('position')
-    .eq('profile_id', profileId)
-    .order('position', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  const { data, error } = await supabase
-    .from('channels')
-    .insert({
-      name: RESEARCH_CHANNEL_NAME,
-      description: 'System channel: briefings written by Post Pulse research runs (RSS + web search sweeps of the VFX AI tool dataset).',
-      instructions:
-        'This channel is written by Post Pulse research runs. If generated manually, produce a concise briefing on the latest developments in AI tools for the commercial VFX pipeline (modeling, rigging, simulation, rendering, compositing, generative workflows), with sources.',
-      search_queries: ['AI tools VFX pipeline news', 'machine learning visual effects software release'],
-      profile_id: profileId,
-      position: ((maxRow?.position as number | null) ?? 0) + 1,
-    })
-    .select('id')
-    .single()
-  if (error) {
-    console.warn('[post-pulse research] could not create research channel:', error.message)
-    return null
-  }
-  return data.id
-}
-
-function departmentLabel(d: PpResearchDepartmentSummary): string {
-  return d.name
-}
-
-export function composeBriefing(run: Omit<PpResearchRunSummary, 'briefingId' | 'channelId' | 'costUsd'>, notes: Record<string, string>): {
-  content: string
-  sources: { title: string; url: string }[]
-} {
-  const done = run.departments.filter((d) => d.status === 'done')
-  const failed = run.departments.filter((d) => d.status === 'failed')
-  const published = done.flatMap((d) => d.published.map((p) => ({ ...p, dept: d.name })))
-  const queuedAll = done.flatMap((d) => d.queued.map((q) => ({ ...q, dept: d.name })))
-  const confirmedAll = done.flatMap((d) => d.confirmed.map((c) => ({ tool: c, dept: d.name })))
-  const scope =
-    run.trigger === 'manual_department' && done.length === 1
-      ? done[0].name
-      : `${done.length} ${done.length === 1 ? 'department' : 'departments'}`
-  const when = new Date(run.startedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-  const frontierDone = run.frontier.filter((f) => f.status === 'done')
-  const frontierFailed = run.frontier.filter((f) => f.status === 'failed')
-  const frontierQueued = frontierDone.reduce((n, f) => n + f.queued.length, 0)
-  const frontierOnly = done.length === 0 && failed.length === 0 && frontierDone.length > 0
-  const triggerLabel =
-    run.trigger === 'scheduled'
-      ? 'the scheduled fortnightly sweep'
-      : run.trigger === 'manual_global'
-        ? 'a manual full sweep'
-        : run.trigger === 'manual_frontier'
-          ? 'a manual frontier scan'
-          : 'a manual department check'
-
-  const headline = frontierOnly
-    ? `# Post Pulse frontier scan: ${frontierDone.map((f) => f.stageLabel).join(', ')} — ${frontierQueued} ${frontierQueued === 1 ? 'proposal' : 'proposals'} for review`
-    : published.length || queuedAll.length
-      ? `# Post Pulse research: ${published.length} ${published.length === 1 ? 'update' : 'updates'} published, ${queuedAll.length + frontierQueued} waiting for review across ${scope}${frontierDone.length ? ` and ${frontierDone.length} frontier ${frontierDone.length === 1 ? 'scan' : 'scans'}` : ''}`
-      : `# Post Pulse research: ${scope} checked, nothing new to record`
-
-  const lines: string[] = [headline, '']
-  if (frontierOnly) {
-    lines.push(
-      `${when}. This was ${triggerLabel} — an exploratory pass over a whole pipeline stage asking what AI help exists that the dataset does not yet track, not a check on known tools. It covered ${frontierDone.map((f) => f.stageLabel).join(', ')} with ${frontierDone.reduce((n, f) => n + f.searches, 0)} web searches. Everything it found is in the review queue tagged Frontier; nothing was published automatically.`
-    )
-  } else {
-    lines.push(
-      `${when}. This was ${triggerLabel} covering ${done.map(departmentLabel).join(', ') || 'no departments'}. ` +
-        `${run.rss.fresh} fresh RSS ${run.rss.fresh === 1 ? 'item' : 'items'} from ${run.rss.sources} feeds were routed (${run.rss.routed} relevant), and ${done.reduce((n, d) => n + d.searches, 0)} web searches ran. ` +
-        `${confirmedAll.length} existing ${confirmedAll.length === 1 ? 'entry was' : 'entries were'} confirmed unchanged.` +
-        (frontierDone.length ? ` It also ran a frontier scan of ${frontierDone.map((f) => f.stageLabel).join(', ')} (see below).` : '')
-    )
-  }
-  lines.push('')
-
-  for (const f of frontierDone) {
-    lines.push(`## Frontier scan: ${f.stageLabel}`)
-    lines.push(f.summary || `${f.searches} searches, ${f.findings} ${f.findings === 1 ? 'finding' : 'findings'}.`)
-    if (f.queued.length) {
-      lines.push('')
-      for (const q of f.queued) lines.push(`- **${q.label}** — exploratory; review before trusting.`)
-    }
-    if (f.skippedExisting.length) {
-      lines.push('')
-      lines.push(`Already tracked, not re-proposed: ${f.skippedExisting.join('; ')}.`)
-    }
-    lines.push('')
-  }
-  for (const f of frontierFailed) {
-    lines.push(`## Frontier scan: ${f.stageLabel}`)
-    lines.push(`Failed — ${f.error ?? 'unknown error'}. The stage stays due and will be retried.`)
-    lines.push('')
-  }
-  if (frontierOnly) {
-    lines.push('## Analyst note')
-    lines.push('Frontier findings answer "does anything exist for this", not "did a known thing change", so they are inherently less certain than routine updates. Each one is tagged Frontier in the queue for that reason.')
-    lines.push('')
-  }
-
-  if (frontierOnly) return finishBriefing(lines, [...done, ...frontierDone])
-
-  lines.push('## Auto-published')
-  if (published.length) {
-    for (const p of published) lines.push(`- **${p.tool}** (${p.dept}): ${p.fields.join(', ')} updated from a trusted source. Logged to the changelog.`)
-  } else {
-    lines.push('Nothing met the auto-publish bar this cycle: factual fields, high confidence, known source or a verified entry.')
-  }
-  lines.push('')
-
-  lines.push('## Waiting for review')
-  if (queuedAll.length) {
-    for (const q of queuedAll) lines.push(`- **${q.label}** (${q.dept}) — from ${q.source === 'rss' ? 'an RSS lead' : 'web search'}.`)
-    lines.push('')
-    lines.push('Open the Post Pulse review queue to accept or reject these.')
-  } else {
-    lines.push('The queue received nothing from this run.')
-  }
-  lines.push('')
-
-  if (confirmedAll.length) {
-    lines.push('## Confirmed unchanged')
-    lines.push(confirmedAll.map((c) => `${c.tool} (${c.dept})`).join(', ') + '.')
-    lines.push('')
-  }
-
-  lines.push('## Departments checked')
-  for (const d of done) {
-    lines.push(
-      `- **${d.name}**: ${d.leads} RSS ${d.leads === 1 ? 'lead' : 'leads'}, ${d.searches} ${d.searches === 1 ? 'search' : 'searches'}, ${d.published.length} published, ${d.queued.length} queued, ${d.confirmed.length} confirmed.` +
-        (notes[d.departmentId] ? ` Note: ${notes[d.departmentId]}` : '')
-    )
-  }
-  for (const d of failed) lines.push(`- **${d.name}**: failed — ${d.error ?? 'unknown error'}. It stays due and will be retried.`)
-  if (run.remainingDepartmentIds.length) {
-    lines.push(`- ${run.remainingDepartmentIds.length} ${run.remainingDepartmentIds.length === 1 ? 'department was' : 'departments were'} not reached within the time budget and remain due.`)
-  }
-  lines.push('')
-
-  const asideParts: string[] = []
-  const missingFeeds = PP_RSS_SOURCES.filter((s) => !s.feedUrl).map((s) => s.name)
-  if (missingFeeds.length) asideParts.push(`${missingFeeds.join(', ')} publish no RSS feed, so they are covered by web search only.`)
-  if (run.rss.errors.length) asideParts.push(`Feed errors this run: ${run.rss.errors.map((e) => `${e.source} (${e.error})`).join('; ')}.`)
-  asideParts.push('Tier and status changes never auto-publish; they are judgment calls and always go to the queue.')
-  lines.push('## Analyst note')
-  lines.push(asideParts.join(' '))
-
-  return finishBriefing(lines, [...done, ...frontierDone])
-}
-
-function finishBriefing(lines: string[], withSources: { sourceUrls: string[] }[]): { content: string; sources: { title: string; url: string }[] } {
-  const seen = new Set<string>()
-  const sourceList: { title: string; url: string }[] = []
-  for (const d of withSources) {
-    for (const url of d.sourceUrls) {
-      if (seen.has(url)) continue
-      seen.add(url)
-      let title = url
-      try {
-        title = new URL(url).hostname.replace(/^www\./, '')
-      } catch {
-        /* keep the raw url */
-      }
-      sourceList.push({ title, url })
-    }
-  }
-  return { content: lines.join('\n'), sources: sourceList }
-}
-
-async function persistBriefing(content: string, sources: { title: string; url: string }[]): Promise<{ briefingId: string | null; channelId: string | null }> {
-  const channelId = await ensureResearchChannel(RESEARCH_PROFILE_ID)
-  if (!channelId) return { briefingId: null, channelId: null }
-  const { data, error } = await supabase
-    .from('briefings')
-    .insert({ channel_id: channelId, content, sources, model: SEARCH_MODEL, scheduled: true })
-    .select('id')
-    .single()
-  if (error) {
-    console.warn('[post-pulse research] briefing insert failed:', error.message)
-    return { briefingId: null, channelId }
-  }
-  await supabase.from('channels').update({ last_briefed_at: new Date().toISOString() }).eq('id', channelId)
-  enqueue(RESEARCH_PROFILE_ID, 'briefing', data.id, 'scheduled').catch((err) =>
-    console.warn('[post-pulse research] enqueue failed:', (err as Error).message)
-  )
-  return { briefingId: data.id, channelId }
+function composeDepartmentRunSummary(d: PpResearchDepartmentSummary, notes: string | undefined): string {
+  const parts: string[] = [`${d.searches} ${d.searches === 1 ? 'search' : 'searches'}, ${d.leads} RSS ${d.leads === 1 ? 'lead' : 'leads'}.`]
+  if (d.published.length) parts.push(`Auto-published: ${d.published.map((p) => `${p.tool} (${p.fields.join(', ')})`).join('; ')}.`)
+  if (d.queued.length) parts.push(`Queued for review: ${d.queued.map((q) => q.label).join('; ')}.`)
+  if (d.confirmed.length) parts.push(`Confirmed unchanged: ${d.confirmed.join(', ')}.`)
+  if (notes) parts.push(notes.trim())
+  return parts.join(' ')
 }
 
 // ── Frontier scans (spec §5a) ───────────────────────────────────────────
@@ -1165,7 +977,6 @@ export async function runResearch(opts: {
   const routed = Array.from(leadsBySlug.values()).reduce((n, l) => n + l.length, 0)
 
   const results: PpResearchDepartmentSummary[] = []
-  const notes: Record<string, string> = {}
   const remaining: string[] = []
   let cursor = 0
 
@@ -1195,8 +1006,15 @@ export async function runResearch(opts: {
           throw new Error(`incomplete pass — ${n || 'the model reported it could not finish'}`)
         }
         const outcome = await publishFindings(dept, findings, leads, dataset, runTag)
-        if (n) notes[dept.id] = n
-        results.push({ departmentId: dept.id, slug: dept.slug, name: dept.name, status: 'done', searches, leads: leads.length, ...outcome })
+        const summaryRow: PpResearchDepartmentSummary = { departmentId: dept.id, slug: dept.slug, name: dept.name, status: 'done', searches, leads: leads.length, ...outcome }
+        results.push(summaryRow)
+        await recordDepartmentResearchRun({
+          department_id: dept.id,
+          summary: composeDepartmentRunSummary(summaryRow, n),
+          findings_count: outcome.published.length + outcome.queued.length + outcome.confirmed.length,
+          queued_count: outcome.queued.length,
+          auto_published_count: outcome.published.length,
+        })
         longestPassMs = Math.max(longestPassMs, Date.now() - passStarted)
       } catch (err) {
         longestPassMs = Math.max(longestPassMs, Date.now() - passStarted)
@@ -1270,7 +1088,7 @@ export async function runResearch(opts: {
   if (stages.length) await Promise.all(Array.from({ length: Math.min(CONCURRENCY, stages.length) }, stageWorker))
   const frontierDone = frontier.filter((f) => f.status === 'done')
 
-  const base: Omit<PpResearchRunSummary, 'briefingId' | 'channelId' | 'costUsd'> = {
+  const base: Omit<PpResearchRunSummary, 'costUsd'> = {
     trigger: opts.trigger,
     startedAt: startedAt.toISOString(),
     finishedAt: new Date().toISOString(),
@@ -1281,18 +1099,10 @@ export async function runResearch(opts: {
     rss: { sources: rss.fetchedSources, fetched: rss.items.length, fresh: fresh.length, routed, errors: rss.errors },
   }
 
-  let briefingId: string | null = null
-  let channelId: string | null = null
-  if (doneIds.length || frontierDone.length) {
-    const { content, sources } = composeBriefing(base, notes)
-    ;({ briefingId, channelId } = await persistBriefing(content, sources))
-  }
-
   if (spend.input + spend.output > 0) {
     logUsage({
       callType: 'pp_research',
-      channelId: channelId ?? undefined,
-      channelName: RESEARCH_CHANNEL_NAME,
+      channelName: USAGE_LABEL,
       model: SEARCH_MODEL,
       inputTokens: spend.input,
       outputTokens: spend.output,
@@ -1305,7 +1115,7 @@ export async function runResearch(opts: {
 
   console.log(
     `[post-pulse research] ${opts.trigger}: ${doneIds.length} done, ${results.length - doneIds.length} failed, ${remaining.length} remaining; frontier ${frontierDone.length} done/${frontier.length - frontierDone.length} failed/${remainingStages.length} remaining; ` +
-      `rss ${fresh.length} fresh/${routed} routed; searches ${spend.searches}; cost $${spend.cost.toFixed(3)}; briefing ${briefingId ?? 'none'}`
+      `rss ${fresh.length} fresh/${routed} routed; searches ${spend.searches}; cost $${spend.cost.toFixed(3)}`
   )
-  return { ...base, briefingId, channelId, costUsd: spend.cost }
+  return { ...base, costUsd: spend.cost }
 }

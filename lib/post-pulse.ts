@@ -14,6 +14,7 @@ import {
   PP_TOOL_EDITABLE_FIELDS,
   slugifyHeading,
   type PpChatMessage,
+  type PpActivityEntry,
   type PpChatSession,
   type PpChatSessionSummary,
   type PpChangelogEntry,
@@ -73,19 +74,29 @@ function normalizeQueueItem(row: Record<string, unknown>): PpQueueItem {
 
 // The whole dataset in one round trip set. Loaded by the /post-pulse layout.
 export async function fetchPostPulseDataset(): Promise<PpDataset> {
-  const [deptRes, toolRes, queueRes] = await Promise.all([
+  const dayAgo = new Date(Date.now() - 86_400_000).toISOString()
+  const [deptRes, toolRes, queueRes, lastDeptRun, lastScan, deptRuns24h, scans24h] = await Promise.all([
     supabase.from('pp_departments').select('*').order('name', { ascending: true }),
     supabase.from('pp_tools').select('*').order(TOOL_ORDER.column, { ascending: TOOL_ORDER.ascending }),
     supabase.from('pp_queue').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+    supabase.from('pp_department_research_runs').select('ran_at').order('ran_at', { ascending: false }).limit(1).maybeSingle(),
+    supabase.from('pp_frontier_scans').select('ran_at').order('ran_at', { ascending: false }).limit(1).maybeSingle(),
+    supabase.from('pp_department_research_runs').select('id', { count: 'exact', head: true }).gte('ran_at', dayAgo),
+    supabase.from('pp_frontier_scans').select('id', { count: 'exact', head: true }).gte('ran_at', dayAgo),
   ])
 
   if (deptRes.error) throw new Error(`pp_departments: ${deptRes.error.message}`)
   if (toolRes.error) throw new Error(`pp_tools: ${toolRes.error.message}`)
 
+  // The run tables (migrations 028/029) are optional for the rest of the UI:
+  // an error here (not yet applied) just leaves the indicator empty.
+  const stamps = [lastDeptRun.data?.ran_at as string | undefined, lastScan.data?.ran_at as string | undefined].filter((s): s is string => !!s)
   return {
     departments: (deptRes.data ?? []).map((r) => normalizeDepartment(r as Record<string, unknown>)),
     tools: (toolRes.data ?? []).map((r) => normalizeTool(r as Record<string, unknown>)),
     pendingQueueCount: queueRes.count ?? 0,
+    lastRunAt: stamps.length ? stamps.sort().reverse()[0] : null,
+    runsLast24h: (deptRuns24h.count ?? 0) + (scans24h.count ?? 0),
   }
 }
 
@@ -310,6 +321,62 @@ export async function fetchLatestFrontierScans(): Promise<Record<string, string>
     if (!latest[row.pipeline_stage as string]) latest[row.pipeline_stage as string] = row.ran_at as string
   }
   return latest
+}
+
+// Native record of a department maintenance pass (migration 029): the
+// data that used to be written into a Pulse briefing, stored in Post Pulse.
+export async function recordDepartmentResearchRun(row: {
+  department_id: string
+  summary: string | null
+  findings_count: number
+  queued_count: number
+  auto_published_count: number
+}): Promise<void> {
+  const { error } = await supabase.from('pp_department_research_runs').insert(row)
+  if (error) console.warn('[post-pulse] pp_department_research_runs insert failed (run migration 029?):', error.message)
+}
+
+// The activity feed: both run tables merged, newest first.
+export async function fetchActivity(limit = 100): Promise<PpActivityEntry[]> {
+  const [runs, scans] = await Promise.all([
+    supabase
+      .from('pp_department_research_runs')
+      .select('id, ran_at, summary, findings_count, queued_count, auto_published_count, department:pp_departments(id, name, slug)')
+      .order('ran_at', { ascending: false })
+      .limit(limit),
+    supabase.from('pp_frontier_scans').select('id, pipeline_stage, ran_at, summary, findings_count, queued_count').order('ran_at', { ascending: false }).limit(limit),
+  ])
+  if (runs.error) console.warn('[post-pulse] activity: department runs unreadable:', runs.error.message)
+  if (scans.error) console.warn('[post-pulse] activity: frontier scans unreadable:', scans.error.message)
+  const entries: PpActivityEntry[] = []
+  for (const r of (runs.data ?? []) as unknown[]) {
+    const row = r as { id: string; ran_at: string; summary: string | null; findings_count: number; queued_count: number; auto_published_count: number; department: PpActivityEntry['department'] | PpActivityEntry['department'][] }
+    entries.push({
+      id: row.id,
+      kind: 'maintenance',
+      ranAt: row.ran_at,
+      summary: row.summary,
+      findingsCount: row.findings_count,
+      queuedCount: row.queued_count,
+      autoPublishedCount: row.auto_published_count,
+      department: one(row.department),
+      stage: null,
+    })
+  }
+  for (const s of scans.data ?? []) {
+    entries.push({
+      id: s.id as string,
+      kind: 'frontier',
+      ranAt: s.ran_at as string,
+      summary: (s.summary as string | null) ?? null,
+      findingsCount: s.findings_count as number,
+      queuedCount: s.queued_count as number,
+      autoPublishedCount: 0,
+      department: null,
+      stage: s.pipeline_stage as PpActivityEntry['stage'],
+    })
+  }
+  return entries.sort((a, b) => b.ranAt.localeCompare(a.ranAt)).slice(0, limit)
 }
 
 export async function recordFrontierScan(row: {

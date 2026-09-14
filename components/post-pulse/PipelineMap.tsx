@@ -55,6 +55,9 @@ export function PipelineMap() {
               {pendingQueueCount} {pendingQueueCount === 1 ? 'proposal' : 'proposals'} waiting for review →
             </Link>
           )}
+          <Link href="/post-pulse/activity" className="text-press-accent hover:underline">
+            Research activity →
+          </Link>
         </div>
         {/* Global manual trigger (spec §5): same mechanism as the scheduled sweep, every department, now */}
         <div className="mt-3">

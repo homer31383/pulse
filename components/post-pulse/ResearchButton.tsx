@@ -124,11 +124,9 @@ export function ResearchButton({ department, stage, compact }: Props) {
                 Review queue →
               </Link>
             )}
-            {result.briefingId && (
-              <Link href={`/read/briefing/${result.briefingId}`} className="text-press-accent hover:underline">
-                Read the briefing →
-              </Link>
-            )}
+            <Link href="/post-pulse/activity" className="text-press-accent hover:underline">
+              See activity →
+            </Link>
             <span className="text-ink-50">${result.costUsd.toFixed(2)}</span>
           </p>
         </div>

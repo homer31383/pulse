@@ -87,9 +87,24 @@ export interface PpResearchRunSummary {
   frontier: PpFrontierScanSummary[]
   remainingStages: PpPipelineStage[]
   rss: { sources: number; fetched: number; fresh: number; routed: number; errors: { source: string; error: string }[] }
-  briefingId: string | null
-  channelId: string | null
   costUsd: number
+}
+
+// One entry of the native activity feed (/post-pulse/activity): a
+// department maintenance run (pp_department_research_runs, migration 029)
+// or a frontier scan of a stage (pp_frontier_scans, migration 028). Post
+// Pulse's research activity is visible ONLY here — it no longer writes
+// into Pulse's briefings, home banner, or Listen Queue.
+export interface PpActivityEntry {
+  id: string
+  kind: 'maintenance' | 'frontier'
+  ranAt: string
+  summary: string | null
+  findingsCount: number
+  queuedCount: number
+  autoPublishedCount: number
+  department: { id: string; name: string; slug: string } | null
+  stage: PpPipelineStage | null
 }
 
 export const PP_PIPELINE_STAGES: { value: PpPipelineStage; label: string; short: string; description: string }[] = [
@@ -230,6 +245,8 @@ export interface PpDataset {
   departments: PpDepartment[]
   tools: PpTool[]
   pendingQueueCount: number
+  lastRunAt: string | null // newest research activity (either table), for the nav indicator
+  runsLast24h: number
 }
 
 export const PP_TIERS: { value: PpTier; label: string; short: string; anchor: string; description: string }[] = [

@@ -40,7 +40,7 @@ interface Props {
 }
 
 export function Sidebar({ onNavigate }: Props) {
-  const { departments, tools, pendingQueueCount } = usePostPulse()
+  const { departments, tools, pendingQueueCount, lastRunAt, runsLast24h } = usePostPulse()
   const router = useRouter()
   const pathname = usePathname()
   const params = useSearchParams()
@@ -267,6 +267,26 @@ export function Sidebar({ onNavigate }: Props) {
             <Count n={0} muted />
           )}
         </Link>
+        {/* Research activity lives only here (no Pulse briefing/banner any more),
+            so the nav item carries a passive indicator: runs today, last run. */}
+        <Link href="/post-pulse/activity" onClick={onNavigate} className={linkClass(pathname === '/post-pulse/activity')}>
+          <svg className="w-4 h-4 text-ink-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+          <span className="flex-1">Activity</span>
+          {runsLast24h > 0 ? (
+            <span
+              className="min-w-[20px] h-5 px-1.5 rounded-full bg-press-up/15 text-press-up text-[11px] font-medium flex items-center justify-center"
+              title={`${runsLast24h} research ${runsLast24h === 1 ? 'run' : 'runs'} in the last 24 hours`}
+            >
+              {runsLast24h}
+            </span>
+          ) : lastRunAt ? (
+            <span className="text-[10px] text-ink-50" title={lastRunAt}>
+              {relativeShort(lastRunAt)}
+            </span>
+          ) : null}
+        </Link>
         <Link href="/post-pulse/changes" onClick={onNavigate} className={linkClass(pathname === '/post-pulse/changes')}>
           <svg className="w-4 h-4 text-ink-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -282,6 +302,14 @@ export function Sidebar({ onNavigate }: Props) {
       </nav>
     </div>
   )
+}
+
+function relativeShort(iso: string): string {
+  const m = Math.round((Date.now() - Date.parse(iso)) / 60_000)
+  if (m < 60) return `${Math.max(m, 1)}m ago`
+  const h = Math.round(m / 60)
+  if (h < 24) return `${h}h ago`
+  return `${Math.round(h / 24)}d ago`
 }
 
 function Count({ n, muted }: { n: number; muted?: boolean }) {

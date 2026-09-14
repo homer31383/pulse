@@ -12,8 +12,9 @@ export const maxDuration = 300
 // first, within a time budget. A department that isn't reached, or whose
 // pass fails, keeps its old stamp and is picked up by the next daily run —
 // so in practice every department is researched once per fortnight and a
-// big sweep may complete over two consecutive days. Each run that processes
-// anything writes one briefing through Pulse's channel mechanism.
+// big sweep may complete over two consecutive days. Every completed pass is
+// recorded natively (pp_department_research_runs / pp_frontier_scans) and
+// shows up in /post-pulse/activity — nothing is written into Pulse.
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET
   if (secret && req.headers.get('authorization') !== `Bearer ${secret}`) {
@@ -29,7 +30,6 @@ export async function GET(req: NextRequest) {
       remaining: summary.remainingDepartmentIds.length,
       frontier: summary.frontier.map((f) => ({ stage: f.stage, status: f.status, queued: f.queued.length, error: f.error })),
       frontierRemaining: summary.remainingStages,
-      briefingId: summary.briefingId,
       costUsd: Number(summary.costUsd.toFixed(4)),
     })
   } catch (err) {
