@@ -27,7 +27,7 @@ import {
 } from '@/lib/post-pulse'
 import { fetchRssItems, isKnownSourceUrl, PP_RSS_SOURCES, type PpRssItem } from '@/lib/post-pulse-rss'
 import { normalizeToolFields } from '@/lib/post-pulse-proposals'
-import { stripServerToolBlocks } from '@/lib/post-pulse-chat'
+import { containerIdFromEvent } from '@/lib/post-pulse-chat'
 import {
   PP_HOST_APPS,
   PP_TIERS,
@@ -313,12 +313,16 @@ async function researchDepartment(
 
   const messages: Anthropic.MessageParam[] = [{ role: 'user', content: user }]
   let searches = 0
+  // Continuations replay the assistant turn unchanged and pass the
+  // code-execution container id from the raw events (see post-pulse-chat.ts).
+  let containerId: string | null = null
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const stream = anthropic.messages.stream({
       model: SEARCH_MODEL,
       max_tokens: 8000,
       system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
       messages,
+      ...(containerId ? { container: containerId } : {}),
       thinking: { type: 'adaptive' },
       output_config: { effort: EFFORT },
       tools: [
@@ -326,6 +330,10 @@ async function researchDepartment(
         REPORT_TOOL,
       ],
     })
+    for await (const event of stream) {
+      const found = containerIdFromEvent(event)
+      if (found) containerId = found
+    }
     const final: Anthropic.Message = await stream.finalMessage()
     addUsage(spend, SEARCH_MODEL, final.usage)
     searches += final.usage.server_tool_use?.web_search_requests ?? 0
@@ -339,11 +347,10 @@ async function researchDepartment(
       return { findings, notes: typeof input.notes === 'string' ? input.notes : '', searches, complete: input.complete !== false }
     }
     if (final.stop_reason === 'pause_turn' || final.stop_reason === 'tool_use') {
-      // pause_turn: the server tool loop paused; resume with the full turn.
-      // tool_use for an unknown tool shouldn't happen — if it does, resume
-      // without the server-tool blocks (the API refuses them next to a
-      // pending client tool_use; see lib/post-pulse-chat.ts).
-      messages.push({ role: 'assistant', content: final.stop_reason === 'tool_use' ? stripServerToolBlocks(final.content) : final.content })
+      // pause_turn: the server tool loop paused; tool_use for an unknown
+      // tool shouldn't happen. Either way resume with the full turn (+ the
+      // container id captured above).
+      messages.push({ role: 'assistant', content: final.content })
       if (final.stop_reason === 'tool_use') {
         messages.push({
           role: 'user',
