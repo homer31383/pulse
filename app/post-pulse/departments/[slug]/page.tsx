@@ -26,10 +26,10 @@ export default async function DepartmentDocPage({ params }: PageProps) {
     <article className="max-w-3xl">
       <nav className="text-xs text-ink-50 mb-3 flex items-center gap-1.5">
         <Link href="/post-pulse" className="hover:text-press-accent">
-          All tools
+          Pipeline
         </Link>
         <span>/</span>
-        <Link href={`/post-pulse?dept=${department.slug}`} className="hover:text-press-accent">
+        <Link href={`/post-pulse/tools?dept=${department.slug}`} className="hover:text-press-accent">
           {department.name}
         </Link>
       </nav>
@@ -41,7 +41,7 @@ export default async function DepartmentDocPage({ params }: PageProps) {
           Updated{' '}
           {new Date(department.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
           {' · '}
-          <Link href={`/post-pulse?dept=${department.slug}`} className="text-press-accent hover:underline">
+          <Link href={`/post-pulse/tools?dept=${department.slug}`} className="text-press-accent hover:underline">
             {tools.length} {tools.length === 1 ? 'tool' : 'tools'} tracked
           </Link>
         </p>

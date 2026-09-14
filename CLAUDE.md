@@ -29,7 +29,7 @@ npm install
 npm run dev
 ```
 
-Run all migrations in `supabase/migrations/` in order (001 through 021) in the Supabase SQL editor. Optionally run `supabase/seed.sql` for sample channels (run it once only — the channel insert has no conflict target) and `supabase/seed_post_pulse.sql` for the Post Pulse reference dataset (idempotent, re-run to refresh).
+Run all migrations in `supabase/migrations/` in order (001 through 022) in the Supabase SQL editor. Optionally run `supabase/seed.sql` for sample channels (run it once only — the channel insert has no conflict target) and `supabase/seed_post_pulse.sql` + `supabase/post_pulse_pipeline_stages_seed_update.sql` for the Post Pulse reference dataset (both idempotent, re-run to refresh).
 
 ## File Structure
 
@@ -90,7 +90,8 @@ app/
     post-pulse/queue/[id]/route.ts       — PATCH {action: accept|reject}: accept applies to pp_tools + logs pp_changelog
     post-pulse/chat/route.ts             — POST: STUB (501) for the Post Pulse research chat
   post-pulse/                   — Post Pulse (see section below): layout.tsx loads the pp_* dataset once
-    page.tsx                    — Tool list (client-side filter/sort over the dataset; state in the query string)
+    page.tsx                    — Landing: pipeline map (four stages, post-production sub-groups, department chips)
+    tools/page.tsx              — Tool list (client-side filter/sort over the dataset; state in the query string)
     tools/[id]/page.tsx         — Tool detail: attributes, alternatives, discontinued banner, doc deep link, changelog
     departments/[slug]/page.tsx — Department doc: tier roster + anchored markdown
     queue/page.tsx              — Review queue (accept/reject)
@@ -127,6 +128,7 @@ components/
   SpeechProviderWrapper.tsx   — TTS context provider
   post-pulse/
     Shell.tsx                 — Two-pane shell (desktop sidebar / phone drawer) + usePostPulse() dataset context
+    PipelineMap.tsx           — Landing flowchart: stage row → in-place expansion → post-production sub-groups → department chips
     Sidebar.tsx               — Search, Department/Tier/Host App lens toggles, collapsible tree with counts, queue badge; exports listHref()
     ToolList.tsx              — Dense list rows, filter selects, sort, compare selection bar
     CompareOverlay.tsx        — Side-by-side 2–3 tools on the department's comparison_attributes
@@ -335,14 +337,17 @@ Per-channel toggle. When enabled:
 8. **Web search versions**: Briefings/digests use GA `web_search_20260209` (no header); discuss and other routes still use `web_search_20250305` + `anthropic-beta: web-search-2025-03-05` header
 9. **Supabase server-only**: Never import `lib/supabase.ts` in client components — will leak service role key
 
-## Post Pulse (migration 021)
+## Post Pulse (migrations 021 + 022)
 
 A second, unrelated dataset inside the same app: a structured reference of AI tools across the commercial VFX pipeline (what exists, which department, how much of the job it takes over, what replaced what). Spec: `POST_PULSE_SPEC.md`; build prompt: `POST_PULSE_CLAUDE_CODE_PROMPT.md`; recovery: `POST_PULSE_DISASTER_RECOVERY.md` + `POST_PULSE_REBUILD_PROMPT.md`. Lives at `/post-pulse` (linked from the home hamburger menu). **Not profile-scoped** — the `pp_*` tables are one shared dataset. **Utility palette** (cream/ink + `press-accent`), not the broadsheet design.
+
+- **Landing page = the pipeline map** (`components/post-pulse/PipelineMap.tsx`, Sept 14 2026): four stage boxes in a row (Pre-production, Production, Post-production, Finishing & delivery) with department counts, from `pp_departments.pipeline_stage` (migration 022; `pipeline_substage` only for post-production, enforced by check constraints). Clicking a stage expands it **in place** (component state, no route change, like the compare overlay). Post-production is two-level: a row of four sub-group boxes (asset_creation → performance_simulation → rendering_capture → comp_generative, `PP_PIPELINE_SUBSTAGES`), each expanding to department chips that link to `/post-pulse/departments/[slug]`. The other stages expand straight to a chip list, which is an honest "nothing tracked here yet" empty state today (0 departments is accurate, not an error). Departments with a NULL stage are listed under "Not placed on the pipeline yet" so nothing is hidden. Post-production opens by default. The mapping for the 13 seeded departments is `supabase/post_pulse_pipeline_stages_seed_update.sql` (run after 022; `seed_post_pulse.sql` doesn't touch these columns).
+- **The tool list moved to `/post-pulse/tools`** (same query-string state). It is reached from a department doc ("N tools tracked"), from the sidebar (`listHref()` in `Sidebar.tsx` targets it), or the map's "Browse all tools" link. Breadcrumbs: department doc → "Pipeline / Department"; tool detail → "All tools / Department".
 
 - **Content model, three layers**: (1) a top-level overview (not built yet — no table); (2) one long-form markdown doc per department (`pp_departments.overview_doc`) structured as `## Tier 1 — Automated {#tier-1}` / `{#tier-2}` / `{#tier-3}` sections — the reasoning lives here; (3) tool rows (`pp_tools`) with a short blurb, attributes, and `doc_anchor` pointing into the department doc. Tools never duplicate the "why".
 - **Tables** (`pp_departments`, `pp_tools`, `pp_changelog`, `pp_queue`, `pp_chat_sessions` stub): `pp_tools.tier` ∈ automated | assisted | artist_led; `status` ∈ active | discontinued; `replacement_tool_id` self-FK (Ziva VFX → Houdini Otis is the canonical row); `attributes` jsonb keyed by the department's `comparison_attributes` (`[{key,label,type}]`, so compare is data-driven per department); `confidence` verified | queued; `(department_id, name)` is unique so the seed can upsert. `pp_changelog` gets a row per changed field. Discontinued tools stay in every view (badge + strikethrough), never deleted — the changelog is the point.
 - **Data flow**: `app/post-pulse/layout.tsx` calls `fetchPostPulseDataset()` (all departments + tools + pending count, ~40 rows) and provides it via `usePostPulse()`; the sidebar, list, and compare overlay work client-side from that snapshot. Detail/doc/queue/changes pages fetch their own fresh rows. `router.refresh()` after a queue action re-fetches the layout.
-- **URL state**: `/post-pulse?dept=slug|tier=…|host=…&status=…&q=…&sort=…`. The sidebar's three lenses (Department / Tier / Host App) are UI state; clicking a tree node sets exactly one of `dept`/`tier`/`host` (clearing the others); the list's filter selects add the rest. Compare selection is component state (max 3, same department only).
+- **URL state**: `/post-pulse/tools?dept=slug|tier=…|host=…&status=…&q=…&sort=…`. The sidebar's three lenses (Department / Tier / Host App) are UI state; clicking a tree node sets exactly one of `dept`/`tier`/`host` (clearing the others); the list's filter selects add the rest. Compare selection is component state (max 3, same department only).
 - **The only write path is the queue.** Nothing (UI, automation, chat) writes `pp_tools` directly except the seed. `POST /api/post-pulse/queue` (or `enqueueProposal()` server-side) files `{proposed_tool_id?, proposed_changes, source: rss|search|chat, source_urls}`; `PATCH /api/post-pulse/queue/[id] {action}` — **accept** applies only `PP_TOOL_EDITABLE_FIELDS` from `proposed_changes` (a `department_slug` is resolved to an id; unknown keys are ignored), writes one `pp_changelog` row per field that actually changed, stamps `last_verified_at`/`confidence='verified'`, and resolves the row; a proposal with no `proposed_tool_id` creates a tool (needs name + department + tier) and logs `created`. **reject** only resolves. Verified end-to-end on Sept 14 2026.
 - **Stubs for the next pass**: `/api/cron/post-pulse-sync` (vercel.json fires it `0 12 1,15 * *`; returns `{stub:true}`) — the RSS + `web_search` classification pull with confidence-based auto-publish (spec §5). `/api/post-pulse/chat` returns 501 and `/post-pulse/chat` is a disabled shell — when built, **every chat proposal must go through `pp_queue`**, never auto-publish (spec §6).
 - **Seed**: `supabase/seed_post_pulse.sql` — 13 departments (full pipeline) and 34 tools from the Sept 2026 research session; upserts on `slug` / `(department_id, name)`, then sets `doc_anchor` from tier, stamps `last_verified_at`, and links Ziva → Otis. Keep it in its own file: `seed.sql`'s channel insert is not idempotent. The `{#anchor}` heading suffix is stripped by `AnchoredMarkdown` and becomes the element id; headings without one get a slugified id.

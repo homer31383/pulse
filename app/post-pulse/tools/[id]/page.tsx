@@ -38,13 +38,13 @@ export default async function ToolDetailPage({ params }: PageProps) {
     <article className="max-w-3xl">
       {/* Breadcrumb */}
       <nav className="text-xs text-ink-50 mb-3 flex flex-wrap items-center gap-1.5">
-        <Link href="/post-pulse" className="hover:text-press-accent">
+        <Link href="/post-pulse/tools" className="hover:text-press-accent">
           All tools
         </Link>
         {department && (
           <>
             <span>/</span>
-            <Link href={`/post-pulse?dept=${department.slug}`} className="hover:text-press-accent">
+            <Link href={`/post-pulse/tools?dept=${department.slug}`} className="hover:text-press-accent">
               {department.name}
             </Link>
           </>

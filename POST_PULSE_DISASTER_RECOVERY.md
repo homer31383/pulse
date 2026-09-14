@@ -62,6 +62,13 @@ pp_chat_sessions id, messages jsonb, proposed_queue_ids uuid[], created_at   -- 
 ```
 `pp_set_updated_at()` trigger on departments and tools. Indexes on tools(department_id, tier, status), changelog(tool_id, created_at desc), queue(status).
 
+**Migration 022** (`022_post_pulse_pipeline_stages.sql`) adds to `pp_departments`:
+```
+pipeline_stage    text check in (pre_production | production | post_production | finishing_delivery)
+pipeline_substage text check in (asset_creation | performance_simulation | rendering_capture | comp_generative), only when stage = post_production
+```
+Values for the 13 seeded departments: `supabase/post_pulse_pipeline_stages_seed_update.sql` (all post_production; asset_creation = modeling, texturing, lookdev, rigging; performance_simulation = mocap-animation, muscle-skinning, simulation-fx, crowds; rendering_capture = rendering-denoising, capture-splats-photogrammetry; comp_generative = roto-tracking, compositing, generative-comfyui). The other three stages are intentionally empty until that research is done. Run it after 022; `seed_post_pulse.sql` never touches these columns.
+
 ---
 
 ## 4. Data invariants
@@ -78,7 +85,8 @@ pp_chat_sessions id, messages jsonb, proposed_queue_ids uuid[], created_at   -- 
 
 **Pages** (`app/post-pulse/`, all `force-dynamic`):
 - `layout.tsx` — loads the whole dataset (`fetchPostPulseDataset()`), renders `PostPulseShell` (desktop sidebar / phone drawer) and provides `usePostPulse()`. Shows a "run migration 021" notice instead of a 500 if the tables are missing.
-- `page.tsx` → `ToolList`: query-string state `?dept=slug | tier=… | host=…` (sidebar lens selection, mutually exclusive) `&status=&q=&sort=name|tier|host|vendor|updated`; rows show name, tier badge, host chip, status, blurb, vendor, replacement; checkboxes select up to 3 tools in one department → `CompareOverlay` (rows: tier/host/status/summary + the department's `comparison_attributes` + extras + "Why this tier" link).
+- `page.tsx` → `PipelineMap` (landing): four stage boxes with department counts; click expands in place (component state). Post-production expands to a row of four sub-group boxes, each expanding to department chips (→ department doc); the other stages expand directly to their chip list, currently an empty state. NULL-stage departments are listed under "Not placed on the pipeline yet". Post-production is open by default.
+- `tools/page.tsx` → `ToolList`: query-string state `?dept=slug | tier=… | host=…` (sidebar lens selection, mutually exclusive) `&status=&q=&sort=name|tier|host|vendor|updated`; rows show name, tier badge, host chip, status, blurb, vendor, replacement; checkboxes select up to 3 tools in one department → `CompareOverlay` (rows: tier/host/status/summary + the department's `comparison_attributes` + extras + "Why this tier" link). Reached from a department doc, the sidebar, or the map's "Browse all tools" link.
 - `tools/[id]` — badges, discontinued banner with replacement link, "Replaces …" back-link, blurb, "Why it sits here" card → `/post-pulse/departments/[slug]#<doc_anchor>`, attributes table, alternatives (same department) as tags, sources, verified stamp, per-tool changelog.
 - `departments/[slug]` — tier roster (from `pp_tools`, not the doc) + `AnchoredMarkdown` of `overview_doc`.
 - `queue` → `QueueClient`: pending items with old → new diff, sources, Accept / Reject.

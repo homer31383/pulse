@@ -18,15 +18,58 @@ export interface PpComparisonAttribute {
   type: 'text' | 'boolean' | 'number'
 }
 
+// Where a department sits in the production pipeline (migration 022). The
+// landing page is a four-stage flowchart; only post-production is split
+// further, into the sub-groups below. NULL = not mapped yet.
+export type PpPipelineStage = 'pre_production' | 'production' | 'post_production' | 'finishing_delivery'
+export type PpPipelineSubstage = 'asset_creation' | 'performance_simulation' | 'rendering_capture' | 'comp_generative'
+
 export interface PpDepartment {
   id: string
   slug: string
   name: string
   overview_doc: string
   comparison_attributes: PpComparisonAttribute[]
+  pipeline_stage: PpPipelineStage | null
+  pipeline_substage: PpPipelineSubstage | null
   created_at: string
   updated_at: string
 }
+
+export const PP_PIPELINE_STAGES: { value: PpPipelineStage; label: string; short: string; description: string }[] = [
+  {
+    value: 'pre_production',
+    label: 'Pre-production',
+    short: 'Pre',
+    description: 'Development, previs, planning. Nothing tracked yet.',
+  },
+  {
+    value: 'production',
+    label: 'Production',
+    short: 'Prod',
+    description: 'On-set capture and virtual production. Nothing tracked yet.',
+  },
+  {
+    value: 'post_production',
+    label: 'Post-production',
+    short: 'Post',
+    description: 'Where the VFX pipeline lives: assets, performance, rendering, comp.',
+  },
+  {
+    value: 'finishing_delivery',
+    label: 'Finishing & delivery',
+    short: 'Finish',
+    description: 'Grade, conform, mastering. Nothing tracked yet.',
+  },
+]
+
+// Post-production's internal flow, in pipeline order.
+export const PP_PIPELINE_SUBSTAGES: { value: PpPipelineSubstage; label: string; description: string }[] = [
+  { value: 'asset_creation', label: 'Asset creation', description: 'Model, texture, lookdev, rig.' },
+  { value: 'performance_simulation', label: 'Performance & simulation', description: 'Animate, deform, simulate, crowd.' },
+  { value: 'rendering_capture', label: 'Rendering & capture', description: 'Render, denoise, capture the real world.' },
+  { value: 'comp_generative', label: 'Comp & generative', description: 'Roto, track, composite, generate.' },
+]
 
 export interface PpTool {
   id: string

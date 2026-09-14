@@ -32,7 +32,7 @@ export function listHref(current: URLSearchParams, patch: Record<string, string 
     else next.set(k, v)
   }
   const qs = next.toString()
-  return qs ? `/post-pulse?${qs}` : '/post-pulse'
+  return qs ? `/post-pulse/tools?${qs}` : '/post-pulse/tools'
 }
 
 interface Props {
@@ -97,8 +97,8 @@ export function Sidebar({ onNavigate }: Props) {
   }, [lens, departments, tools])
 
   const activeParam = LENSES.find((l) => l.value === lens)!.param
-  const activeKey = pathname === '/post-pulse' ? params.get(activeParam) : null
-  const onList = pathname === '/post-pulse'
+  const activeKey = pathname === '/post-pulse/tools' ? params.get(activeParam) : null
+  const onList = pathname === '/post-pulse/tools'
   const nothingSelected = onList && !params.get('dept') && !params.get('tier') && !params.get('host')
 
   function nodeHref(key: string): string {
