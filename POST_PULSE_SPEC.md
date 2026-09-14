@@ -129,3 +129,15 @@ Initial `pp_departments` and `pp_tools` rows can be seeded directly from this re
 - Exact per-department `comparison_attributes` schemas (draft during build, refine after first real use)
 - Whether `pp_chat_sessions` needs its own table or can reuse an existing Pulse chat log
 - Auth/access — assume same protection as the rest of the dashboard (WordPress password gate) unless stated otherwise
+
+## 11. Workflow docs (saved research)
+
+A fourth content layer alongside the overview doc, the department docs, and the tool entries: a prompt-and-answer pair saved from chat, tied to one department. Chat answers to "what is a possible workflow for X" are the most reusable thing the system produces and were being lost in session history.
+
+**Schema** (`pp_workflow_docs`, migration 030): `department_id`, `title` (short, generated from the prompt, editable on save), `prompt` (the exact user message), `content` (the assistant's answer as-is), `referenced_tool_ids uuid[]` (best-effort name matches against the department's roster plus related departments — a staleness signal, not a citation system), `source_urls` (carried from the turn's search results), `source_chat_session_id`, `created_at`, `last_verified_at`.
+
+**Staleness** is computed at display time, never cached: a doc is "possibly stale" when any referenced tool has a `pp_changelog` row newer than `coalesce(last_verified_at, created_at)`. The badge is shown only when stale — signal, not a neutral "last checked" label.
+
+**Actions**: *Re-run* submits the saved prompt as a new chat turn (the department's current session, else a new one scoped to it) and shows the fresh answer next to the saved one; the doc is never overwritten automatically — the user saves a new version explicitly. *Mark still accurate* stamps `last_verified_at` without a re-run.
+
+**UI**: "Save as workflow doc" on any chat answer; a Workflows section on each department page (title, saved date, stale badge); a doc page with prompt, content, referenced tools, sources, and the actions. Added 2026-09-14.

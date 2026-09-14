@@ -15,6 +15,8 @@ import {
   slugifyHeading,
   type PpChatMessage,
   type PpActivityEntry,
+  type PpWorkflowDoc,
+  type PpWorkflowDocWithStatus,
   type PpChatSession,
   type PpChatSessionSummary,
   type PpChangelogEntry,
@@ -570,6 +572,107 @@ export async function enqueueProposal(
   const { data, error } = await supabase.from('pp_queue').insert(built.row).select('id').single()
   if (error) return { error: error.message }
   return { id: data.id, label: built.kind }
+}
+
+// ── Workflow docs (migration 030) ───────────────────────────────────────
+
+function normalizeWorkflowDoc(row: Record<string, unknown>): PpWorkflowDoc {
+  return {
+    ...(row as unknown as PpWorkflowDoc),
+    referenced_tool_ids: Array.isArray(row.referenced_tool_ids) ? (row.referenced_tool_ids as string[]) : [],
+    source_urls: Array.isArray(row.source_urls) ? (row.source_urls as string[]) : [],
+    last_verified_at: (row.last_verified_at as string | null) ?? null,
+    source_chat_session_id: (row.source_chat_session_id as string | null) ?? null,
+  }
+}
+
+// Staleness, computed now: a doc is possibly stale when any referenced tool
+// has a pp_changelog row newer than coalesce(last_verified_at, created_at).
+// One changelog query covers every doc in the list.
+async function withStatus(docs: PpWorkflowDoc[]): Promise<PpWorkflowDocWithStatus[]> {
+  const toolIds = Array.from(new Set(docs.flatMap((d) => d.referenced_tool_ids)))
+  if (!docs.length) return []
+  const [{ data: tools }, { data: changes }] = await Promise.all([
+    toolIds.length ? supabase.from('pp_tools').select('id, name').in('id', toolIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    toolIds.length
+      ? supabase
+          .from('pp_changelog')
+          .select('tool_id, field_changed, created_at')
+          .in('tool_id', toolIds)
+          .gte('created_at', docs.map((d) => d.last_verified_at ?? d.created_at).sort()[0])
+          .order('created_at', { ascending: false })
+      : Promise.resolve({ data: [] as { tool_id: string; field_changed: string; created_at: string }[] }),
+  ])
+  const nameOf = new Map((tools ?? []).map((t) => [t.id as string, t.name as string]))
+  return docs.map((d) => {
+    const baseline = d.last_verified_at ?? d.created_at
+    const staleChanges = ((changes ?? []) as { tool_id: string; field_changed: string; created_at: string }[])
+      .filter((c) => d.referenced_tool_ids.includes(c.tool_id) && c.created_at > baseline)
+      .map((c) => ({ toolId: c.tool_id, toolName: nameOf.get(c.tool_id) ?? 'a tool', field: c.field_changed, changedAt: c.created_at }))
+    return {
+      ...d,
+      stale: staleChanges.length > 0,
+      staleChanges,
+      referencedTools: d.referenced_tool_ids.map((id) => ({ id, name: nameOf.get(id) ?? '(deleted tool)' })),
+    }
+  })
+}
+
+export async function listWorkflowDocs(departmentId: string): Promise<PpWorkflowDocWithStatus[]> {
+  const { data, error } = await supabase
+    .from('pp_workflow_docs')
+    .select('*')
+    .eq('department_id', departmentId)
+    .order('created_at', { ascending: false })
+  if (error) {
+    console.warn('[post-pulse] pp_workflow_docs read failed (run migration 030?):', error.message)
+    return []
+  }
+  return withStatus((data ?? []).map((r) => normalizeWorkflowDoc(r as Record<string, unknown>)))
+}
+
+export async function getWorkflowDoc(id: string): Promise<PpWorkflowDocWithStatus | null> {
+  const { data, error } = await supabase.from('pp_workflow_docs').select('*').eq('id', id).maybeSingle()
+  if (error || !data) return null
+  const [doc] = await withStatus([normalizeWorkflowDoc(data as Record<string, unknown>)])
+  return doc ?? null
+}
+
+export async function createWorkflowDoc(input: {
+  departmentId: string
+  title: string
+  prompt: string
+  content: string
+  referencedToolIds: string[]
+  sourceUrls: string[]
+  sourceChatSessionId: string | null
+}): Promise<{ id: string } | { error: string }> {
+  const { data, error } = await supabase
+    .from('pp_workflow_docs')
+    .insert({
+      department_id: input.departmentId,
+      title: input.title.trim().slice(0, 160),
+      prompt: input.prompt,
+      content: input.content,
+      referenced_tool_ids: input.referencedToolIds,
+      source_urls: input.sourceUrls,
+      source_chat_session_id: input.sourceChatSessionId,
+    })
+    .select('id')
+    .single()
+  if (error) return { error: error.message }
+  return { id: data.id }
+}
+
+// "Mark still accurate": moves the staleness baseline to now, no re-run.
+export async function verifyWorkflowDoc(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { error } = await supabase.from('pp_workflow_docs').update({ last_verified_at: new Date().toISOString() }).eq('id', id)
+  return error ? { ok: false, error: error.message } : { ok: true }
+}
+
+export async function deleteWorkflowDoc(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { error } = await supabase.from('pp_workflow_docs').delete().eq('id', id)
+  return error ? { ok: false, error: error.message } : { ok: true }
 }
 
 // ── Chat sessions (migration 023) ────────────────────────────────────────

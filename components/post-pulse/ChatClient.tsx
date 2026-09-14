@@ -4,11 +4,15 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { MarkdownRenderer } from '@/components/MarkdownRenderer'
-import type { PpChatMessage, PpChatQueued, PpChatSession, PpChatSource } from '@/lib/post-pulse-types'
+import type { PpChatMessage, PpChatQueued, PpChatSession, PpChatSource, PpDepartment } from '@/lib/post-pulse-types'
+import { generateWorkflowTitle } from '@/lib/post-pulse-workflows'
 import { usePostPulse } from './Shell'
 
 interface Props {
   session: PpChatSession
+  // Re-run of a saved workflow doc: its prompt is submitted as a new turn on
+  // mount; the answer shows up alongside and can be saved as a new version.
+  rerun?: { docId: string; title: string; prompt: string; departmentId: string } | null
 }
 
 type StreamEvent =
@@ -23,12 +27,15 @@ type StreamEvent =
 // Conversation view for one session. The turn streams over SSE; queue
 // writes made during the turn show as a small inline indicator on that
 // message (review happens in the Queue view, so no preview card here).
-export function ChatClient({ session }: Props) {
+export function ChatClient({ session, rerun = null }: Props) {
   const { departments } = usePostPulse()
   const router = useRouter()
   const context = session.department_context_id
     ? departments.find((d) => d.id === session.department_context_id) ?? null
     : null
+  // Saved-doc bookkeeping per assistant message index → doc id (this visit).
+  const [savedDocs, setSavedDocs] = useState<Record<number, string>>({})
+  const rerunFired = useRef(false)
 
   const [messages, setMessages] = useState<PpChatMessage[]>(session.messages)
   const [name, setName] = useState(session.name)
@@ -48,8 +55,16 @@ export function ChatClient({ session }: Props) {
     bottomRef.current?.scrollIntoView({ block: 'end' })
   }, [messages, pending?.text, pending?.searching.length])
 
-  async function send() {
-    const text = draft.trim()
+  // Re-run: submit the saved prompt once, as a normal turn.
+  useEffect(() => {
+    if (!rerun || rerunFired.current) return
+    rerunFired.current = true
+    void send(rerun.prompt)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rerun?.docId])
+
+  async function send(override?: string) {
+    const text = (override ?? draft).trim()
     if (!text || busy) return
     setDraft('')
     setError(null)
@@ -191,8 +206,29 @@ export function ChatClient({ session }: Props) {
           </div>
         )}
 
+        {rerun && (
+          <div className="rounded-xl border border-press-accent/30 bg-press-accent/5 px-4 py-3 text-sm text-ink-200">
+            <p className="text-[10px] uppercase tracking-[1.5px] text-press-accent font-medium">Re-running a workflow doc</p>
+            <p className="mt-0.5">
+              <span className="font-medium text-ink-300">{rerun.title}</span> — the saved prompt is sent again below. The saved doc is
+              not changed; compare the fresh answer and save it as a new version if it is better.
+            </p>
+          </div>
+        )}
+
         {messages.map((m, i) => (
-          <MessageBubble key={`${m.created_at}-${i}`} message={m} />
+          <MessageBubble
+            key={`${m.created_at}-${i}`}
+            message={m}
+            index={i}
+            prompt={m.role === 'assistant' ? previousUserPrompt(messages, i) : null}
+            sessionId={session.id}
+            context={context}
+            departments={departments}
+            savedDocId={savedDocs[i] ?? null}
+            onSaved={(docId) => setSavedDocs((prev) => ({ ...prev, [i]: docId }))}
+            defaultTitle={rerun && i === messages.length - 1 ? rerun.title : undefined}
+          />
         ))}
 
         {pending && (
@@ -259,7 +295,32 @@ export function ChatClient({ session }: Props) {
   )
 }
 
-function MessageBubble({ message }: { message: PpChatMessage }) {
+function previousUserPrompt(messages: PpChatMessage[], index: number): string | null {
+  for (let i = index - 1; i >= 0; i--) if (messages[i].role === 'user') return messages[i].content
+  return null
+}
+
+function MessageBubble({
+  message,
+  index,
+  prompt,
+  sessionId,
+  context,
+  departments,
+  savedDocId,
+  onSaved,
+  defaultTitle,
+}: {
+  message: PpChatMessage
+  index: number
+  prompt: string | null
+  sessionId: string
+  context: PpDepartment | null
+  departments: PpDepartment[]
+  savedDocId: string | null
+  onSaved: (docId: string) => void
+  defaultTitle?: string
+}) {
   if (message.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -273,6 +334,18 @@ function MessageBubble({ message }: { message: PpChatMessage }) {
     <div className="rounded-xl border border-cream-300 bg-cream-50 px-4 py-3">
       <MarkdownRenderer content={message.content} />
       {message.queued && message.queued.length > 0 && <QueuedLine items={message.queued} />}
+      {prompt && (
+        <SaveWorkflow
+          index={index}
+          prompt={prompt}
+          sessionId={sessionId}
+          context={context}
+          departments={departments}
+          savedDocId={savedDocId}
+          onSaved={onSaved}
+          defaultTitle={defaultTitle}
+        />
+      )}
       {message.sources && message.sources.length > 0 && (
         <details className="mt-2">
           <summary className="text-[11px] text-ink-50 cursor-pointer hover:text-ink-100">
@@ -288,6 +361,129 @@ function MessageBubble({ message }: { message: PpChatMessage }) {
             ))}
           </ul>
         </details>
+      )}
+    </div>
+  )
+}
+
+// "Save as workflow doc" (spec §11): files this answer + its prompt under a
+// department. Title is generated from the prompt and editable; department
+// comes from the session's context or a select. Referenced tools and
+// sources are derived server-side.
+function SaveWorkflow({
+  index,
+  prompt,
+  sessionId,
+  context,
+  departments,
+  savedDocId,
+  onSaved,
+  defaultTitle,
+}: {
+  index: number
+  prompt: string
+  sessionId: string
+  context: PpDepartment | null
+  departments: PpDepartment[]
+  savedDocId: string | null
+  onSaved: (docId: string) => void
+  defaultTitle?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const suggested = defaultTitle ?? generateWorkflowTitle(prompt).title
+  const [title, setTitle] = useState(suggested)
+  const [departmentId, setDepartmentId] = useState(context?.id ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const dept = departments.find((d) => d.id === (savedDocId ? departmentId : departmentId))
+
+  async function save() {
+    if (!departmentId || !title.trim()) return
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/post-pulse/workflow-docs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // titleAuto: the user left the suggestion untouched, so the server may
+        // replace a merely-clipped suggestion with a real summary.
+        body: JSON.stringify({ sessionId, messageIndex: index, departmentId, title, titleAuto: !defaultTitle && title === suggested }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`)
+      onSaved(body.id)
+      setOpen(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (savedDocId) {
+    return (
+      <p className="mt-3 pt-2 border-t border-cream-300/70 text-xs text-ink-100">
+        Saved as a workflow doc{dept ? ` under ${dept.name}` : ''}.{' '}
+        {dept && (
+          <Link href={`/post-pulse/departments/${dept.slug}/workflows/${savedDocId}`} className="text-press-accent hover:underline">
+            View →
+          </Link>
+        )}
+      </p>
+    )
+  }
+
+  return (
+    <div className="mt-3 pt-2 border-t border-cream-300/70">
+      {!open ? (
+        <button type="button" onClick={() => setOpen(true)} className="text-xs text-ink-100 hover:text-press-accent">
+          {defaultTitle ? 'Save as new version of the workflow doc' : 'Save as workflow doc'}
+        </button>
+      ) : (
+        <div className="flex flex-col gap-2 text-xs">
+          <label className="flex flex-col gap-1">
+            <span className="text-ink-100">Title</span>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="rounded-md border border-cream-300 bg-cream-100 px-2 py-1.5 text-sm text-ink-300 focus:outline-none focus:border-press-accent/60"
+            />
+          </label>
+          {context ? (
+            <p className="text-ink-50">Filed under {context.name}.</p>
+          ) : (
+            <label className="flex items-center gap-2">
+              <span className="text-ink-100">Department</span>
+              <select
+                value={departmentId}
+                onChange={(e) => setDepartmentId(e.target.value)}
+                className="rounded-md border border-cream-300 bg-cream-100 px-2 py-1 text-sm text-ink-300 focus:outline-none focus:border-press-accent/60"
+              >
+                <option value="">Choose…</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {error && <p className="text-press-down">{error}</p>}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={saving || !departmentId || !title.trim()}
+              onClick={save}
+              className="px-3 py-1.5 rounded-lg bg-press-accent text-white font-medium hover:bg-brand-600 disabled:opacity-50"
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            <button type="button" onClick={() => setOpen(false)} className="px-3 py-1.5 rounded-lg border border-cream-400 text-ink-200 hover:bg-cream-200">
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )

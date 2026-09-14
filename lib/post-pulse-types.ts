@@ -226,6 +226,36 @@ export interface PpChatSession {
 
 export const PP_CHAT_DEFAULT_NAME = 'New session'
 
+// Workflow docs (spec §11, migration 030): a prompt-and-answer pair saved
+// from chat, filed under one department. `stale` is computed at display
+// time from pp_changelog (a referenced tool changed after the doc was
+// saved or last verified) — never cached on the row.
+export interface PpWorkflowDoc {
+  id: string
+  department_id: string
+  title: string
+  prompt: string
+  content: string
+  referenced_tool_ids: string[]
+  source_urls: string[]
+  source_chat_session_id: string | null
+  created_at: string
+  last_verified_at: string | null
+}
+
+export interface PpWorkflowDocStaleChange {
+  toolId: string
+  toolName: string
+  field: string
+  changedAt: string
+}
+
+export interface PpWorkflowDocWithStatus extends PpWorkflowDoc {
+  stale: boolean
+  staleChanges: PpWorkflowDocStaleChange[]
+  referencedTools: { id: string; name: string }[]
+}
+
 // Session list row: name + snippet of the last message, most recent first.
 export interface PpChatSessionSummary {
   id: string

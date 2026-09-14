@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { fetchDepartmentBySlug, fetchPostPulseDataset } from '@/lib/post-pulse'
+import { fetchDepartmentBySlug, fetchPostPulseDataset, listWorkflowDocs } from '@/lib/post-pulse'
 import { PP_TIERS } from '@/lib/post-pulse-types'
 import { AnchoredMarkdown } from '@/components/post-pulse/AnchoredMarkdown'
 import { TierDot } from '@/components/post-pulse/Badges'
@@ -27,6 +27,7 @@ export default async function DepartmentDocPage({ params }: PageProps) {
   const { slug } = await params
   const [department, dataset] = await Promise.all([fetchDepartmentBySlug(slug), fetchPostPulseDataset()])
   if (!department) notFound()
+  const workflows = await listWorkflowDocs(department.id)
 
   const tools = dataset.tools.filter((t) => t.department_id === department.id)
   // Related departments (migration 026): a read-only cross-reference with a
@@ -169,6 +170,47 @@ export default async function DepartmentDocPage({ params }: PageProps) {
           </ul>
         </section>
       )}
+
+      {/* Workflow docs (spec §11): prompt-and-answer pairs saved from chat.
+          The badge appears only when a referenced tool changed since the doc
+          was saved or last verified — signal, not a neutral "last checked". */}
+      <section className="mb-8">
+        <div className="flex items-baseline gap-2 mb-2">
+          <h2 className="text-[10px] uppercase tracking-[1.5px] text-ink-50 font-medium">Workflows</h2>
+          <span className="text-[11px] text-ink-50">
+            {workflows.length} saved · save one from any chat answer
+          </span>
+        </div>
+        {workflows.length === 0 ? (
+          <p className="text-sm text-ink-50">
+            None yet. Ask a workflow question in chat and use &ldquo;Save as workflow doc&rdquo; on the answer.
+          </p>
+        ) : (
+          <ul className="rounded-xl border border-cream-300 bg-cream-50 divide-y divide-cream-300/70">
+            {workflows.map((w) => (
+              <li key={w.id}>
+                <Link
+                  href={`/post-pulse/departments/${department.slug}/workflows/${w.id}`}
+                  className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2.5 hover:bg-cream-100/70 transition-colors"
+                >
+                  <span className="font-medium text-ink-300">{w.title}</span>
+                  {w.stale && (
+                    <span
+                      className="inline-flex items-center px-2 py-px rounded-full border border-press-down/30 bg-press-down/10 text-press-down text-[11px] font-medium"
+                      title={w.staleChanges.map((c) => `${c.toolName}: ${c.field}`).join(', ')}
+                    >
+                      Possibly stale
+                    </span>
+                  )}
+                  <span className="ml-auto text-[11px] text-ink-50">
+                    saved {new Date(w.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       {department.overview_doc.trim() ? (
         <AnchoredMarkdown content={department.overview_doc} />
