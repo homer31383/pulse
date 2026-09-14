@@ -10,6 +10,7 @@ import {
   formatAttributeValue,
   type PpQueueItem,
 } from '@/lib/post-pulse-types'
+import { validateStoredProposal } from '@/lib/post-pulse-proposals'
 import { usePostPulse } from './Shell'
 
 interface Props {
@@ -82,9 +83,12 @@ export function QueueClient({ items: initial }: Props) {
         const fields = Object.keys(changes).filter(
           (k) => editable.includes(k) || (!isDept && k === 'department_slug')
         ).filter((k) => !(k === 'department_id' && 'department_slug' in changes))
-        const ignored = Object.keys(changes).filter((k) => !fields.includes(k) && k !== 'note' && k !== 'department_id')
+        const ignored = Object.keys(changes).filter((k) => !fields.includes(k) && k !== 'note' && k !== 'department_id' && k !== 'flag')
         const isBusy = busy === item.id
         const missingTarget = (item.proposed_tool_id && !targetTool) || (item.proposed_department_id && !targetDept)
+        // Same validator the accept handler runs — a row it would refuse is
+        // shown as such here instead of failing on click.
+        const shape = validateStoredProposal(item)
 
         const title = isDept ? (
           targetDept ? (
@@ -129,6 +133,12 @@ export function QueueClient({ items: initial }: Props) {
             </header>
 
             <div className="px-4 py-3">
+              {!shape.ok && (
+                <p className="mb-3 rounded-lg border border-press-down/30 bg-press-down/10 px-3 py-2 text-xs text-press-down">
+                  {shape.flag === 'ambiguous' ? 'Ambiguous review note. ' : shape.flag === 'incomplete' ? 'Incomplete proposal. ' : 'Cannot be applied. '}
+                  {shape.error}
+                </p>
+              )}
               {typeof changes.note === 'string' && (
                 <p className="text-sm text-ink-200 mb-3 leading-relaxed">{changes.note}</p>
               )}
@@ -211,9 +221,10 @@ export function QueueClient({ items: initial }: Props) {
             <footer className="flex items-center gap-2 px-4 py-2.5 bg-cream-100/70 border-t border-cream-300/70">
               <button
                 type="button"
-                disabled={isBusy}
+                disabled={isBusy || !shape.ok}
+                title={shape.ok ? undefined : shape.error}
                 onClick={() => resolve(item.id, 'accept')}
-                className="px-3 py-1.5 rounded-lg bg-press-accent text-white text-sm font-medium hover:bg-brand-600 disabled:opacity-50 transition-colors"
+                className="px-3 py-1.5 rounded-lg bg-press-accent text-white text-sm font-medium hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {isBusy ? 'Working…' : 'Accept'}
               </button>

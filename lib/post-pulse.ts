@@ -1,6 +1,7 @@
 // Post Pulse — server-only data access. Imports the service-role Supabase
 // client, so this file must never be imported from a 'use client' file.
 import { supabase } from '@/lib/supabase'
+import { buildProposal, validateStoredProposal, type PpProposalInput } from '@/lib/post-pulse-proposals'
 import {
   PP_CHAT_DEFAULT_NAME,
   PP_DEPARTMENT_EDITABLE_FIELDS,
@@ -185,6 +186,10 @@ export async function acceptQueueItem(queueId: string): Promise<QueueResolution>
   if (item.status !== 'pending') return { ok: false, status: 409, error: `Queue item already ${item.status}` }
 
   const queued = normalizeQueueItem(item as Record<string, unknown>)
+  // Same rules the producers wrote the row under (lib/post-pulse-proposals.ts):
+  // a malformed or flagged row is refused here with a reason, never applied.
+  const shape = validateStoredProposal(queued)
+  if (!shape.ok) return { ok: false, status: 422, error: shape.error }
   const result = queued.target_type === 'department' ? await acceptDepartmentItem(queued) : await acceptToolItem(queued)
   if (!result.ok) return result
 
@@ -410,31 +415,16 @@ export async function rejectQueueItem(queueId: string): Promise<QueueResolution>
   }
 }
 
-// Used by the chat engine, the (future) automation pass, and the manual
-// POST /api/post-pulse/queue: every proposal lands here, nothing writes
-// pp_tools or pp_departments directly.
-export async function enqueueProposal(input: {
-  targetType?: PpQueueTargetType
-  proposedToolId?: string | null
-  proposedDepartmentId?: string | null
-  proposedChanges: Record<string, unknown>
-  source: PpQueueItem['source']
-  sourceUrls?: string[]
-}): Promise<{ id: string } | { error: string }> {
-  const { data, error } = await supabase
-    .from('pp_queue')
-    .insert({
-      target_type: input.targetType ?? 'tool',
-      proposed_tool_id: input.proposedToolId ?? null,
-      proposed_department_id: input.proposedDepartmentId ?? null,
-      proposed_changes: input.proposedChanges,
-      source: input.source,
-      source_urls: input.sourceUrls ?? [],
-    })
-    .select('id')
-    .single()
+// The only way a proposal gets into pp_queue. Every producer — chat, the
+// research job, the manual POST /api/post-pulse/queue — passes a typed
+// PpProposalInput; buildProposal() validates and normalises it, so a row
+// that the accept handler could not apply is refused HERE, at write time.
+export async function enqueueProposal(input: PpProposalInput): Promise<{ id: string; label: string } | { error: string }> {
+  const built = buildProposal(input)
+  if (!built.ok) return { error: built.error }
+  const { data, error } = await supabase.from('pp_queue').insert(built.row).select('id').single()
   if (error) return { error: error.message }
-  return { id: data.id }
+  return { id: data.id, label: built.kind }
 }
 
 // ── Chat sessions (migration 023) ────────────────────────────────────────

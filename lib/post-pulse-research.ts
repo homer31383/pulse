@@ -26,6 +26,8 @@ import {
   stampToolsVerified,
 } from '@/lib/post-pulse'
 import { fetchRssItems, isKnownSourceUrl, PP_RSS_SOURCES, type PpRssItem } from '@/lib/post-pulse-rss'
+import { normalizeToolFields } from '@/lib/post-pulse-proposals'
+import { stripServerToolBlocks } from '@/lib/post-pulse-chat'
 import {
   PP_HOST_APPS,
   PP_TIERS,
@@ -197,7 +199,7 @@ function researchSystemPrompt(dept: PpDepartment, tools: PpTool[], dataset: PpDa
     `## Rules\n` +
     `- You have ${MAX_SEARCHES_PER_DEPARTMENT} web searches. Run them ONE AT A TIME and read each result before deciding the next — never batch several searches in a single step, or the budget is spent before you see anything. When the budget is exhausted the tool returns an error — that is the budget, not an outage; report what you have. Prefer vendor pages, release notes, and trade press. Known sources (their claims count as vendor-grade): ${known}; also befores & afters, fxguide.\n` +
     `- Verify each RSS lead you are given first (cite its URL in source_urls and set from_lead), then run the suggested queries you have budget for.\n` +
-    `- kind=update: an existing tool (tool_id) changed — include ONLY changed fields in changes, and only fields you can support with a source. kind=confirmation: you found current evidence that the entry is accurate and nothing changed (tool_id required). kind=new_tool: a tool not in the list, worth tracking, with name, tier, host_app (${PP_HOST_APPS.join(' | ')}), status, vendor, blurb, source_urls. kind=noop: nothing found worth recording (one per pass is enough).\n` +
+    `- kind=update: an existing tool (tool_id) changed — include ONLY changed fields in changes, and only fields you can support with a source. kind=confirmation: you found current evidence that the entry is accurate and nothing changed (tool_id required). kind=new_tool: a tool not in the list, worth tracking — changes MUST include tier (automated | assisted | artist_led), host_app (${PP_HOST_APPS.join(' | ')}), status, vendor, blurb, and source_urls; a new_tool without a tier is stored only as an incomplete note a human has to redo, so decide the tier or report it as ambiguous instead. kind=noop: nothing found worth recording (one per pass is enough).\n` +
     `- Hard rule: when a named entity cannot be confidently resolved — several unrelated things share the name, sources conflict, nothing matches, or the fit is a coin flip — report kind=ambiguous with what you saw and why it is unresolved. Never assert a tier, status, or identity you could not verify; a wrong guess looks as credible as a verified entry to a reviewer.\n` +
     `- Confidence: high = a primary or vendor-grade source states it plainly; medium = a credible secondary source; low = inference. Tier and status changes are judgment calls and will be reviewed by a human regardless of confidence.\n` +
     `- Do not propose removing discontinued tools; propose status=discontinued with a replacement if you can name one.\n` +
@@ -324,7 +326,7 @@ async function researchDepartment(
         REPORT_TOOL,
       ],
     })
-    const final = await stream.finalMessage()
+    const final: Anthropic.Message = await stream.finalMessage()
     addUsage(spend, SEARCH_MODEL, final.usage)
     searches += final.usage.server_tool_use?.web_search_requests ?? 0
 
@@ -337,9 +339,11 @@ async function researchDepartment(
       return { findings, notes: typeof input.notes === 'string' ? input.notes : '', searches, complete: input.complete !== false }
     }
     if (final.stop_reason === 'pause_turn' || final.stop_reason === 'tool_use') {
-      // pause_turn: server tool loop paused; tool_use without our tool
-      // shouldn't happen (web_search is server-side) — resume either way.
-      messages.push({ role: 'assistant', content: final.content })
+      // pause_turn: the server tool loop paused; resume with the full turn.
+      // tool_use for an unknown tool shouldn't happen — if it does, resume
+      // without the server-tool blocks (the API refuses them next to a
+      // pending client tool_use; see lib/post-pulse-chat.ts).
+      messages.push({ role: 'assistant', content: final.stop_reason === 'tool_use' ? stripServerToolBlocks(final.content) : final.content })
       if (final.stop_reason === 'tool_use') {
         messages.push({
           role: 'user',
@@ -362,17 +366,6 @@ async function researchDepartment(
 function httpUrls(list: unknown): string[] {
   if (!Array.isArray(list)) return []
   return list.filter((u): u is string => typeof u === 'string' && /^https?:\/\//i.test(u))
-}
-
-function normalizeChanges(changes: Record<string, unknown>): Record<string, unknown> {
-  const out = { ...changes }
-  if (typeof out.host_app === 'string') {
-    const canonical = PP_HOST_APPS.find((h) => h.toLowerCase() === (out.host_app as string).trim().toLowerCase())
-    out.host_app = canonical ?? out.host_app.trim()
-  }
-  if (typeof out.tier === 'string') out.tier = out.tier.trim().toLowerCase().replace(/[\s-]+/g, '_')
-  if (typeof out.status === 'string') out.status = out.status.trim().toLowerCase()
-  return out
 }
 
 async function publishFindings(
@@ -409,7 +402,7 @@ async function publishFindings(
       continue
     }
 
-    const changes = normalizeChanges(f.changes && typeof f.changes === 'object' ? f.changes : {})
+    const changes = normalizeToolFields(f.changes && typeof f.changes === 'object' ? f.changes : {})
 
     if (f.kind === 'update' && tool) {
       const keys = Object.keys(changes)
@@ -428,30 +421,35 @@ async function publishFindings(
         }
       }
       const res = await enqueueProposal({
-        targetType: 'tool',
-        proposedToolId: tool.id,
-        proposedChanges: { ...changes, note: keys.length ? note : `${note} (no concrete field change supplied — review the summary)` },
+        kind: 'tool_update',
+        toolId: tool.id,
+        changes,
+        note: keys.length ? note : `${note} (no concrete field change supplied — accepting only re-verifies the entry)`,
         source,
         sourceUrls: urls,
       })
-      if (!('error' in res)) queued.push({ label: `Update ${tool.name} (${keys.join(', ') || 'see note'})`, queueId: res.id, source })
+      if ('error' in res) console.warn(`[post-pulse research] proposal refused (${tool.name}): ${res.error}`)
+      else queued.push({ label: `Update ${tool.name} (${keys.join(', ') || 'see note'})`, queueId: res.id, source })
       continue
     }
 
     if (f.kind === 'ambiguous') {
-      const res = await enqueueProposal({
-        targetType: 'tool',
-        proposedToolId: tool?.id ?? null,
-        proposedChanges: {
-          ...(tool ? {} : { name: f.name, department_slug: targetDept.slug }),
-          ...changes,
-          flag: 'ambiguous',
-          note: `Needs a human — could not be resolved confidently. ${note}`,
-        },
-        source,
-        sourceUrls: urls,
-      })
-      if (!('error' in res)) queued.push({ label: `Ambiguous: ${f.name}`, queueId: res.id, source })
+      // A flagged note: stored for a human, refused by Accept, resolved in chat.
+      const res = await enqueueProposal(
+        tool
+          ? { kind: 'tool_update', toolId: tool.id, changes, note: `Needs a human — could not be resolved confidently. ${note}`, source, sourceUrls: urls, flag: 'ambiguous' }
+          : {
+              kind: 'tool_create',
+              department: { id: targetDept.id, slug: targetDept.slug },
+              fields: { ...changes, name: f.name.trim() },
+              note: `Needs a human — could not be resolved confidently. ${note}`,
+              source,
+              sourceUrls: urls,
+              flag: 'ambiguous',
+            }
+      )
+      if ('error' in res) console.warn(`[post-pulse research] ambiguous note refused (${f.name}): ${res.error}`)
+      else queued.push({ label: `Ambiguous: ${f.name}`, queueId: res.id, source })
       continue
     }
 
@@ -459,22 +457,33 @@ async function publishFindings(
     const existing = dataset.tools.find(
       (t) => t.department_id === targetDept.id && t.name.toLowerCase() === f.name.trim().toLowerCase()
     )
-    const res = await enqueueProposal({
-      targetType: 'tool',
-      proposedToolId: existing?.id ?? null,
-      proposedChanges: existing
-        ? { ...changes, note }
-        : { ...changes, name: f.name.trim(), department_slug: targetDept.slug, department_id: targetDept.id, note },
-      source,
-      sourceUrls: urls,
-    })
-    if (!('error' in res)) {
-      queued.push({
-        label: existing ? `Update ${existing.name}` : `New tool: ${f.name.trim()} → ${targetDept.name}`,
-        queueId: res.id,
-        source,
-      })
+    const fields: Record<string, unknown> = { ...changes, name: f.name.trim() }
+    // The model must supply a tier for a real create; without one the row
+    // is stored as an incomplete note rather than a proposal Accept would
+    // choke on (the Beeble Canvas case, 2026-09-14).
+    const incomplete = !existing && typeof fields.tier !== 'string'
+    const res = await enqueueProposal(
+      existing
+        ? { kind: 'tool_update', toolId: existing.id, changes, note, source, sourceUrls: urls }
+        : {
+            kind: 'tool_create',
+            department: { id: targetDept.id, slug: targetDept.slug },
+            fields,
+            note: incomplete ? `Incomplete — the research pass did not establish a tier. ${note}` : note,
+            source,
+            sourceUrls: urls,
+            ...(incomplete ? { flag: 'incomplete' as const } : {}),
+          }
+    )
+    if ('error' in res) {
+      console.warn(`[post-pulse research] proposal refused (${f.name}): ${res.error}`)
+      continue
     }
+    queued.push({
+      label: existing ? `Update ${existing.name}` : `${incomplete ? 'Incomplete: ' : 'New tool: '}${f.name.trim()} → ${targetDept.name}`,
+      queueId: res.id,
+      source,
+    })
   }
 
   await stampToolsVerified(Array.from(new Set(confirmedIds)))

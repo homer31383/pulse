@@ -18,6 +18,7 @@ import {
   fetchPostPulseDataset,
   updateChatSession,
 } from '@/lib/post-pulse'
+import { normalizeToolFields } from '@/lib/post-pulse-proposals'
 import {
   PP_CHAT_DEFAULT_NAME,
   PP_DEPARTMENT_EDITABLE_FIELDS,
@@ -25,7 +26,6 @@ import {
   PP_PIPELINE_SUBSTAGES,
   PP_TIERS,
   PP_TOOL_EDITABLE_FIELDS,
-  PP_HOST_APPS,
   hostAppLabel,
   slugifyHeading,
   type PpChatMessage,
@@ -169,8 +169,6 @@ interface ProposeInput {
 
 type ProposalOutcome = { ok: true; queued: PpChatQueued } | { ok: false; error: string }
 
-const TIER_VALUES = new Set(PP_TIERS.map((t) => t.value))
-
 function isRecord(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === 'object' && !Array.isArray(v)
 }
@@ -183,20 +181,6 @@ function httpUrls(list: unknown): string[] {
 function pick<K extends string>(obj: Record<string, unknown>, keys: readonly K[]): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const k of keys) if (k in obj) out[k] = obj[k]
-  return out
-}
-
-// The model tends to capitalise enum values ("Standalone"); the dataset
-// convention is the lowercase canonical list, and the sidebar groups by
-// exact string, so normalise before anything reaches the queue.
-function normalizeToolChanges(changes: Record<string, unknown>): Record<string, unknown> {
-  const out = { ...changes }
-  if (typeof out.host_app === 'string') {
-    const canonical = PP_HOST_APPS.find((h) => h.toLowerCase() === (out.host_app as string).trim().toLowerCase())
-    out.host_app = canonical ?? out.host_app.trim()
-  }
-  if (typeof out.tier === 'string') out.tier = out.tier.trim().toLowerCase().replace(/[\s-]+/g, '_')
-  if (typeof out.status === 'string') out.status = out.status.trim().toLowerCase()
   return out
 }
 
@@ -221,34 +205,28 @@ async function handleProposal(input: ProposeInput, dataset: PpDataset, turnSourc
         ? input.changes.department_slug
         : null
 
+  // Dataset-level checks (unknown ids, duplicates) live here; the shape
+  // rules (required fields, enums, normalisation) live in buildProposal.
   if (targetType === 'tool') {
-    const changes = normalizeToolChanges(pick(input.changes, PP_TOOL_EDITABLE_FIELDS))
+    const changes = normalizeToolFields(pick(input.changes, PP_TOOL_EDITABLE_FIELDS))
     if (action === 'update') {
       const tool = targetId ? dataset.tools.find((t) => t.id === targetId) : null
       if (!tool) return { ok: false, error: 'target_id does not match a tracked tool; use an id from the department list, or action=create' }
       if (Object.keys(changes).length === 0) return { ok: false, error: 'no editable tool fields in changes' }
-      if ('tier' in changes && !TIER_VALUES.has(changes.tier as never)) return { ok: false, error: 'tier must be automated|assisted|artist_led' }
-      const res = await enqueueProposal({
-        targetType: 'tool',
-        proposedToolId: tool.id,
-        proposedChanges: { ...changes, note: rationale },
-        source: 'chat',
-        sourceUrls,
-      })
+      const res = await enqueueProposal({ kind: 'tool_update', toolId: tool.id, changes, note: rationale, source: 'chat', sourceUrls })
       if ('error' in res) return { ok: false, error: res.error }
       return { ok: true, queued: { id: res.id, label: `Update ${tool.name} (${Object.keys(changes).join(', ')})`, targetType: 'tool' } }
     }
     const department = deptSlug ? dataset.departments.find((d) => d.slug === deptSlug) : null
     if (!department) return { ok: false, error: 'department_slug must name an existing department (or propose the department first)' }
     const name = typeof changes.name === 'string' ? changes.name.trim() : ''
-    if (!name) return { ok: false, error: 'a new tool needs a name' }
-    if (!TIER_VALUES.has(changes.tier as never)) return { ok: false, error: 'a new tool needs tier = automated|assisted|artist_led' }
-    const dup = dataset.tools.find((t) => t.department_id === department.id && t.name.toLowerCase() === name.toLowerCase())
+    const dup = name ? dataset.tools.find((t) => t.department_id === department.id && t.name.toLowerCase() === name.toLowerCase()) : null
     if (dup) return { ok: false, error: `"${dup.name}" is already tracked in ${department.name} (id=${dup.id}); propose an update to it instead` }
     const res = await enqueueProposal({
-      targetType: 'tool',
-      proposedToolId: null,
-      proposedChanges: { ...changes, name, department_slug: department.slug, department_id: department.id, note: rationale },
+      kind: 'tool_create',
+      department: { id: department.id, slug: department.slug },
+      fields: changes,
+      note: rationale,
       source: 'chat',
       sourceUrls,
     })
@@ -261,14 +239,7 @@ async function handleProposal(input: ProposeInput, dataset: PpDataset, turnSourc
   if (action === 'update') {
     const department = targetId ? dataset.departments.find((d) => d.id === targetId) : null
     if (!department) return { ok: false, error: 'target_id does not match a department; use an id from the department list, or action=create' }
-    if (Object.keys(changes).length === 0) return { ok: false, error: 'no editable department fields in changes' }
-    const res = await enqueueProposal({
-      targetType: 'department',
-      proposedDepartmentId: department.id,
-      proposedChanges: { ...changes, note: rationale },
-      source: 'chat',
-      sourceUrls,
-    })
+    const res = await enqueueProposal({ kind: 'department_update', departmentId: department.id, changes, note: rationale, source: 'chat', sourceUrls })
     if ('error' in res) return { ok: false, error: res.error }
     return {
       ok: true,
@@ -276,17 +247,10 @@ async function handleProposal(input: ProposeInput, dataset: PpDataset, turnSourc
     }
   }
   const name = typeof changes.name === 'string' ? changes.name.trim() : ''
-  if (!name) return { ok: false, error: 'a new department needs a name' }
-  const slug = (typeof changes.slug === 'string' && changes.slug.trim()) || deptSlug || slugifyHeading(name)
-  const clash = dataset.departments.find((d) => d.slug === slug || d.name.toLowerCase() === name.toLowerCase())
+  const slug = (typeof changes.slug === 'string' && changes.slug.trim()) || deptSlug || (name ? slugifyHeading(name) : '')
+  const clash = dataset.departments.find((d) => (slug && d.slug === slug) || (name && d.name.toLowerCase() === name.toLowerCase()))
   if (clash) return { ok: false, error: `department "${clash.name}" already exists (id=${clash.id}); propose an update instead` }
-  const res = await enqueueProposal({
-    targetType: 'department',
-    proposedDepartmentId: null,
-    proposedChanges: { ...changes, name, slug, note: rationale },
-    source: 'chat',
-    sourceUrls,
-  })
+  const res = await enqueueProposal({ kind: 'department_create', fields: { ...changes, slug }, note: rationale, source: 'chat', sourceUrls })
   if ('error' in res) return { ok: false, error: res.error }
   return { ok: true, queued: { id: res.id, label: `New department: ${name}`, targetType: 'department' } }
 }
@@ -353,6 +317,14 @@ export async function runChatTurn(params: {
   }
 
   const name = autoName(session, userMessage)
+  // Resuming after OUR tool_use in a round that also used web_search_20260209
+  // fails with 400 "container_id is required when there are pending tool
+  // uses generated by code execution with tools" — and the response carries
+  // no container id to send back (probed 2026-09-14). What works: replay
+  // the assistant turn without the server-tool blocks (search calls,
+  // results, code-execution results), and drop web_search from the tools
+  // for the rest of the turn so the model wraps up instead of re-searching.
+  let searchEnabled = true
 
   try {
     for (let round = 0; round < MAX_ROUNDS; round++) {
@@ -367,10 +339,9 @@ export async function runChatTurn(params: {
         messages,
         thinking: { type: 'adaptive' },
         output_config: { effort: PP_CHAT_EFFORT },
-        tools: [
-          { type: 'web_search_20260209', name: 'web_search', max_uses: Math.max(1, MAX_SEARCHES - searchesUsed) },
-          PROPOSE_TOOL,
-        ],
+        tools: searchEnabled
+          ? [{ type: 'web_search_20260209', name: 'web_search', max_uses: Math.max(1, MAX_SEARCHES - searchesUsed) }, PROPOSE_TOOL]
+          : [PROPOSE_TOOL],
       })
 
       for await (const event of stream) {
@@ -427,7 +398,7 @@ export async function runChatTurn(params: {
         }
       }
 
-      const final = await stream.finalMessage()
+      const final: Anthropic.Message = await stream.finalMessage()
       usage.input += final.usage.input_tokens
       usage.output += final.usage.output_tokens
       usage.cacheWrite += final.usage.cache_creation_input_tokens ?? 0
@@ -467,8 +438,9 @@ export async function runChatTurn(params: {
             })
           }
         }
-        messages.push({ role: 'assistant', content: final.content })
+        messages.push({ role: 'assistant', content: stripServerToolBlocks(final.content) })
         messages.push({ role: 'user', content: results })
+        searchEnabled = false
         continue
       }
 
@@ -513,6 +485,14 @@ export async function runChatTurn(params: {
       }).catch(() => {})
     }
   }
+}
+
+// Blocks produced by the server-side search loop. They cannot be replayed
+// alongside a pending client tool_use (see the note in runChatTurn).
+const SERVER_TOOL_BLOCKS = new Set(['server_tool_use', 'web_search_tool_result', 'code_execution_tool_result', 'bash_code_execution_tool_result', 'text_editor_code_execution_tool_result'])
+
+export function stripServerToolBlocks(content: Anthropic.ContentBlock[]): Anthropic.ContentBlockParam[] {
+  return content.filter((b) => !SERVER_TOOL_BLOCKS.has(b.type)) as unknown as Anthropic.ContentBlockParam[]
 }
 
 function describeError(err: unknown): string {
