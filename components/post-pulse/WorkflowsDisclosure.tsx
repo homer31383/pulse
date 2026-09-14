@@ -39,6 +39,9 @@ export function WorkflowsDisclosure({ departmentId, departmentSlug, workflows }:
                   className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2.5 text-sm hover:bg-cream-100/70 transition-colors"
                 >
                   <span className="font-medium text-ink-300">{w.title}</span>
+                  {w.messages.length > 2 && (
+                    <span className="text-[11px] text-ink-50">conversation · {w.messages.filter((m) => m.role === 'user').length} prompts</span>
+                  )}
                   {w.department_id !== departmentId && <span className="text-[11px] text-ink-50">also filed here</span>}
                   {w.stale && (
                     <span

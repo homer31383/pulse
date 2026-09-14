@@ -581,6 +581,12 @@ function normalizeWorkflowDoc(row: Record<string, unknown>): PpWorkflowDoc {
   return {
     ...(row as unknown as PpWorkflowDoc),
     also_department_ids: Array.isArray(row.also_department_ids) ? (row.also_department_ids as string[]) : [],
+    messages: Array.isArray(row.messages)
+      ? (row.messages as unknown[]).filter(
+          (m): m is PpWorkflowDoc['messages'][number] =>
+            !!m && typeof m === 'object' && ((m as { role?: unknown }).role === 'user' || (m as { role?: unknown }).role === 'assistant') && typeof (m as { content?: unknown }).content === 'string'
+        )
+      : [],
     referenced_tool_ids: Array.isArray(row.referenced_tool_ids) ? (row.referenced_tool_ids as string[]) : [],
     source_urls: Array.isArray(row.source_urls) ? (row.source_urls as string[]) : [],
     last_verified_at: (row.last_verified_at as string | null) ?? null,
@@ -659,7 +665,12 @@ export async function moveWorkflowDoc(
   const filed = [primary, ...also.map((x) => dataset.departments.find((d) => d.id === x)!)]
   const rosterIds = new Set(filed.flatMap((d) => [d.id, ...d.related_department_ids]))
   const roster = dataset.tools.filter((t) => rosterIds.has(t.department_id)).map((t) => ({ id: t.id, name: t.name }))
-  const referenced = matchReferencedTools(String(current.content ?? ''), roster)
+  // Match over everything the doc holds (a saved conversation, or the single answer).
+  const savedMessages = Array.isArray(current.messages) ? (current.messages as { role?: string; content?: string }[]) : []
+  const text = savedMessages.length
+    ? savedMessages.filter((m) => m.role === 'assistant').map((m) => m.content ?? '').join('\n\n')
+    : String(current.content ?? '')
+  const referenced = matchReferencedTools(text, roster)
 
   const update: Record<string, unknown> = { department_id: primary.id, referenced_tool_ids: referenced }
   if (also.length || !filingColumnMissing) update.also_department_ids = also
@@ -692,24 +703,31 @@ export async function createWorkflowDoc(input: {
   title: string
   prompt: string
   content: string
+  messages: PpWorkflowDoc['messages'] // [] for a single answer
   referencedToolIds: string[]
   sourceUrls: string[]
   sourceChatSessionId: string | null
-}): Promise<{ id: string } | { error: string }> {
-  const { data, error } = await supabase
-    .from('pp_workflow_docs')
-    .insert({
-      department_id: input.departmentId,
-      title: input.title.trim().slice(0, 160),
-      prompt: input.prompt,
-      content: input.content,
-      referenced_tool_ids: input.referencedToolIds,
-      source_urls: input.sourceUrls,
-      source_chat_session_id: input.sourceChatSessionId,
-    })
-    .select('id')
-    .single()
-  if (error) return { error: error.message }
+}): Promise<{ id: string } | { error: string; status?: number }> {
+  const row: Record<string, unknown> = {
+    department_id: input.departmentId,
+    title: input.title.trim().slice(0, 160),
+    prompt: input.prompt,
+    content: input.content,
+    referenced_tool_ids: input.referencedToolIds,
+    source_urls: input.sourceUrls,
+    source_chat_session_id: input.sourceChatSessionId,
+    messages: input.messages,
+  }
+  let { data, error } = await supabase.from('pp_workflow_docs').insert(row).select('id').single()
+  if (error && /messages/i.test(error.message)) {
+    // Migration 032 not applied: a single answer still saves; a slice can't.
+    if (input.messages.length > 2) {
+      return { error: 'Saving a conversation needs supabase/migrations/032_post_pulse_workflow_doc_transcript.sql to be applied first.', status: 409 }
+    }
+    delete row.messages
+    ;({ data, error } = await supabase.from('pp_workflow_docs').insert(row).select('id').single())
+  }
+  if (error || !data) return { error: error?.message ?? 'insert failed' }
   return { id: data.id }
 }
 

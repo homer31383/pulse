@@ -152,6 +152,7 @@ Only the REST key is available in some environments. The seed can be applied thr
 ## 11. Later migrations
 
 - **024** `pp_departments.last_researched_at` (timestamptz, nullable) — stamped by research runs; unused by the UI so far.
+- **032** `pp_workflow_docs.messages jsonb` — the saved conversation slice ([] for single-answer docs).
 - **031** `pp_workflow_docs.also_department_ids uuid[]` (GIN) — additional departments a workflow doc is filed under; primary stays `department_id`.
 - **030** `pp_workflow_docs` (department_id, title, prompt, content, referenced_tool_ids, source_urls, source_chat_session_id, created_at, last_verified_at) — saved chat answers; staleness computed against `pp_changelog` at display time (spec §11).
 - **029** `pp_department_research_runs` (department_id, ran_at, summary, findings_count, queued_count, auto_published_count) — native maintenance-run records; the `Post Pulse Research` channel's briefings were backfilled here (11 rows from 7 briefings) and the channel deleted on 2026-09-14.

@@ -42,14 +42,17 @@ async function summarizeTitle(prompt: string, fallback: string): Promise<string>
 
 export const dynamic = 'force-dynamic'
 
-// POST { sessionId, messageIndex, departmentId, title? }
-// Saves the assistant message at messageIndex, with the user message that
-// preceded it as the prompt, as a workflow doc (spec §11). Everything else
-// is derived here from the stored session so the client can't drift:
-// content as-is, sources from that turn, referenced tools by name match
-// against the department's roster plus its related departments.
+// POST { sessionId, messageIndex, departmentId, title?, titleAuto?, startIndex? }
+// Saves a workflow doc (spec §11) from the stored session so the client
+// can't drift. Scope: by default the assistant message at messageIndex
+// with the user message before it; with startIndex (a user message at or
+// before that pair) the whole slice from startIndex through messageIndex
+// is kept as a conversation (migration 032). prompt = first user message
+// of the slice, content = the final answer; sources = the union of the
+// slice's search results; referenced tools matched over every assistant
+// message in the slice against the department's roster + related ones.
 export async function POST(req: NextRequest) {
-  let body: { sessionId?: unknown; messageIndex?: unknown; departmentId?: unknown; title?: unknown; titleAuto?: unknown }
+  let body: { sessionId?: unknown; messageIndex?: unknown; departmentId?: unknown; title?: unknown; titleAuto?: unknown; startIndex?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -67,14 +70,29 @@ export async function POST(req: NextRequest) {
   if (!message || message.role !== 'assistant') {
     return Response.json({ error: 'messageIndex must point at an assistant message' }, { status: 400 })
   }
-  let prompt: string | null = null
+  // The pair's own prompt: nearest user message before the answer.
+  let pairStart = -1
   for (let i = body.messageIndex - 1; i >= 0; i--) {
     if (session.messages[i].role === 'user') {
-      prompt = session.messages[i].content
+      pairStart = i
       break
     }
   }
-  if (!prompt) return Response.json({ error: 'No user prompt precedes that message' }, { status: 400 })
+  if (pairStart < 0) return Response.json({ error: 'No user prompt precedes that message' }, { status: 400 })
+  // Optional wider scope: start at an earlier user message.
+  let start = pairStart
+  if (typeof body.startIndex === 'number') {
+    const s = body.startIndex
+    if (!Number.isInteger(s) || s < 0 || s > pairStart || session.messages[s]?.role !== 'user') {
+      return Response.json({ error: 'startIndex must be a user message at or before the answer\'s own prompt' }, { status: 400 })
+    }
+    start = s
+  }
+  const slice = session.messages.slice(start, body.messageIndex + 1)
+  const isConversation = start < pairStart
+  const prompt = session.messages[start].content
+  const assistantText = slice.filter((m) => m.role === 'assistant').map((m) => m.content).join('\n\n')
+  const sourceUrls = Array.from(new Set(slice.flatMap((m) => (m.sources ?? []).map((s) => s.url))))
 
   const dataset = await fetchPostPulseDataset()
   const rosterDeptIds = new Set([department.id, ...department.related_department_ids])
@@ -96,10 +114,11 @@ export async function POST(req: NextRequest) {
     title,
     prompt,
     content: message.content,
-    referencedToolIds: matchReferencedTools(message.content, roster),
-    sourceUrls: (message.sources ?? []).map((s) => s.url),
+    messages: isConversation ? slice.map((m) => ({ role: m.role, content: m.content })) : [],
+    referencedToolIds: matchReferencedTools(assistantText, roster),
+    sourceUrls,
     sourceChatSessionId: session.id,
   })
-  if ('error' in result) return Response.json({ error: result.error }, { status: 500 })
+  if ('error' in result) return Response.json({ error: result.error }, { status: result.status ?? 500 })
   return Response.json({ id: result.id, departmentSlug: department.slug }, { status: 201 })
 }

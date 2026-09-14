@@ -235,8 +235,9 @@ export interface PpWorkflowDoc {
   department_id: string // primary filing (anchors the URL)
   also_department_ids: string[] // migration 031: additional departments it is filed under
   title: string
-  prompt: string
-  content: string
+  prompt: string // first user message of the saved slice (what Re-run asks again)
+  content: string // last assistant answer of the slice
+  messages: { role: 'user' | 'assistant'; content: string }[] // migration 032: the saved conversation slice ([] = single answer)
   referenced_tool_ids: string[]
   source_urls: string[]
   source_chat_session_id: string | null

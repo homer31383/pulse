@@ -100,19 +100,44 @@ export default async function WorkflowDocPage({ params }: PageProps) {
         </div>
       )}
 
-      <section className="mb-6">
-        <h2 className="text-[10px] uppercase tracking-[1.5px] text-ink-50 font-medium mb-2">Prompt</h2>
-        <blockquote className="rounded-xl bg-press-accent/5 border border-press-accent/20 px-4 py-3 text-sm text-ink-300 whitespace-pre-wrap">
-          {doc.prompt}
-        </blockquote>
-      </section>
+      {doc.messages.length > 2 ? (
+        // A saved conversation (migration 032): the slice in order.
+        <section className="mb-6">
+          <h2 className="text-[10px] uppercase tracking-[1.5px] text-ink-50 font-medium mb-2">
+            Conversation · {doc.messages.filter((m) => m.role === 'user').length} prompts
+          </h2>
+          <div className="space-y-3">
+            {doc.messages.map((m, i) =>
+              m.role === 'user' ? (
+                <blockquote key={i} className="rounded-xl bg-press-accent/5 border border-press-accent/20 px-4 py-3 text-sm text-ink-300 whitespace-pre-wrap">
+                  {m.content}
+                </blockquote>
+              ) : (
+                <div key={i} className="rounded-xl border border-cream-300 bg-cream-50 px-4 py-3">
+                  <MarkdownRenderer content={m.content} />
+                </div>
+              )
+            )}
+          </div>
+          <p className="text-[11px] text-ink-50 mt-2">Re-run asks the opening prompt again in chat.</p>
+        </section>
+      ) : (
+        <>
+          <section className="mb-6">
+            <h2 className="text-[10px] uppercase tracking-[1.5px] text-ink-50 font-medium mb-2">Prompt</h2>
+            <blockquote className="rounded-xl bg-press-accent/5 border border-press-accent/20 px-4 py-3 text-sm text-ink-300 whitespace-pre-wrap">
+              {doc.prompt}
+            </blockquote>
+          </section>
 
-      <section className="mb-6">
-        <h2 className="text-[10px] uppercase tracking-[1.5px] text-ink-50 font-medium mb-2">Answer</h2>
-        <div className="rounded-xl border border-cream-300 bg-cream-50 px-4 py-3">
-          <MarkdownRenderer content={doc.content} />
-        </div>
-      </section>
+          <section className="mb-6">
+            <h2 className="text-[10px] uppercase tracking-[1.5px] text-ink-50 font-medium mb-2">Answer</h2>
+            <div className="rounded-xl border border-cream-300 bg-cream-50 px-4 py-3">
+              <MarkdownRenderer content={doc.content} />
+            </div>
+          </section>
+        </>
+      )}
 
       <section className="mb-6">
         <h2 className="text-[10px] uppercase tracking-[1.5px] text-ink-50 font-medium mb-2">Referenced tools</h2>

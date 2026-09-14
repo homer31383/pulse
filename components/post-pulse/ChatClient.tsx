@@ -222,6 +222,7 @@ export function ChatClient({ session, rerun = null }: Props) {
             message={m}
             index={i}
             prompt={m.role === 'assistant' ? previousUserPrompt(messages, i) : null}
+            earlierPrompts={m.role === 'assistant' ? earlierUserPrompts(messages, i) : []}
             sessionId={session.id}
             context={context}
             departments={departments}
@@ -300,10 +301,26 @@ function previousUserPrompt(messages: PpChatMessage[], index: number): string | 
   return null
 }
 
+// User messages before an answer's own prompt — the places a saved
+// conversation can start from. Oldest first.
+function earlierUserPrompts(messages: PpChatMessage[], index: number): { index: number; content: string }[] {
+  let own = -1
+  for (let i = index - 1; i >= 0; i--) {
+    if (messages[i].role === 'user') {
+      own = i
+      break
+    }
+  }
+  const out: { index: number; content: string }[] = []
+  for (let i = 0; i < own; i++) if (messages[i].role === 'user') out.push({ index: i, content: messages[i].content })
+  return out
+}
+
 function MessageBubble({
   message,
   index,
   prompt,
+  earlierPrompts,
   sessionId,
   context,
   departments,
@@ -314,6 +331,7 @@ function MessageBubble({
   message: PpChatMessage
   index: number
   prompt: string | null
+  earlierPrompts: { index: number; content: string }[]
   sessionId: string
   context: PpDepartment | null
   departments: PpDepartment[]
@@ -338,6 +356,7 @@ function MessageBubble({
         <SaveWorkflow
           index={index}
           prompt={prompt}
+          earlierPrompts={earlierPrompts}
           sessionId={sessionId}
           context={context}
           departments={departments}
@@ -373,6 +392,7 @@ function MessageBubble({
 function SaveWorkflow({
   index,
   prompt,
+  earlierPrompts,
   sessionId,
   context,
   departments,
@@ -382,6 +402,7 @@ function SaveWorkflow({
 }: {
   index: number
   prompt: string
+  earlierPrompts: { index: number; content: string }[]
   sessionId: string
   context: PpDepartment | null
   departments: PpDepartment[]
@@ -390,7 +411,11 @@ function SaveWorkflow({
   defaultTitle?: string
 }) {
   const [open, setOpen] = useState(false)
-  const suggested = defaultTitle ?? generateWorkflowTitle(prompt).title
+  // Scope: '' = this answer only; otherwise the index of the user message the
+  // saved conversation starts from (through this answer).
+  const [startIndex, setStartIndex] = useState<string>('')
+  const scopePrompt = startIndex === '' ? prompt : earlierPrompts.find((p) => String(p.index) === startIndex)?.content ?? prompt
+  const suggested = defaultTitle ?? generateWorkflowTitle(scopePrompt).title
   const [title, setTitle] = useState(suggested)
   const [departmentId, setDepartmentId] = useState(context?.id ?? '')
   const [saving, setSaving] = useState(false)
@@ -407,7 +432,14 @@ function SaveWorkflow({
         headers: { 'Content-Type': 'application/json' },
         // titleAuto: the user left the suggestion untouched, so the server may
         // replace a merely-clipped suggestion with a real summary.
-        body: JSON.stringify({ sessionId, messageIndex: index, departmentId, title, titleAuto: !defaultTitle && title === suggested }),
+        body: JSON.stringify({
+          sessionId,
+          messageIndex: index,
+          departmentId,
+          title,
+          titleAuto: !defaultTitle && title === suggested,
+          ...(startIndex !== '' ? { startIndex: Number(startIndex) } : {}),
+        }),
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`)
@@ -441,6 +473,30 @@ function SaveWorkflow({
         </button>
       ) : (
         <div className="flex flex-col gap-2 text-xs">
+          {earlierPrompts.length > 0 && (
+            <label className="flex flex-col gap-1">
+              <span className="text-ink-100">What to keep</span>
+              <select
+                value={startIndex}
+                onChange={(e) => {
+                  const next = e.target.value
+                  const nextPrompt = next === '' ? prompt : earlierPrompts.find((p) => String(p.index) === next)?.content ?? prompt
+                  setStartIndex(next)
+                  if (!defaultTitle && title === suggested) setTitle(generateWorkflowTitle(nextPrompt).title)
+                }}
+                className="rounded-md border border-cream-300 bg-cream-100 px-2 py-1.5 text-sm text-ink-300 focus:outline-none focus:border-press-accent/60"
+              >
+                <option value="">This answer only</option>
+                <option value={String(earlierPrompts[0].index)}>The whole conversation up to here</option>
+                {earlierPrompts.slice(1).map((p) => (
+                  <option key={p.index} value={String(p.index)}>
+                    From: {p.content.replace(/\s+/g, ' ').slice(0, 60)}
+                    {p.content.length > 60 ? '…' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="flex flex-col gap-1">
             <span className="text-ink-100">Title</span>
             <input
