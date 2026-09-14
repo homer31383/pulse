@@ -16,7 +16,7 @@ It is **not** a separate app. It shares Pulse's Next.js 16 codebase, Supabase pr
 | Build prompt used | `POST_PULSE_CLAUDE_CODE_PROMPT.md` |
 | Rebuild prompt | `POST_PULSE_REBUILD_PROMPT.md` |
 | Schema | `supabase/migrations/021_post_pulse.sql` |
-| Data | `supabase/seed_post_pulse.sql` (13 departments, 34 tools) and `WorkingDocs/POST_PULSE_SEED_DATA.json` (earlier, less complete export of the same research) |
+| Data | `supabase/seed_post_pulse.sql` (12 departments after the 2026-09-14 taxonomy change — `supabase/post_pulse_taxonomy_2026-09-14.sql` — 34 tools) and `WorkingDocs/POST_PULSE_SEED_DATA.json` (earlier, less complete export of the same research) |
 | Types (client-safe) | `lib/post-pulse-types.ts` |
 | Data access (server-only) | `lib/post-pulse.ts` |
 | Pages | `app/post-pulse/**` |
@@ -67,7 +67,7 @@ pp_chat_sessions id, messages jsonb, proposed_queue_ids uuid[], created_at   -- 
 pipeline_stage    text check in (pre_production | production | post_production | finishing_delivery)
 pipeline_substage text check in (asset_creation | performance_simulation | rendering_capture | comp_generative), only when stage = post_production
 ```
-Values for the 13 seeded departments: `supabase/post_pulse_pipeline_stages_seed_update.sql` (all post_production; asset_creation = modeling, texturing, lookdev, rigging; performance_simulation = mocap-animation, muscle-skinning, simulation-fx, crowds; rendering_capture = rendering-denoising, capture-splats-photogrammetry; comp_generative = roto-tracking, compositing, generative-comfyui). The other three stages are intentionally empty until that research is done. Run it after 022; `seed_post_pulse.sql` never touches these columns.
+Values for the 13 seeded departments: `supabase/post_pulse_pipeline_stages_seed_update.sql` (all post_production; asset_creation = modeling (Modeling & UVs), texturing (Texturing & Look Development), rigging; performance_simulation = mocap-animation, muscle-skinning, simulation-fx, crowds; rendering_capture = rendering-denoising, capture-splats-photogrammetry; comp_generative = roto-tracking, compositing, generative-comfyui). The other three stages are intentionally empty until that research is done. Run it after 022; `seed_post_pulse.sql` never touches these columns.
 
 ---
 

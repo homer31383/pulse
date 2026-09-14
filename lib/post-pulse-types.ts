@@ -96,7 +96,7 @@ export const PP_PIPELINE_STAGES: { value: PpPipelineStage; label: string; short:
 
 // Post-production's internal flow, in pipeline order.
 export const PP_PIPELINE_SUBSTAGES: { value: PpPipelineSubstage; label: string; description: string }[] = [
-  { value: 'asset_creation', label: 'Asset creation', description: 'Model, texture, lookdev, rig.' },
+  { value: 'asset_creation', label: 'Asset creation', description: 'Model and UV, texture and look dev, rig.' },
   { value: 'performance_simulation', label: 'Performance & simulation', description: 'Animate, deform, simulate, crowd.' },
   { value: 'rendering_capture', label: 'Rendering & capture', description: 'Render, denoise, capture the real world.' },
   { value: 'comp_generative', label: 'Comp & generative', description: 'Roto, track, composite, generate.' },

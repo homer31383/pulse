@@ -14,9 +14,11 @@ Shares Pulse's Supabase project, Vercel deployment, and design system. Not a sep
 
 ## 2. Departments (full pipeline scaffolded at launch, placeholders OK)
 
-Roto & Tracking · Compositing · Modeling · Texturing · Look Development · Rigging · Muscle & Skinning · Simulation (FX) · Crowds · Rendering & Denoising · Capture (Gaussian Splats, Photogrammetry) · Generative / ComfyUI Workflows · Mocap & Animation
+Roto & Tracking · Compositing · Modeling & UVs · Texturing & Look Development · Rigging · Muscle & Skinning · Simulation (FX) · Crowds · Rendering & Denoising · Capture (Gaussian Splats, Photogrammetry) · Generative / ComfyUI Workflows · Mocap & Animation
 
 Departments are addable later via the chat feature (§6) without a schema change — department is a row, not a hardcoded type.
+
+Taxonomy note (2026-09-14): Look Development was merged into Texturing — one department covers texturing, shader development, and look development — and Modeling was widened to cover UV layout. Applied via `supabase/post_pulse_taxonomy_2026-09-14.sql`; the seed files match.
 
 ### 2a. Pipeline stage mapping
 
@@ -24,7 +26,7 @@ Every department maps to one of four standard filmmaking stages via `pipeline_st
 
 `post_production` holds all 13 current departments and additionally uses `pipeline_substage` to group them into the pipeline's internal flow:
 
-- **`asset_creation`**: Modeling, Texturing, Look Development, Rigging
+- **`asset_creation`**: Modeling & UVs, Texturing & Look Development, Rigging
 - **`performance_simulation`**: Mocap & Animation, Muscle & Skinning, Simulation (FX), Crowds
 - **`rendering_capture`**: Rendering & Denoising, Capture (Gaussian Splats, Photogrammetry)
 - **`comp_generative`**: Roto & Tracking, Compositing, Generative / ComfyUI Workflows

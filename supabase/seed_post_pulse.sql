@@ -1,5 +1,6 @@
 -- Post Pulse seed data
--- Run AFTER supabase/migrations/021_post_pulse.sql. Safe to re-run: every
+-- Run AFTER supabase/migrations/021_post_pulse.sql. Reflects the 2026-09-14
+-- taxonomy: Look Development merged into Texturing, Modeling covers UVs. Safe to re-run: every
 -- statement upserts, so editing a doc or an attribute here and re-running
 -- refreshes the row (it does not touch anything the review queue changed
 -- on columns this file doesn't set, e.g. replacement links other than Ziva's).
@@ -50,56 +51,39 @@ The final integration judgment stays human: grain, light, color, and motion have
 $doc$,
  '[{"key":"native_integration","label":"Native DCC Integration","type":"text"},{"key":"licensing","label":"Licensing / Rights","type":"text"}]'::jsonb),
 
-('modeling', 'Modeling', $doc$
-Fast-moving from artist-led toward assisted, but only for background/set-dressing/blockout work. Rodin leads geometric fidelity (hard-surface/mechanical), Meshy is most complete end-to-end (model+texture in one pass), Tripo is fastest/best for stylized, TRELLIS 2 is the leading open-source option with Gaussian-splat output. 2026 trend: tools converging on finishing pipelines (retopo, UV, format conversion) rather than raw generation, since that's the real bottleneck. Hero assets and exact brand/product geometry still need manual retopology and review.
+('modeling', 'Modeling & UVs', $doc$
+Modeling and UV layout are one department here: the work runs from blockout or generation through retopology to a clean, unwrapped, packed mesh the texturing department can take. Fast-moving from artist-led toward assisted, but only for background/set-dressing/blockout work. Rodin leads geometric fidelity (hard-surface/mechanical), Meshy is most complete end-to-end (model+texture in one pass), Tripo is fastest/best for stylized, TRELLIS 2 is the leading open-source option with Gaussian-splat output. 2026 trend: tools converging on finishing pipelines (retopo, UV unwrapping and packing, format conversion) rather than raw generation, since finishing is the real bottleneck. Hero assets and exact brand/product geometry still need manual retopology, deliberate UV layout, and review.
 
 ## Tier 1 — Automated {#tier-1}
 
-Nothing tracked here yet. Generation is fast, but every generated asset still gets a human finishing and review pass, which keeps the whole department at Tier 2 or below.
+Nothing tracked here yet. Generation is fast, and the generators emit their own UVs, but every generated asset still gets a human finishing and review pass, which keeps the whole department at Tier 2 or below.
 
 ## Tier 2 — AI-assisted {#tier-2}
 
-For background, set dressing, and blockout the generators are production-usable, and they split by strength. Rodin leads on geometric fidelity, especially hard-surface and mechanical objects. Meshy is the most complete end-to-end option, model and PBR texture in one pass. Tripo is the fastest and the best fit for stylized or hand-painted looks, with quad retopology via Smart Mesh. TRELLIS 2 is the leading open-source option and can output Gaussian splats, running inside ComfyUI. The 2026 trend is that these tools are converging on the finishing pipeline (retopology, UVs, format conversion) rather than raw generation, because finishing is the real bottleneck.
+For background, set dressing, and blockout the generators are production-usable, and they split by strength. Rodin leads on geometric fidelity, especially hard-surface and mechanical objects. Meshy is the most complete end-to-end option, model and PBR texture in one pass. Tripo is the fastest and the best fit for stylized or hand-painted looks, with quad retopology via Smart Mesh. TRELLIS 2 is the leading open-source option and can output Gaussian splats, running inside ComfyUI. The 2026 trend is that these tools are converging on the finishing pipeline — retopology, UV unwrapping and packing, format conversion — rather than raw generation, because finishing is the real bottleneck. UV work on non-hero assets increasingly rides along with that finishing pass.
 
 ## Tier 3 — Artist-led {#tier-3}
 
-Hero assets and anything that has to match exact brand or product geometry still need manual retopology and review. The generators get you a starting point; they don't get you a deliverable.
+Hero assets and anything that has to match exact brand or product geometry still need manual retopology and review, and their UV layouts are still laid out deliberately — seam placement, texel density, and UDIM organisation for hero surfaces are decisions, not defaults. The generators get you a starting point; they don't get you a deliverable.
 $doc$,
  '[{"key":"topology_quality","label":"Topology Quality","type":"text"},{"key":"speed","label":"Generation Speed","type":"text"},{"key":"export_formats","label":"Export Formats","type":"text"},{"key":"pricing","label":"Pricing","type":"text"}]'::jsonb),
 
-('texturing', 'Texturing', $doc$
-Closest discipline to fully automated for standard PBR work. A hand-authored material set used to run 2-8 hours in Substance Designer; AI tools now generate UV-aware, seam-handled PBR sets in minutes. Pragmatic 2026 split: AI-generate the bulk material library, hand-author the small set of hero surfaces where the material itself is the star of the shot. Known gap: AI-derived normal maps are typically inferred from luminance/shading, which breaks down on anything needing true displacement.
+('texturing', 'Texturing & Look Development', $doc$
+Texturing, shader development, and look development are one department here: the work runs from generating or authoring a material, through building and calibrating the shader, to signing off how a hero asset reads under production lighting. Standard PBR texturing is the closest discipline in the pipeline to fully automated: a hand-authored material set used to run 2-8 hours in Substance Designer, and AI tools now generate UV-aware, seam-handled PBR sets in minutes. The pragmatic 2026 split is to AI-generate the bulk material library and hand-author the small set of hero surfaces where the material itself is the star of the shot. Look development, by contrast, is still solidly artist-led: no tool does end-to-end shading or lookdev decision-making — calibrating a hero material under production lighting, matching client reference, balancing shader complexity against render cost. AI touches the edges (a generated starting material, generated reference art to light-match against) but the judgment call hasn't moved. Known gap on the texturing side: AI-derived normal maps are typically inferred from luminance/shading, which breaks down on anything needing true displacement.
 
 ## Tier 1 — Automated {#tier-1}
 
-Standard PBR materials are effectively automated. Meshy's texture generator is UV-aware, handles seams, and returns a full PBR set in minutes, against the 2–8 hours a hand-authored set used to take in Substance Designer. For the bulk material library this is the default now.
+Standard PBR materials are effectively automated. Meshy's texture generator is UV-aware, handles seams, and returns a full PBR set in minutes, against the 2–8 hours a hand-authored set used to take in Substance Designer. For the bulk material library this is the default now. Nothing on the shader or look-development side is automated.
 
 ## Tier 2 — AI-assisted {#tier-2}
 
-Adobe has embedded generative AI directly in Substance 3D, so the industry-standard toolset assists rather than being replaced by a bolt-on. This is where the hand-authored work gets faster without changing who does it.
+Adobe has embedded generative AI directly in Substance 3D, so the industry-standard texturing toolset assists rather than being replaced by a bolt-on; this is where hand-authored material work gets faster without changing who does it. On the look-development side the assistance is indirect: a generated starting material to calibrate from, or generated reference concept art to light-match against. No lookdev-specific tool is tracked yet; if one shows up, it belongs here.
 
 ## Tier 3 — Artist-led {#tier-3}
 
-The small set of hero surfaces where the material itself is the star of the shot still gets hand-authored. The concrete technical gap: AI-derived normal maps are usually inferred from luminance and shading, which breaks down on anything that needs true displacement.
+The small set of hero surfaces where the material is the star of the shot still gets hand-authored, and the concrete technical gap remains: AI-derived normal maps are usually inferred from luminance and shading, which breaks down on anything that needs true displacement. Shader development and look development are judgment work end to end — calibrating a hero material under production lighting, matching client reference, and balancing shader complexity against render cost — and that judgment hasn't moved. The net effect on the job is a shift in time: less building materials from scratch, more judging and correcting generated ones.
 $doc$,
- '[{"key":"uv_aware","label":"UV-Aware","type":"boolean"},{"key":"map_types","label":"PBR Maps Generated","type":"text"},{"key":"pricing","label":"Pricing","type":"text"}]'::jsonb),
-
-('lookdev', 'Look Development', $doc$
-Still solidly artist-led. No tool does end-to-end shading/lookdev decision-making — calibrating a hero material under production lighting, matching client reference, balancing shader complexity against render cost. AI touches the edges (generating a starting material, generating reference concept art to light-match against) but the actual judgment call hasn't moved. Net effect: lookdev artists spend less time building materials from scratch, more time judging and correcting AI-generated ones.
-
-## Tier 1 — Automated {#tier-1}
-
-Nothing. No tool does end-to-end shading or lookdev decision-making.
-
-## Tier 2 — AI-assisted {#tier-2}
-
-No dedicated tools tracked yet. The assistance comes from adjacent departments: a generated starting material (see Texturing) or generated reference concept art to light-match against. If a lookdev-specific tool shows up it belongs here.
-
-## Tier 3 — Artist-led {#tier-3}
-
-Calibrating a hero material under production lighting, matching client reference, and balancing shader complexity against render cost are still judgment calls, and the judgment hasn't moved. The net effect on the job is a shift in time: less building materials from scratch, more judging and correcting generated ones.
-$doc$,
- '[{"key":"renderer_support","label":"Renderer Support","type":"text"}]'::jsonb),
+ '[{"key": "uv_aware", "label": "UV-Aware", "type": "boolean"}, {"key": "map_types", "label": "PBR Maps Generated", "type": "text"}, {"key": "renderer_support", "label": "Renderer Support", "type": "text"}, {"key": "pricing", "label": "Pricing", "type": "text"}]'::jsonb),
 
 ('rigging', 'Rigging', $doc$
 Split cleanly by character type. Auto-rigging matches junior-to-mid rigger quality for standard humanoid work. What stays manual: facial rigs, non-humanoid/stylized creatures, custom deformation systems, anything interfacing with a sim rig. Maya path: Advanced Skeleton (native Maya nodes, more future-proof, HumanIK-compatible) or mGear (open-source, more flexible, custom-node dependency risk). Houdini path: KineFX (procedural, tag-based) + APEX (rig logic layer) + Autorig Builder (one-click on top of KineFX, fully editable output, not a fixed template).
