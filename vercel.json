@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/scheduled-briefings",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/post-pulse-sync",
+      "schedule": "0 12 1,15 * *"
     }
   ]
 }

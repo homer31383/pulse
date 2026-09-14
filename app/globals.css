@@ -123,3 +123,9 @@ body {
   height: 90vh;
   height: 90dvh;
 }
+
+/* Post Pulse browse drawer (phone) */
+@keyframes slideIn {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(0); }
+}

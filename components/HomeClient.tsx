@@ -719,6 +719,17 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
                   Pinned
                 </Link>
                 <Link
+                  href="/post-pulse"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-ink-200 hover:bg-cream-200 transition-colors"
+                >
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+                      d="M4 6h16M4 12h10M4 18h6" />
+                  </svg>
+                  Post Pulse
+                </Link>
+                <Link
                   href="/briefing-history"
                   onClick={() => setMenuOpen(false)}
                   className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-ink-200 hover:bg-cream-200 transition-colors"

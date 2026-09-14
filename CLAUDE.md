@@ -29,7 +29,7 @@ npm install
 npm run dev
 ```
 
-Run all migrations in `supabase/migrations/` in order (001 through 020) in the Supabase SQL editor. Optionally run `supabase/seed.sql` for sample channels.
+Run all migrations in `supabase/migrations/` in order (001 through 021) in the Supabase SQL editor. Optionally run `supabase/seed.sql` for sample channels (run it once only — the channel insert has no conflict target) and `supabase/seed_post_pulse.sql` for the Post Pulse reference dataset (idempotent, re-run to refresh).
 
 ## File Structure
 
@@ -85,6 +85,17 @@ app/
     settings/route.ts                    — GET/PATCH settings (profile-scoped)
     profiles/route.ts                    — GET list, POST create profile
     cron/scheduled-briefings/route.ts    — GET (Vercel Cron, hourly): pre-generate scheduled briefings/digests
+    cron/post-pulse-sync/route.ts        — GET (Vercel Cron, 1st+15th): STUB for the Post Pulse RSS/search pull
+    post-pulse/queue/route.ts            — GET pending proposals, POST file a proposal (the only write path into pp_tools)
+    post-pulse/queue/[id]/route.ts       — PATCH {action: accept|reject}: accept applies to pp_tools + logs pp_changelog
+    post-pulse/chat/route.ts             — POST: STUB (501) for the Post Pulse research chat
+  post-pulse/                   — Post Pulse (see section below): layout.tsx loads the pp_* dataset once
+    page.tsx                    — Tool list (client-side filter/sort over the dataset; state in the query string)
+    tools/[id]/page.tsx         — Tool detail: attributes, alternatives, discontinued banner, doc deep link, changelog
+    departments/[slug]/page.tsx — Department doc: tier roster + anchored markdown
+    queue/page.tsx              — Review queue (accept/reject)
+    changes/page.tsx            — pp_changelog, newest first
+    chat/page.tsx               — Research chat shell (stub)
 
 components/
   HomeClient.tsx              — Main home screen: channel grid, DnD, generate bar, profile switcher
@@ -114,8 +125,18 @@ components/
       PressNav.tsx              — Bottom nav: Today/History/Listen/Pinned/Channels/Settings
     PressArticle.tsx          — Broadsheet article renderer: section rules, analyst-note asides, two-column, per-section pin (PRESS_MD_COMPONENTS exported for reuse)
   SpeechProviderWrapper.tsx   — TTS context provider
+  post-pulse/
+    Shell.tsx                 — Two-pane shell (desktop sidebar / phone drawer) + usePostPulse() dataset context
+    Sidebar.tsx               — Search, Department/Tier/Host App lens toggles, collapsible tree with counts, queue badge; exports listHref()
+    ToolList.tsx              — Dense list rows, filter selects, sort, compare selection bar
+    CompareOverlay.tsx        — Side-by-side 2–3 tools on the department's comparison_attributes
+    AnchoredMarkdown.tsx      — react-markdown with heading ids ({#id} suffix or slugified text) for deep links
+    QueueClient.tsx           — Pending proposals with old → new diff and accept/reject
+    Badges.tsx                — TierBadge / TierDot / StatusBadge / HostChip
 
 lib/
+  post-pulse-types.ts — Client-safe Post Pulse types + constants (tiers, host apps, editable fields, sorts)
+  post-pulse.ts       — Server-only Post Pulse data access: dataset, detail, changelog, queue accept/reject, enqueueProposal
   types.ts      — All TypeScript types and interfaces
   supabase.ts   — Server-only Supabase client (service_role key)
   anthropic.ts  — Anthropic client + DEFAULT_MODEL constant
@@ -314,14 +335,30 @@ Per-channel toggle. When enabled:
 8. **Web search versions**: Briefings/digests use GA `web_search_20260209` (no header); discuss and other routes still use `web_search_20250305` + `anthropic-beta: web-search-2025-03-05` header
 9. **Supabase server-only**: Never import `lib/supabase.ts` in client components — will leak service role key
 
+## Post Pulse (migration 021)
+
+A second, unrelated dataset inside the same app: a structured reference of AI tools across the commercial VFX pipeline (what exists, which department, how much of the job it takes over, what replaced what). Spec: `POST_PULSE_SPEC.md`; build prompt: `POST_PULSE_CLAUDE_CODE_PROMPT.md`; recovery: `POST_PULSE_DISASTER_RECOVERY.md` + `POST_PULSE_REBUILD_PROMPT.md`. Lives at `/post-pulse` (linked from the home hamburger menu). **Not profile-scoped** — the `pp_*` tables are one shared dataset. **Utility palette** (cream/ink + `press-accent`), not the broadsheet design.
+
+- **Content model, three layers**: (1) a top-level overview (not built yet — no table); (2) one long-form markdown doc per department (`pp_departments.overview_doc`) structured as `## Tier 1 — Automated {#tier-1}` / `{#tier-2}` / `{#tier-3}` sections — the reasoning lives here; (3) tool rows (`pp_tools`) with a short blurb, attributes, and `doc_anchor` pointing into the department doc. Tools never duplicate the "why".
+- **Tables** (`pp_departments`, `pp_tools`, `pp_changelog`, `pp_queue`, `pp_chat_sessions` stub): `pp_tools.tier` ∈ automated | assisted | artist_led; `status` ∈ active | discontinued; `replacement_tool_id` self-FK (Ziva VFX → Houdini Otis is the canonical row); `attributes` jsonb keyed by the department's `comparison_attributes` (`[{key,label,type}]`, so compare is data-driven per department); `confidence` verified | queued; `(department_id, name)` is unique so the seed can upsert. `pp_changelog` gets a row per changed field. Discontinued tools stay in every view (badge + strikethrough), never deleted — the changelog is the point.
+- **Data flow**: `app/post-pulse/layout.tsx` calls `fetchPostPulseDataset()` (all departments + tools + pending count, ~40 rows) and provides it via `usePostPulse()`; the sidebar, list, and compare overlay work client-side from that snapshot. Detail/doc/queue/changes pages fetch their own fresh rows. `router.refresh()` after a queue action re-fetches the layout.
+- **URL state**: `/post-pulse?dept=slug|tier=…|host=…&status=…&q=…&sort=…`. The sidebar's three lenses (Department / Tier / Host App) are UI state; clicking a tree node sets exactly one of `dept`/`tier`/`host` (clearing the others); the list's filter selects add the rest. Compare selection is component state (max 3, same department only).
+- **The only write path is the queue.** Nothing (UI, automation, chat) writes `pp_tools` directly except the seed. `POST /api/post-pulse/queue` (or `enqueueProposal()` server-side) files `{proposed_tool_id?, proposed_changes, source: rss|search|chat, source_urls}`; `PATCH /api/post-pulse/queue/[id] {action}` — **accept** applies only `PP_TOOL_EDITABLE_FIELDS` from `proposed_changes` (a `department_slug` is resolved to an id; unknown keys are ignored), writes one `pp_changelog` row per field that actually changed, stamps `last_verified_at`/`confidence='verified'`, and resolves the row; a proposal with no `proposed_tool_id` creates a tool (needs name + department + tier) and logs `created`. **reject** only resolves. Verified end-to-end on Sept 14 2026.
+- **Stubs for the next pass**: `/api/cron/post-pulse-sync` (vercel.json fires it `0 12 1,15 * *`; returns `{stub:true}`) — the RSS + `web_search` classification pull with confidence-based auto-publish (spec §5). `/api/post-pulse/chat` returns 501 and `/post-pulse/chat` is a disabled shell — when built, **every chat proposal must go through `pp_queue`**, never auto-publish (spec §6).
+- **Seed**: `supabase/seed_post_pulse.sql` — 13 departments (full pipeline) and 34 tools from the Sept 2026 research session; upserts on `slug` / `(department_id, name)`, then sets `doc_anchor` from tier, stamps `last_verified_at`, and links Ziva → Otis. Keep it in its own file: `seed.sql`'s channel insert is not idempotent. The `{#anchor}` heading suffix is stripped by `AnchoredMarkdown` and becomes the element id; headings without one get a slugified id.
+- **Gotchas**: `AnchoredMarkdown` re-scrolls to the hash after a short delay because Next's post-navigation scroll runs after commit; `:target` styling only fires on full loads (pushState doesn't update it). The queue page shows "no change" for a proposed value equal to the current one, and accept skips those fields. Claude-in-Chrome could not resize the window, so the phone layout (drawer under `md:`) is unverified in a real browser.
+
 ## Unimplemented / Stub Features
 
 These settings exist in the UI but have **no backend implementation**:
 - **Email delivery** (`email_enabled`, `email_address`) — toggle and input exist, no sending logic
 - **Push notifications** (`notifications_enabled`, `notification_time`) — toggle exists, no subscription/push logic
 - **Briefing retention cleanup** runs in `app/page.tsx` on every page load — works but would be better as a cron/edge function
+- **Post Pulse automation** (`/api/cron/post-pulse-sync`) and **research chat** (`/api/post-pulse/chat`, `/post-pulse/chat`) — stubs only; see the Post Pulse section
 
 ## Companion Files
 
 - **`PULSE_REBUILD_PROMPT.md`** — Self-contained prompt to rebuild the entire app from scratch. Includes full schema SQL, design system, all features, and build order. Use if the codebase is lost.
-- **`DisasterRecovery/`** — Older recovery notes (predates PULSE_REBUILD_PROMPT.md, may be redundant)
+- **`POST_PULSE_SPEC.md`** / **`POST_PULSE_CLAUDE_CODE_PROMPT.md`** — The Post Pulse spec and the build prompt it was implemented from (Sept 14 2026)
+- **`POST_PULSE_DISASTER_RECOVERY.md`** — What Post Pulse is, its schema, data, routes, and how to restore it; **`POST_PULSE_REBUILD_PROMPT.md`** — prompt to rebuild the feature inside Pulse from scratch
+- **`Pulse_DisasterRecovery/`** — Unrelated project notes (micropayment protocol), not Pulse recovery docs

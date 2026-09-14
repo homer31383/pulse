@@ -1,0 +1,179 @@
+// Post Pulse — client-safe types and constants.
+// The pp_* tables are a shared reference dataset (not profile-scoped): AI
+// tools across the VFX pipeline, grouped by department, tiered by how much
+// of the work they take over. See POST_PULSE_SPEC.md.
+
+export type PpTier = 'automated' | 'assisted' | 'artist_led'
+export type PpStatus = 'active' | 'discontinued'
+export type PpConfidence = 'verified' | 'queued'
+export type PpQueueSource = 'rss' | 'search' | 'chat'
+export type PpQueueStatus = 'pending' | 'accepted' | 'rejected'
+
+// One column of a department's compare table. Stored as jsonb on
+// pp_departments.comparison_attributes so each department compares on its
+// own fields (rigging and rendering don't share a schema).
+export interface PpComparisonAttribute {
+  key: string
+  label: string
+  type: 'text' | 'boolean' | 'number'
+}
+
+export interface PpDepartment {
+  id: string
+  slug: string
+  name: string
+  overview_doc: string
+  comparison_attributes: PpComparisonAttribute[]
+  created_at: string
+  updated_at: string
+}
+
+export interface PpTool {
+  id: string
+  department_id: string
+  name: string
+  tier: PpTier
+  host_app: string | null
+  status: PpStatus
+  replacement_tool_id: string | null
+  vendor: string | null
+  blurb: string | null
+  doc_anchor: string | null
+  attributes: Record<string, unknown>
+  source_urls: string[]
+  last_verified_at: string | null
+  confidence: PpConfidence
+  created_at: string
+  updated_at: string
+}
+
+export interface PpChangelogEntry {
+  id: string
+  tool_id: string
+  field_changed: string
+  old_value: string | null
+  new_value: string | null
+  source: string | null
+  created_at: string
+}
+
+export interface PpQueueItem {
+  id: string
+  proposed_tool_id: string | null
+  proposed_changes: Record<string, unknown>
+  source: PpQueueSource
+  source_urls: string[]
+  status: PpQueueStatus
+  created_at: string
+  resolved_at: string | null
+}
+
+// Everything the /post-pulse shell needs: the dataset is small (tens of
+// tools, a dozen departments) so the layout loads it once and the sidebar,
+// list, and compare overlay work client-side from this snapshot.
+export interface PpDataset {
+  departments: PpDepartment[]
+  tools: PpTool[]
+  pendingQueueCount: number
+}
+
+export const PP_TIERS: { value: PpTier; label: string; short: string; anchor: string; description: string }[] = [
+  {
+    value: 'automated',
+    label: 'Tier 1 · Automated',
+    short: 'Automated',
+    anchor: 'tier-1',
+    description: 'The tool does the work end to end; an artist reviews the output.',
+  },
+  {
+    value: 'assisted',
+    label: 'Tier 2 · AI-assisted',
+    short: 'Assisted',
+    anchor: 'tier-2',
+    description: 'AI takes a real share of the work but an artist drives and finishes it.',
+  },
+  {
+    value: 'artist_led',
+    label: 'Tier 3 · Artist-led',
+    short: 'Artist-led',
+    anchor: 'tier-3',
+    description: 'Still craft work; AI touches the edges at most.',
+  },
+]
+
+export const PP_TIER_BY_VALUE = Object.fromEntries(PP_TIERS.map((t) => [t.value, t])) as Record<
+  PpTier,
+  (typeof PP_TIERS)[number]
+>
+
+// Canonical host-app values from the spec. The column is free text so a
+// tool can carry something else; the sidebar groups whatever it finds.
+export const PP_HOST_APPS = ['Maya', 'Houdini', 'Nuke', 'standalone', 'web', 'plugin', 'native'] as const
+
+export const PP_STATUSES: { value: PpStatus; label: string }[] = [
+  { value: 'active', label: 'Active' },
+  { value: 'discontinued', label: 'Discontinued' },
+]
+
+export const PP_QUEUE_SOURCES: Record<PpQueueSource, string> = {
+  rss: 'RSS',
+  search: 'Web search',
+  chat: 'Chat',
+}
+
+// Columns a queue item may propose. Anything else in proposed_changes is
+// ignored on accept, so a malformed proposal can't write arbitrary columns.
+export const PP_TOOL_EDITABLE_FIELDS = [
+  'department_id',
+  'name',
+  'tier',
+  'host_app',
+  'status',
+  'replacement_tool_id',
+  'vendor',
+  'blurb',
+  'doc_anchor',
+  'attributes',
+  'source_urls',
+] as const
+
+export type PpToolEditableField = (typeof PP_TOOL_EDITABLE_FIELDS)[number]
+
+export const PP_SORTS = [
+  { value: 'name', label: 'Name' },
+  { value: 'tier', label: 'Tier' },
+  { value: 'host', label: 'Host app' },
+  { value: 'vendor', label: 'Vendor' },
+  { value: 'updated', label: 'Recently updated' },
+] as const
+
+export type PpSort = (typeof PP_SORTS)[number]['value']
+
+// Display helpers shared by list, detail, and compare views.
+export function hostAppLabel(host: string | null): string {
+  if (!host) return '—'
+  if (host === 'standalone') return 'Standalone'
+  if (host === 'web') return 'Web'
+  if (host === 'plugin') return 'Plugin'
+  if (host === 'native') return 'Native'
+  return host
+}
+
+export function formatAttributeValue(value: unknown, type: PpComparisonAttribute['type'] = 'text'): string {
+  if (value === null || value === undefined || value === '') return '—'
+  if (type === 'boolean' || typeof value === 'boolean') return value ? 'Yes' : 'No'
+  if (Array.isArray(value)) return value.map(String).join(', ')
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+// Stable, URL-safe anchor from a heading. Mirrors the id generation in
+// AnchoredMarkdown so seed docs and tool doc_anchor values line up.
+export function slugifyHeading(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+}

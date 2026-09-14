@@ -768,6 +768,7 @@ Follow this sequence:
 13. **Home screen**: `HomeClient` (DnD, generate bar, staggered generation, profile switcher), `app/page.tsx`
 14. **History pages**: `BriefingHistoryClient`, `DigestHistoryClient`, `WeeklySummaryHistoryClient` + their page.tsx wrappers
 15. **Secondary pages**: Notes, Share, Settings (with `SettingsClient` usage dashboard)
+16. **Post Pulse** (optional, independent of everything above): migration 021 + `seed_post_pulse.sql`, then follow `POST_PULSE_REBUILD_PROMPT.md` — a `/post-pulse` reference view over the `pp_*` tables (VFX AI tools by department/tier/host app, review queue, changelog). Shares only the Supabase client, the cream/ink palette, and the home menu link.
 
 ---
 
