@@ -212,6 +212,14 @@ export function PipelineMap() {
   )
 }
 
+// "checked 3d ago" on a chip: the guide's housekeeping step asks you to
+// glance at these ages on the map and notice anything drifting past 14 days.
+function checkedAge(iso: string | null): { label: string; stale: boolean } {
+  if (!iso) return { label: 'never checked', stale: true }
+  const days = Math.floor((Date.now() - Date.parse(iso)) / 86_400_000)
+  return { label: days <= 0 ? 'checked today' : `checked ${days}d ago`, stale: days >= 14 }
+}
+
 function DepartmentChips({
   departments,
   toolCount,
@@ -230,16 +238,19 @@ function DepartmentChips({
     <ul className="flex flex-wrap gap-2">
       {departments.map((d) => {
         const n = toolCount(d)
+        const age = checkedAge(d.last_researched_at)
         return (
           <li key={d.id}>
             <Link
               href={`/post-pulse/departments/${d.slug}`}
+              title={d.last_researched_at ? `Last checked ${new Date(d.last_researched_at).toLocaleString()}` : 'Never researched'}
               className="inline-flex items-center gap-2 rounded-full border border-cream-400 bg-cream-50 pl-3 pr-2 py-1.5 text-sm text-ink-300 hover:border-press-accent hover:text-press-accent transition-colors"
             >
               {d.name}
               <span className="text-[11px] tabular-nums px-1.5 py-px rounded-full bg-cream-300/70 text-ink-100">
                 {n}
               </span>
+              <span className={['text-[10px] tabular-nums', age.stale ? 'text-press-down' : 'text-ink-50'].join(' ')}>{age.label}</span>
             </Link>
           </li>
         )

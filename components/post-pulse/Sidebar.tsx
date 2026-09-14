@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { PP_TIERS, hostAppLabel, type PpTool } from '@/lib/post-pulse-types'
 import { usePostPulse } from './Shell'
 import { TierDot } from './Badges'
+import { HowToUse } from './HowToUse'
 
 type Lens = 'department' | 'tier' | 'host'
 
@@ -112,7 +113,9 @@ export function Sidebar({ onNavigate }: Props) {
     ].join(' ')
 
   return (
-    <div className="px-3 py-4 flex flex-col gap-4 min-h-full">
+    // Bottom padding clears the Listen Queue's fixed mini player (z-40,
+    // ~60px) so the last nav items can scroll above it instead of under it.
+    <div className="px-3 pt-4 pb-28 flex flex-col gap-4 min-h-full">
       {/* Title */}
       <div className="px-2 hidden md:block">
         <div className="flex items-center gap-2">
@@ -299,6 +302,11 @@ export function Sidebar({ onNavigate }: Props) {
           </svg>
           <span className="flex-1">Research chat</span>
         </Link>
+        {/* Non-primary content opens in an overlay (same pattern as compare mode) */}
+        <HowToUse
+          onNavigate={onNavigate}
+          className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-sm transition-colors text-ink-200 hover:bg-cream-200"
+        />
       </nav>
     </div>
   )
