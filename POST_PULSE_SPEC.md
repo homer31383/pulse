@@ -14,11 +14,11 @@ Shares Pulse's Supabase project, Vercel deployment, and design system. Not a sep
 
 ## 2. Departments (full pipeline scaffolded at launch, placeholders OK)
 
-Roto & Tracking · Compositing · Modeling & UVs · Texturing & Look Development · Rigging · Hair, Groom & Feathers · Muscle & Skinning · Simulation (FX) · Crowds · Rendering & Denoising · Capture (Gaussian Splats, Photogrammetry) · Generative / ComfyUI Workflows · Mocap & Animation
+Concept & Image Generation · Roto & Tracking · Compositing · Modeling & UVs · Texturing & Look Development · Rigging · Hair, Groom & Feathers · Muscle & Skinning · Simulation (FX) · Crowds · Rendering & Denoising · Capture (Gaussian Splats, Photogrammetry) · Generative / ComfyUI Workflows · Mocap & Animation
 
 Departments are addable later via the chat feature (§6) without a schema change — department is a row, not a hardcoded type.
 
-Taxonomy note (2026-09-14): Look Development was merged into Texturing — one department covers texturing, shader development, and look development — and Modeling was widened to cover UV layout. Hair, Groom & Feathers was added the same day (`supabase/post_pulse_department_hair_groom_2026-09-14.sql`). Applied via `supabase/post_pulse_taxonomy_2026-09-14.sql`; the seed files match.
+Taxonomy note (2026-09-14): Look Development was merged into Texturing — one department covers texturing, shader development, and look development — and Modeling was widened to cover UV layout. Hair, Groom & Feathers was added the same day (`supabase/post_pulse_department_hair_groom_2026-09-14.sql`), as was Concept & Image Generation — the first `pre_production` department (`supabase/post_pulse_department_concept_2026-09-14.sql`); the models themselves stay under Generative Media Models & Platforms. Applied via `supabase/post_pulse_taxonomy_2026-09-14.sql`; the seed files match.
 
 ### 2a. Pipeline stage mapping
 

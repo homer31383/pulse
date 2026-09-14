@@ -3,8 +3,9 @@
 -- plain updates keyed by slug, safe to re-run. seed_post_pulse.sql does
 -- not set these columns, so re-running it never clears this mapping.
 --
--- Every department tracked so far is post-production work; the other
--- three stages are intentionally empty until that research is done.
+-- Almost everything tracked so far is post-production work; pre-production
+-- got its first department on 2026-09-14, the other stages stay empty
+-- until that research is done.
 -- Sub-groups follow post-production's internal flow: assets are built,
 -- then performed/simulated, then rendered or captured, then composited.
 
@@ -19,6 +20,10 @@ where slug in ('rendering-denoising', 'capture-splats-photogrammetry');
 
 update pp_departments set pipeline_stage = 'post_production', pipeline_substage = 'comp_generative'
 where slug in ('roto-tracking', 'compositing', 'generative-comfyui');
+
+-- Pre-production (added 2026-09-14): no sub-group outside post_production.
+update pp_departments set pipeline_stage = 'pre_production', pipeline_substage = null
+where slug in ('concept-image-generation');
 
 -- Sanity check: should return zero rows once every seeded department is mapped.
 select slug from pp_departments where pipeline_stage is null;
