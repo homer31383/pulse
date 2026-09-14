@@ -126,6 +126,11 @@ export function PipelineMap() {
               Collapse
             </button>
           </div>
+          {/* Frontier scan (spec §5a): open-ended discovery for this whole stage — the
+              primary way the empty stages get populated on demand. */}
+          <div className="mb-3">
+            <ResearchButton stage={{ value: openStage, label: openMeta.label }} compact />
+          </div>
 
           {openStage === 'post_production' ? (
             <>

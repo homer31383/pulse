@@ -14,11 +14,9 @@ Shares Pulse's Supabase project, Vercel deployment, and design system. Not a sep
 
 ## 2. Departments (full pipeline scaffolded at launch, placeholders OK)
 
-Concept & Image Generation · Roto & Tracking · Compositing · Modeling & UVs · Texturing & Look Development · Rigging · Hair, Groom & Feathers · Muscle & Skinning · Simulation (FX) · Crowds · Rendering & Denoising · Capture (Gaussian Splats, Photogrammetry) · Generative / ComfyUI Workflows · Mocap & Animation
+Roto & Tracking · Compositing · Modeling · Texturing · Look Development · Rigging · Muscle & Skinning · Simulation (FX) · Crowds · Rendering & Denoising · Capture (Gaussian Splats, Photogrammetry) · Generative / ComfyUI Workflows · Mocap & Animation
 
 Departments are addable later via the chat feature (§6) without a schema change — department is a row, not a hardcoded type.
-
-Taxonomy note (2026-09-14): Look Development was merged into Texturing — one department covers texturing, shader development, and look development — and Modeling was widened to cover UV layout. Hair, Groom & Feathers was added the same day (`supabase/post_pulse_department_hair_groom_2026-09-14.sql`), as was Concept & Image Generation — the first `pre_production` department (`supabase/post_pulse_department_concept_2026-09-14.sql`); the models themselves stay under Generative Media Models & Platforms. Applied via `supabase/post_pulse_taxonomy_2026-09-14.sql`; the seed files match.
 
 ### 2a. Pipeline stage mapping
 
@@ -26,7 +24,7 @@ Every department maps to one of four standard filmmaking stages via `pipeline_st
 
 `post_production` holds all 13 current departments and additionally uses `pipeline_substage` to group them into the pipeline's internal flow:
 
-- **`asset_creation`**: Modeling & UVs, Texturing & Look Development, Rigging, Hair, Groom & Feathers
+- **`asset_creation`**: Modeling, Texturing, Look Development, Rigging
 - **`performance_simulation`**: Mocap & Animation, Muscle & Skinning, Simulation (FX), Crowds
 - **`rendering_capture`**: Rendering & Denoising, Capture (Gaussian Splats, Photogrammetry)
 - **`comp_generative`**: Roto & Tracking, Compositing, Generative / ComfyUI Workflows
@@ -81,6 +79,16 @@ Every department maps to one of four standard filmmaking stages via `pipeline_st
 - Source is ambiguous, a new tool not previously tracked, or a tier/status judgment call → lands in `pp_queue` for review. Same ambiguity rule as chat (§6): an unresolvable match produces a note flagged for review, not a guessed publish.
 
 **Classification pass:** after each pull, a Claude call (Haiku for extraction/dedup, Sonnet for tier judgment calls) reads new findings against existing `pp_tools` rows and decides: new entry, update, or no-op. Same pattern as the existing Memoria extraction job.
+
+## 5a. Frontier scans
+
+A second research mode, distinct from the maintenance pass above. Maintenance research asks "what's changed about tools we already track" — it can't discover a technique category nobody's named yet, since its queries are derived from existing department docs and tool lists. A frontier scan asks the open question instead: "what AI help exists for problem X," scoped to a whole pipeline stage (Post-production, Production, etc.), not a department's existing roster. This is how the three empty stages (Pre-production, Production, Finishing & Delivery) ever get populated — they have nothing for maintenance research to refresh, but a frontier scan scoped to "all of Production" can surface a real finding and propose it as a brand-new department, using the same department-target queue path chat already writes through.
+
+**Cadence:** same 14-day cycle as maintenance, tracked separately per pipeline stage (not per department, since some stages have none) in a small dedicated table, not overloaded onto `pp_departments`.
+
+**Scope:** one full pipeline stage per scan. For Post-production specifically, still dedupe against tracked tools (same mechanism as maintenance) so a scan doesn't "discover" Runway again, but the query style stays broad/problem-oriented rather than vendor-list-derived.
+
+**Distinguishing findings:** `pp_queue.source = 'frontier'`, visually tagged distinctly in the queue UI, so an exploratory finding is never mistaken for a routine confirmed update. This matters more here than for rss/search, frontier findings are inherently less certain, they're answering "does anything exist for this" rather than "did this known thing change."
 
 ## 6. Chat feature
 

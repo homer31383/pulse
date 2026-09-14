@@ -121,10 +121,25 @@ export function QueueClient({ items: initial }: Props) {
         return (
           <article key={item.id} className="rounded-xl border border-cream-300 bg-cream-50 overflow-hidden">
             <header className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 border-b border-cream-300/70">
-              <span className="text-[10px] uppercase tracking-[1.5px] font-medium text-press-accent">
-                {PP_QUEUE_SOURCES[item.source] ?? item.source}
-                {isDept && <span className="text-ink-50"> · department</span>}
-              </span>
+              {item.source === 'frontier' ? (
+                // Exploratory finding (spec §5a): visually distinct so it is never
+                // mistaken for a confirmed routine update.
+                <span
+                  className="inline-flex items-center gap-1 px-2 py-px rounded-full bg-press-accent text-white text-[9px] uppercase tracking-[1.5px] font-semibold"
+                  title="Frontier scan finding — exploratory, less certain than a routine update"
+                >
+                  <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z" />
+                  </svg>
+                  Frontier
+                  {isDept && <span className="opacity-80"> · department</span>}
+                </span>
+              ) : (
+                <span className="text-[10px] uppercase tracking-[1.5px] font-medium text-press-accent">
+                  {PP_QUEUE_SOURCES[item.source] ?? item.source}
+                  {isDept && <span className="text-ink-50"> · department</span>}
+                </span>
+              )}
               <h2 className="font-medium text-ink-300">{title}</h2>
               {!isDept && (proposedDept || targetTool) && (
                 <span className="text-xs text-ink-50">{proposedDept?.name ?? deptById.get(targetTool!.department_id)?.name}</span>

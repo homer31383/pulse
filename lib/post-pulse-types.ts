@@ -6,7 +6,7 @@
 export type PpTier = 'automated' | 'assisted' | 'artist_led'
 export type PpStatus = 'active' | 'discontinued'
 export type PpConfidence = 'verified' | 'queued'
-export type PpQueueSource = 'rss' | 'search' | 'chat'
+export type PpQueueSource = 'rss' | 'search' | 'chat' | 'frontier' // frontier = exploratory scan (spec §5a, migration 028)
 export type PpQueueStatus = 'pending' | 'accepted' | 'rejected'
 
 // One column of a department's compare table. Stored as jsonb on
@@ -47,7 +47,7 @@ export interface PpFollowUpSource {
 
 // ── Research runs (spec §5) — client-safe result shapes ─────────────────
 
-export type PpResearchTrigger = 'scheduled' | 'manual_global' | 'manual_department'
+export type PpResearchTrigger = 'scheduled' | 'manual_global' | 'manual_department' | 'manual_frontier'
 
 export interface PpResearchDepartmentSummary {
   departmentId: string
@@ -63,12 +63,29 @@ export interface PpResearchDepartmentSummary {
   sourceUrls: string[]
 }
 
+// One frontier scan (spec §5a): a whole pipeline stage, problem-oriented
+// queries, every finding to the queue as source='frontier'.
+export interface PpFrontierScanSummary {
+  stage: PpPipelineStage
+  stageLabel: string
+  status: 'done' | 'failed'
+  error?: string
+  searches: number
+  findings: number
+  queued: { label: string; queueId: string; kind: 'tool' | 'department' }[]
+  skippedExisting: string[] // findings that named something already tracked
+  summary: string
+  sourceUrls: string[]
+}
+
 export interface PpResearchRunSummary {
   trigger: PpResearchTrigger
   startedAt: string
   finishedAt: string
   departments: PpResearchDepartmentSummary[]
   remainingDepartmentIds: string[]
+  frontier: PpFrontierScanSummary[]
+  remainingStages: PpPipelineStage[]
   rss: { sources: number; fetched: number; fresh: number; routed: number; errors: { source: string; error: string }[] }
   briefingId: string | null
   channelId: string | null
@@ -257,6 +274,7 @@ export const PP_QUEUE_SOURCES: Record<PpQueueSource, string> = {
   rss: 'RSS',
   search: 'Web search',
   chat: 'Chat',
+  frontier: 'Frontier',
 }
 
 // Columns a queue item may propose. Anything else in proposed_changes is

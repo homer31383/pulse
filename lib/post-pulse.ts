@@ -293,6 +293,35 @@ export async function saveDepartmentFollowUps(departmentId: string, sources: str
   }
 }
 
+// Frontier scan cadence (migration 028) is tracked per pipeline stage in
+// pp_frontier_scans, not on departments — three stages have none.
+export async function fetchLatestFrontierScans(): Promise<Record<string, string>> {
+  const { data, error } = await supabase
+    .from('pp_frontier_scans')
+    .select('pipeline_stage, ran_at')
+    .order('ran_at', { ascending: false })
+    .limit(200)
+  if (error) {
+    console.warn('[post-pulse] pp_frontier_scans read failed (run migration 028?):', error.message)
+    return {}
+  }
+  const latest: Record<string, string> = {}
+  for (const row of data ?? []) {
+    if (!latest[row.pipeline_stage as string]) latest[row.pipeline_stage as string] = row.ran_at as string
+  }
+  return latest
+}
+
+export async function recordFrontierScan(row: {
+  pipeline_stage: string
+  summary: string | null
+  findings_count: number
+  queued_count: number
+}): Promise<void> {
+  const { error } = await supabase.from('pp_frontier_scans').insert(row)
+  if (error) console.warn('[post-pulse] pp_frontier_scans insert failed:', error.message)
+}
+
 export async function stampToolsVerified(toolIds: string[], at = new Date().toISOString()): Promise<void> {
   if (!toolIds.length) return
   const { error } = await supabase.from('pp_tools').update({ last_verified_at: at }).in('id', toolIds)

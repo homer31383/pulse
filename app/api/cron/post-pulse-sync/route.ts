@@ -4,7 +4,9 @@ import { runResearch, PP_RESEARCH_CADENCE_DAYS } from '@/lib/post-pulse-research
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
-// Scheduled Post Pulse research sweep (spec §5). vercel.json fires this
+// Scheduled Post Pulse research sweep (spec §5) plus due frontier scans
+// (spec §5a, one per pipeline stage on the same 14-day cadence, tracked in
+// pp_frontier_scans). vercel.json fires this
 // daily; each run processes only the departments that are DUE under the
 // uniform cadence (last_researched_at null or older than 14 days), oldest
 // first, within a time budget. A department that isn't reached, or whose
@@ -25,6 +27,8 @@ export async function GET(req: NextRequest) {
       processed: summary.departments.filter((d) => d.status === 'done').map((d) => d.slug),
       failed: summary.departments.filter((d) => d.status === 'failed').map((d) => ({ slug: d.slug, error: d.error })),
       remaining: summary.remainingDepartmentIds.length,
+      frontier: summary.frontier.map((f) => ({ stage: f.stage, status: f.status, queued: f.queued.length, error: f.error })),
+      frontierRemaining: summary.remainingStages,
       briefingId: summary.briefingId,
       costUsd: Number(summary.costUsd.toFixed(4)),
     })

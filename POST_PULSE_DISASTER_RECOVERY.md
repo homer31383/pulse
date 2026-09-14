@@ -152,6 +152,7 @@ Only the REST key is available in some environments. The seed can be applied thr
 ## 11. Later migrations
 
 - **024** `pp_departments.last_researched_at` (timestamptz, nullable) — stamped by research runs; unused by the UI so far.
+- **028** `pp_frontier_scans` (pipeline_stage, ran_at, summary, findings_count, queued_count) + `pp_queue.source` widened to include 'frontier' (the migration looks up the real constraint name before replacing it; verified functionally on 2026-09-14). Frontier scans: `runResearch({frontierStages})` / cron `dueOnly`; every finding queues as `source='frontier'`; a `new_department` proposal carries a scaffolded tier doc and `pipeline_stage`.
 - **027** `pp_departments.follow_up_sources jsonb`: the next research pass's starting sources (code warns and skips the write until applied).
 - **026** `pp_departments.related_department_ids uuid[]` — see §10.
 - **025** `pp_changelog` generalised: `tool_id` nullable, `target_type` ('tool' | 'department', default 'tool'), `department_id` (fk, cascade), check constraint that exactly one id is set to match `target_type`, index on `department_id`. `acceptQueueItem` logs department accepts with the same field/old/new shape as tool rows (`overview_doc` rows hold the whole before/after text). Run 024 and 025 after 023.
