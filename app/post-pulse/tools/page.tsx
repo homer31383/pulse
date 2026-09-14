@@ -24,7 +24,7 @@ export default async function ToolsPage({ searchParams }: PageProps) {
       <Suspense fallback={<div className="h-40 rounded-xl bg-cream-300/50 animate-pulse" />}>
         <ToolList />
       </Suspense>
-      {department && <WorkflowsDisclosure departmentSlug={department.slug} workflows={workflows} />}
+      {department && <WorkflowsDisclosure departmentId={department.id} departmentSlug={department.slug} workflows={workflows} />}
     </>
   )
 }

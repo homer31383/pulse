@@ -8,6 +8,7 @@ import {
   type PpProposalContext,
   type PpProposalInput,
 } from '@/lib/post-pulse-proposals'
+import { matchReferencedTools } from '@/lib/post-pulse-workflows'
 import {
   PP_CHAT_DEFAULT_NAME,
   PP_DEPARTMENT_EDITABLE_FIELDS,
@@ -579,6 +580,7 @@ export async function enqueueProposal(
 function normalizeWorkflowDoc(row: Record<string, unknown>): PpWorkflowDoc {
   return {
     ...(row as unknown as PpWorkflowDoc),
+    also_department_ids: Array.isArray(row.also_department_ids) ? (row.also_department_ids as string[]) : [],
     referenced_tool_ids: Array.isArray(row.referenced_tool_ids) ? (row.referenced_tool_ids as string[]) : [],
     source_urls: Array.isArray(row.source_urls) ? (row.source_urls as string[]) : [],
     last_verified_at: (row.last_verified_at as string | null) ?? null,
@@ -618,17 +620,64 @@ async function withStatus(docs: PpWorkflowDoc[]): Promise<PpWorkflowDocWithStatu
   })
 }
 
+// Docs filed under a department: primary filing OR listed in
+// also_department_ids (migration 031). Falls back to primary-only until
+// 031 is applied.
+let filingColumnMissing = false
 export async function listWorkflowDocs(departmentId: string): Promise<PpWorkflowDocWithStatus[]> {
-  const { data, error } = await supabase
-    .from('pp_workflow_docs')
-    .select('*')
-    .eq('department_id', departmentId)
-    .order('created_at', { ascending: false })
-  if (error) {
-    console.warn('[post-pulse] pp_workflow_docs read failed (run migration 030?):', error.message)
+  const base = () => supabase.from('pp_workflow_docs').select('*').order('created_at', { ascending: false })
+  let res = filingColumnMissing
+    ? await base().eq('department_id', departmentId)
+    : await base().or(`department_id.eq.${departmentId},also_department_ids.cs.{${departmentId}}`)
+  if (res.error && !filingColumnMissing && /also_department_ids/i.test(res.error.message)) {
+    filingColumnMissing = true
+    console.warn('[post-pulse] pp_workflow_docs.also_department_ids missing — run supabase/migrations/031_post_pulse_workflow_doc_filing.sql; multi-department filing disabled.')
+    res = await base().eq('department_id', departmentId)
+  }
+  if (res.error) {
+    console.warn('[post-pulse] pp_workflow_docs read failed (run migration 030?):', res.error.message)
     return []
   }
-  return withStatus((data ?? []).map((r) => normalizeWorkflowDoc(r as Record<string, unknown>)))
+  return withStatus((res.data ?? []).map((r) => normalizeWorkflowDoc(r as Record<string, unknown>)))
+}
+
+// Reclassify: change the primary department and/or the additional ones.
+// Referenced tools are re-matched against the new filing's rosters (plus
+// their related departments) so the staleness signal follows the doc.
+export async function moveWorkflowDoc(
+  id: string,
+  departmentId: string,
+  alsoDepartmentIds: string[]
+): Promise<{ ok: true; primarySlug: string } | { ok: false; status: number; error: string }> {
+  const { data: current, error: curErr } = await supabase.from('pp_workflow_docs').select('*').eq('id', id).maybeSingle()
+  if (curErr) return { ok: false, status: 500, error: curErr.message }
+  if (!current) return { ok: false, status: 404, error: 'Workflow doc not found' }
+  const dataset = await fetchPostPulseDataset()
+  const primary = dataset.departments.find((d) => d.id === departmentId)
+  if (!primary) return { ok: false, status: 400, error: 'Unknown department' }
+  const also = Array.from(new Set(alsoDepartmentIds.filter((x) => x !== departmentId && dataset.departments.some((d) => d.id === x))))
+  const filed = [primary, ...also.map((x) => dataset.departments.find((d) => d.id === x)!)]
+  const rosterIds = new Set(filed.flatMap((d) => [d.id, ...d.related_department_ids]))
+  const roster = dataset.tools.filter((t) => rosterIds.has(t.department_id)).map((t) => ({ id: t.id, name: t.name }))
+  const referenced = matchReferencedTools(String(current.content ?? ''), roster)
+
+  const update: Record<string, unknown> = { department_id: primary.id, referenced_tool_ids: referenced }
+  if (also.length || !filingColumnMissing) update.also_department_ids = also
+  let { error } = await supabase.from('pp_workflow_docs').update(update).eq('id', id)
+  if (error && /also_department_ids/i.test(error.message)) {
+    filingColumnMissing = true
+    if (also.length) {
+      return {
+        ok: false,
+        status: 409,
+        error: 'Filing under more than one department needs supabase/migrations/031_post_pulse_workflow_doc_filing.sql to be applied first.',
+      }
+    }
+    delete update.also_department_ids
+    ;({ error } = await supabase.from('pp_workflow_docs').update(update).eq('id', id))
+  }
+  if (error) return { ok: false, status: 500, error: error.message }
+  return { ok: true, primarySlug: primary.slug }
 }
 
 export async function getWorkflowDoc(id: string): Promise<PpWorkflowDocWithStatus | null> {

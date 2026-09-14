@@ -2,6 +2,7 @@ import Link from 'next/link'
 import type { PpWorkflowDocWithStatus } from '@/lib/post-pulse-types'
 
 interface Props {
+  departmentId: string
   departmentSlug: string
   workflows: PpWorkflowDocWithStatus[]
 }
@@ -11,7 +12,7 @@ interface Props {
 // prose. Native <details>, collapsed by default; items click through to
 // the doc page. The badge appears only when a referenced tool changed
 // since the doc was saved or last verified.
-export function WorkflowsDisclosure({ departmentSlug, workflows }: Props) {
+export function WorkflowsDisclosure({ departmentId, departmentSlug, workflows }: Props) {
   const stale = workflows.filter((w) => w.stale).length
   return (
     <details className="mt-6 group rounded-xl border border-cream-300 bg-cream-50/70 open:bg-cream-50">
@@ -38,6 +39,7 @@ export function WorkflowsDisclosure({ departmentSlug, workflows }: Props) {
                   className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2.5 text-sm hover:bg-cream-100/70 transition-colors"
                 >
                   <span className="font-medium text-ink-300">{w.title}</span>
+                  {w.department_id !== departmentId && <span className="text-[11px] text-ink-50">also filed here</span>}
                   {w.stale && (
                     <span
                       className="inline-flex items-center px-2 py-px rounded-full border border-press-down/30 bg-press-down/10 text-press-down text-[11px] font-medium"

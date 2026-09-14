@@ -232,7 +232,8 @@ export const PP_CHAT_DEFAULT_NAME = 'New session'
 // saved or last verified) — never cached on the row.
 export interface PpWorkflowDoc {
   id: string
-  department_id: string
+  department_id: string // primary filing (anchors the URL)
+  also_department_ids: string[] // migration 031: additional departments it is filed under
   title: string
   prompt: string
   content: string

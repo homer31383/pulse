@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { fetchDepartmentBySlug, getWorkflowDoc } from '@/lib/post-pulse'
+import { fetchDepartmentBySlug, fetchPostPulseDataset, getWorkflowDoc } from '@/lib/post-pulse'
 import { MarkdownRenderer } from '@/components/MarkdownRenderer'
 import { WorkflowDocActions } from '@/components/post-pulse/WorkflowDocActions'
 
@@ -15,8 +15,12 @@ interface PageProps {
 // and the re-run / verify actions. Staleness is computed on load.
 export default async function WorkflowDocPage({ params }: PageProps) {
   const { slug, id } = await params
-  const [department, doc] = await Promise.all([fetchDepartmentBySlug(slug), getWorkflowDoc(id)])
-  if (!department || !doc || doc.department_id !== department.id) notFound()
+  const [department, doc, dataset] = await Promise.all([fetchDepartmentBySlug(slug), getWorkflowDoc(id), fetchPostPulseDataset()])
+  if (!department || !doc) notFound()
+  // Reachable under any department it is filed in (primary or additional).
+  if (doc.department_id !== department.id && !doc.also_department_ids.includes(department.id)) notFound()
+  const primary = dataset.departments.find((d) => d.id === doc.department_id) ?? department
+  const alsoFiled = doc.also_department_ids.map((x) => dataset.departments.find((d) => d.id === x)).filter((d): d is NonNullable<typeof d> => !!d)
 
   const changedIds = new Set(doc.staleChanges.map((c) => c.toolId))
   const fmt = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -49,8 +53,35 @@ export default async function WorkflowDocPage({ params }: PageProps) {
             </>
           )}
         </p>
+        <p className="text-xs text-ink-100 mt-2">
+          Filed under{' '}
+          <Link href={`/post-pulse/tools?dept=${primary.slug}`} className="text-press-accent hover:underline">
+            {primary.name}
+          </Link>
+          {alsoFiled.length > 0 && (
+            <>
+              {' '}
+              and also{' '}
+              {alsoFiled.map((d, i) => (
+                <span key={d.id}>
+                  {i > 0 && ', '}
+                  <Link href={`/post-pulse/tools?dept=${d.slug}`} className="text-press-accent hover:underline">
+                    {d.name}
+                  </Link>
+                </span>
+              ))}
+            </>
+          )}
+          .
+        </p>
         <div className="mt-3">
-          <WorkflowDocActions docId={doc.id} departmentSlug={department.slug} stale={doc.stale} lastVerifiedAt={doc.last_verified_at} />
+          <WorkflowDocActions
+            docId={doc.id}
+            departmentSlug={primary.slug}
+            stale={doc.stale}
+            lastVerifiedAt={doc.last_verified_at}
+            filing={{ departmentId: doc.department_id, alsoDepartmentIds: doc.also_department_ids }}
+          />
         </div>
       </header>
 
