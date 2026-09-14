@@ -140,13 +140,20 @@ Only the REST key is available in some environments. The seed can be applied thr
 - **Files**: `lib/post-pulse-rss.ts` (sources, minimal RSS/Atom parser, `fetchRssItems`, `isKnownSourceUrl`), `lib/post-pulse-research.ts` (`runResearch`, `isDepartmentDue`, `composeBriefing`, `PP_RESEARCH_CADENCE_DAYS`), `app/api/post-pulse/research/route.ts` (POST `{departmentId?, timeBudgetMs?}`), `app/api/cron/post-pulse-sync/route.ts` (GET, `CRON_SECRET`, `dueOnly`), `components/post-pulse/ResearchButton.tsx`, `vercel.json` (`0 12 * * *`).
 - **Flow per run**: RSS (21-day lookback, dedup against known URLs) → Haiku `route_items` → per department (concurrency 4, time budget) Sonnet + web_search (`max_uses` = 5 + 3 headroom, one search at a time) → `report_findings` → publish (auto: high confidence, factual fields only, known domain or verified entry, via `applyToolUpdate`; else `pp_queue` with source rss|search; confirmation → `last_verified_at` only; `complete:false` → failed, no stamp) → `last_researched_at` stamp → briefing row in the `Post Pulse Research` channel (`scheduled: true`, Listen Queue, `last_briefed_at`) → `usage_logs` `pp_research`.
 - **Feeds** (checked Sept 2026): CG Channel `https://www.cgchannel.com/feed/`, VP Land `https://www.vp-land.com/feed`. No feed: SideFX, Foundry, superrendersfarm. ActionVFX blocks bots (429). Their domains still count as known sources.
-- **Env**: `PULSE_PP_RESEARCH_PROFILE_ID` (briefing owner, default profile 1), `PULSE_PP_RESEARCH_CONCURRENCY` (4), `PULSE_PP_RESEARCH_EFFORT` (medium), `CRON_SECRET`.
+- **Env**: `PULSE_PP_RESEARCH_PROFILE_ID` (briefing owner, default profile 1), `PULSE_PP_RESEARCH_CONCURRENCY` (4), `PULSE_PP_RESEARCH_EFFORT` (medium), `PULSE_PP_RESEARCH_SEARCHES` (soft budget, 15), `PULSE_PP_RESEARCH_SEARCH_HEADROOM` (5), `CRON_SECRET`.
+- **Query plan**: ordered: previous pass's `follow_up_sources` (migration 027), then trade sources by name, then vendor release notes for the roster, generic last. The report tool returns `follow_up_sources`, saved on the department after every pass and handed to the next one (and to a department-scoped chat).
 - **Costs measured**: one department ≈ $0.15–0.25 and 60–70s; five in parallel ≈ $0.94 and 100s. A full 14-department sweep ≈ $3 spread over one or two daily runs.
 - **Known limits**: briefings are profile-scoped, so research briefings land in one profile; the research channel is an ordinary channel (a manual Generate on it produces a normal briefing). No lock against a cron run and a manual sweep overlapping — the stamp makes the second mostly a no-op but both would spend.
 
-## 10. Later migrations
+## 10. Department relations (migration 026, 2026-09-14)
+
+`pp_departments.related_department_ids uuid[]` (GIN index) — cross-references, not shared ownership. Set bidirectionally; the seed and `supabase/post_pulse_department_relations_2026-09-14.sql` link Concept & Image Generation ↔ Generative Media Models & Platforms (still-image concept work vs the video/motion execution layer). The department doc renders a "Related departments" preview; `findNameCollision()` refuses cross-department duplicate tool names at write and accept time; research prompts include related rosters as already-tracked context.
+
+## 11. Later migrations
 
 - **024** `pp_departments.last_researched_at` (timestamptz, nullable) — stamped by research runs; unused by the UI so far.
+- **027** `pp_departments.follow_up_sources jsonb`: the next research pass's starting sources (code warns and skips the write until applied).
+- **026** `pp_departments.related_department_ids uuid[]` — see §10.
 - **025** `pp_changelog` generalised: `tool_id` nullable, `target_type` ('tool' | 'department', default 'tool'), `department_id` (fk, cascade), check constraint that exactly one id is set to match `target_type`, index on `department_id`. `acceptQueueItem` logs department accepts with the same field/old/new shape as tool rows (`overview_doc` rows hold the whole before/after text). Run 024 and 025 after 023.
 - **Per-department `comparison_attributes` refinement** after first real use.
 - **Phone layout verification** in a real browser (the automation profile couldn't resize the window).

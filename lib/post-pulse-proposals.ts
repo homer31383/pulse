@@ -64,6 +64,47 @@ export type PpProposalInput =
       flag?: PpProposalFlag
     }
 
+// What buildProposal needs to refuse a "new tool" that already exists
+// somewhere in the dataset. Any object with these two lists qualifies —
+// PpDataset does.
+export interface PpProposalContext {
+  tools: { id: string; name: string; department_id: string }[]
+  departments: { id: string; name: string }[]
+}
+
+// Name normalisation for the cross-department collision check. Drops
+// parentheticals ("Runway (Gen-4.5)"), punctuation, version-ish tokens
+// (v7, 2.5, 3), and generic suffix words, so "Midjourney V7" and
+// "Midjourney" collide while "Beeble Canvas" and "Beeble" do not (a real
+// extra word means a distinct product — the producer must decide).
+const GENERIC_TOKENS = new Set(['ai', 'pro', 'plus', 'studio', 'app', 'tool', 'gen', 'edition', 'version', 'the', 'for', 'and', 'of'])
+
+export function normalizeToolName(name: string): string[] {
+  return name
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(' ')
+    .filter((t) => t && !GENERIC_TOKENS.has(t) && !/^v?\d+(\.\d+)*$/.test(t))
+}
+
+export function findNameCollision(
+  name: string,
+  ctx: PpProposalContext,
+  excludeToolId?: string | null
+): { tool: PpProposalContext['tools'][number]; departmentName: string } | null {
+  const tokens = normalizeToolName(name)
+  if (!tokens.length) return null
+  const key = tokens.join(' ')
+  for (const tool of ctx.tools) {
+    if (excludeToolId && tool.id === excludeToolId) continue
+    if (normalizeToolName(tool.name).join(' ') !== key) continue
+    const dept = ctx.departments.find((d) => d.id === tool.department_id)
+    return { tool, departmentName: dept?.name ?? 'another department' }
+  }
+  return null
+}
+
 // The canonical stored row (pp_queue columns the producer sets).
 export interface PpProposalRow {
   target_type: PpQueueTargetType
@@ -152,7 +193,7 @@ function validateDepartmentFields(fields: Record<string, unknown>, create: boole
 
 export type BuildResult = { ok: true; row: PpProposalRow; kind: PpProposalKind } | { ok: false; error: string }
 
-export function buildProposal(input: PpProposalInput): BuildResult {
+export function buildProposal(input: PpProposalInput, ctx?: PpProposalContext): BuildResult {
   const note = typeof input.note === 'string' ? input.note.trim() : ''
   if (!note) return { ok: false, error: 'a proposal needs a note (the rationale shown to the reviewer)' }
   const sourceUrls = httpUrls(input.sourceUrls)
@@ -166,6 +207,18 @@ export function buildProposal(input: PpProposalInput): BuildResult {
       // A flagged note may be incomplete on purpose; a real create may not.
       const err = input.flag ? validateToolFields(fields, false) ?? (typeof fields.name === 'string' && fields.name ? null : 'a flagged note still needs a name') : validateToolFields(fields, true)
       if (err) return { ok: false, error: err }
+      // Cross-department duplicate check (the Concept & Image Generation
+      // incident, 2026-09-14): a "new tool" that is already tracked under
+      // another department is refused at write time.
+      if (ctx && typeof fields.name === 'string') {
+        const clash = findNameCollision(fields.name, ctx)
+        if (clash) {
+          return {
+            ok: false,
+            error: `"${fields.name}" is already tracked as "${clash.tool.name}" in ${clash.departmentName} (id=${clash.tool.id}). Propose an update to that entry, or link the departments via related_department_ids, instead of duplicating it.`,
+          }
+        }
+      }
       return {
         ok: true,
         kind: input.kind,

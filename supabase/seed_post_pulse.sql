@@ -239,19 +239,21 @@ $doc$,
  '[{"key": "host_app", "label": "Host App", "type": "text"}, {"key": "groom_workflow", "label": "Groom Workflow", "type": "text"}, {"key": "sim_coupling", "label": "Simulation Coupling", "type": "text"}]'::jsonb),
 
 ('concept-image-generation', 'Concept & Image Generation', $doc$
-Concept art, mood boards, storyboards, and early previs frames — the pre-production work that turns a script and a director's references into images a studio can bid, plan, and pitch from. Added on 2026-09-14 as the first pre-production department; the tool roster and tier reasoning below are a scaffold until the first research pass fills them in. Scope note: the image and video models themselves (and the platforms that host them) are tracked under Generative Media Models & Platforms; this department is about their use in pre-production — the tools, workflows, and controls that get a concept artist or a storyboard artist from brief to approved frame — and about what that has done to the job.
+Concept art, mood boards, storyboards, character design sheets, and early previs frames: the still-image, illustration-first work that turns a script and a director's references into pictures a studio can bid, plan, and pitch from. This department is one half of a pair. The video and motion execution layer — Runway, Seedance, Veo, Kling, Wan, Nano Banana, LTX Studio and the platforms around them — is tracked under Generative Media Models & Platforms, not here, and real production workflows combine both: concept a character in Midjourney or Leonardo, lock its identity with a reference, then animate or extend it with Runway or Seedance. If a tool you expect to see is missing from this list, check the related department before treating it as untracked.
+
+What defines the tools tracked here is character and design consistency for still work: holding one face, one costume, one design language across dozens of frames from a single reference, without training a LoRA or building a dataset. That is the capability that moved concept work from "generate and hope" to something a supervisor can art-direct.
 
 ## Tier 1 — Automated {#tier-1}
 
-Nothing tracked yet. Nothing in concept work ships without an artist's selection and direction, so expect this tier to stay thin.
+Nothing tracked here. Nothing in concept work ships without an artist's selection and direction, and this tier should stay thin: generation is fast, but every frame that reaches a director has been chosen.
 
 ## Tier 2 — AI-assisted {#tier-2}
 
-Nothing tracked yet. Candidates to look for: text- and sketch-to-image tools with real art-direction controls (reference images, ControlNet-style guidance, style locking), storyboard and shot-planning tools, and rights-clear image generation studios can put in a bid deck.
+Character-consistency generation is production-usable for concept-art-quality work. Midjourney is the industry standard for identity lock: V7's Omni Reference replaced the older --cref flag with a dedicated reference panel, so a character portrait uploaded once anchors every subsequent generation. Leonardo AI pairs its character reference tools with PhotoReal mode and is positioned for game-style character sheets and iterative design rather than single hero illustrations. Ideogram is the strongest free-tier option, holding facial identity from a single uploaded reference photo with no LoRA training or multi-image dataset. The motion side of the same workflow — taking an approved concept into a moving shot — lives with the video tools under Generative Media Models & Platforms.
 
 ## Tier 3 — Artist-led {#tier-3}
 
-Choosing the frame, the design language, and what the director actually responds to is still the concept artist's job; generation has moved the labour, not the taste. Treat this as the default until the research pass shows otherwise.
+Choosing the frame, the design language, and what the director actually responds to is still the concept artist's job. Generation moved the labour of producing options; the taste, the edit, and the presentation of a look are unchanged, and rights clearance for anything that reaches a client deck is a human decision.
 $doc$,
  '[{"key": "output_type", "label": "Output Type", "type": "text"}, {"key": "licensing_clarity", "label": "Licensing Clarity", "type": "text"}, {"key": "control", "label": "Art-direction Controls", "type": "text"}, {"key": "pricing", "label": "Pricing", "type": "text"}]'::jsonb)
 on conflict (slug) do update set
@@ -423,8 +425,21 @@ insert into pp_tools (department_id, name, tier, host_app, status, vendor, blurb
 ((select id from pp_departments where slug = 'mocap-animation'), 'Autodesk Flow Studio (formerly Wonder Studio)', 'assisted', 'web', 'active', 'Autodesk',
  'Full live-action-to-CG pipeline: markerless body/hand/face mocap, camera tracking, clean plates, character compositing.',
  '{"capture_type":"Markerless body, hand, and face from live-action footage"}'::jsonb,
- array['https://www.neolemon.com/blog/best-ai-motion-capture-tools-for-character-animation/'])
+ array['https://www.neolemon.com/blog/best-ai-motion-capture-tools-for-character-animation/']),
 
+-- Concept & Image Generation (added 2026-09-14; character-consistency still-image work)
+((select id from pp_departments where slug = 'concept-image-generation'), 'Midjourney', 'assisted', 'web', 'active', 'Midjourney',
+ 'V7 introduced Omni Reference, replacing the older --cref flag with a dedicated reference panel: upload a character portrait once, every subsequent generation pulls from that anchor. Industry standard for concept-art-quality character identity lock.',
+ '{"output_type": "Still images; character identity lock via Omni Reference", "control": "Omni Reference panel (single portrait anchors later generations)"}'::jsonb,
+ array['https://fast.io/resources/best-ai-character-generators-2026/']),
+((select id from pp_departments where slug = 'concept-image-generation'), 'Leonardo AI', 'assisted', 'web', 'active', 'Leonardo AI',
+ 'Combines character reference tools with PhotoReal mode; positioned for game-style character sheets and iterative design rather than single hero illustrations.',
+ '{"output_type": "Still images; character sheets and iterative design", "control": "Character reference tools + PhotoReal mode"}'::jsonb,
+ array['https://www.lovart.ai/blog/6-best-ai-character-consistency-tools-2026']),
+((select id from pp_departments where slug = 'concept-image-generation'), 'Ideogram', 'assisted', 'web', 'active', 'Ideogram',
+ 'Best free-tier option for character consistency — holds facial identity from a single uploaded reference photo, no LoRA training or multi-image dataset required.',
+ '{"output_type": "Still images; facial identity from one reference photo", "control": "Single reference photo, no LoRA or dataset", "pricing": "Free tier available"}'::jsonb,
+ array['https://fast.io/resources/best-ai-character-generators-2026/'])
 on conflict (department_id, name) do update set
   tier = excluded.tier,
   host_app = excluded.host_app,
@@ -466,3 +481,11 @@ set replacement_tool_id = (
 )
 where name = 'Ziva VFX'
   and department_id = (select id from pp_departments where slug = 'muscle-skinning');
+
+-- Department relations (migration 026): the Concept <-> Generative Media pair.
+-- Generative Media Models & Platforms is not in this seed; the update is a
+-- no-op until that department exists (supabase/post_pulse_department_relations_2026-09-14.sql).
+update pp_departments set related_department_ids = array[(select id from pp_departments where slug = 'generative-media-models')]
+where slug = 'concept-image-generation' and exists (select 1 from pp_departments where slug = 'generative-media-models');
+update pp_departments set related_department_ids = array[(select id from pp_departments where slug = 'concept-image-generation')]
+where slug = 'generative-media-models' and exists (select 1 from pp_departments where slug = 'concept-image-generation');

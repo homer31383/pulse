@@ -29,6 +29,13 @@ export default async function DepartmentDocPage({ params }: PageProps) {
   if (!department) notFound()
 
   const tools = dataset.tools.filter((t) => t.department_id === department.id)
+  // Related departments (migration 026): a read-only cross-reference with a
+  // live preview of what is tracked there, so nobody concludes that Runway
+  // or Veo are untracked because they live one department over.
+  const related = department.related_department_ids
+    .map((id) => dataset.departments.find((d) => d.id === id))
+    .filter((d): d is NonNullable<typeof d> => !!d)
+    .map((d) => ({ department: d, tools: dataset.tools.filter((t) => t.department_id === d.id) }))
 
   return (
     <article className="max-w-3xl">
@@ -58,6 +65,23 @@ export default async function DepartmentDocPage({ params }: PageProps) {
             last checked {department.last_researched_at ? relativeDays(department.last_researched_at) : 'never'}
           </span>
         </p>
+        {department.follow_up_sources.length > 0 && (
+          <p className="text-xs text-ink-50 mt-1">
+            Next pass starts from:{' '}
+            {department.follow_up_sources.slice(0, 5).map((f, i) => (
+              <span key={f.source}>
+                {i > 0 && ' · '}
+                {/^https?:\/\//.test(f.source) ? (
+                  <a href={f.source} target="_blank" rel="noopener noreferrer" className="text-press-accent hover:underline">
+                    {f.source.replace(/^https?:\/\/(www\.)?/, '').slice(0, 48)}
+                  </a>
+                ) : (
+                  <span className="text-ink-100">{f.source}</span>
+                )}
+              </span>
+            ))}
+          </p>
+        )}
         <div className="mt-3 flex flex-wrap items-start gap-2">
           {/* In-context chat launch: resumes this department's latest session, or starts one */}
           <Link
@@ -108,6 +132,43 @@ export default async function DepartmentDocPage({ params }: PageProps) {
           )
         })}
       </div>
+
+      {related.length > 0 && (
+        <section className="mb-8 rounded-xl border border-press-accent/30 bg-press-accent/5 px-4 py-3">
+          <h2 className="text-[10px] uppercase tracking-[1.5px] text-press-accent font-medium">Related departments</h2>
+          <p className="text-xs text-ink-100 mt-0.5">Tracked there, not duplicated here. Check before treating a tool as missing.</p>
+          <ul className="mt-2 space-y-2">
+            {related.map(({ department: r, tools: rt }) => (
+              <li key={r.id} className="text-sm">
+                <Link href={`/post-pulse/departments/${r.slug}`} className="font-medium text-ink-300 hover:text-press-accent">
+                  {r.name}
+                </Link>
+                <span className="text-ink-50 text-xs"> · {rt.length} {rt.length === 1 ? 'tool' : 'tools'}</span>
+                {rt.length > 0 && (
+                  <span className="block text-xs text-ink-100 mt-0.5">
+                    {rt.slice(0, 6).map((t, i) => (
+                      <span key={t.id}>
+                        {i > 0 && ', '}
+                        <Link href={`/post-pulse/tools/${t.id}`} className="hover:text-press-accent">
+                          {t.name}
+                        </Link>
+                      </span>
+                    ))}
+                    {rt.length > 6 && (
+                      <>
+                        {' '}
+                        <Link href={`/post-pulse/tools?dept=${r.slug}`} className="text-press-accent hover:underline">
+                          and {rt.length - 6} more →
+                        </Link>
+                      </>
+                    )}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {department.overview_doc.trim() ? (
         <AnchoredMarkdown content={department.overview_doc} />

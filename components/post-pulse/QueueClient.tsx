@@ -10,7 +10,7 @@ import {
   formatAttributeValue,
   type PpQueueItem,
 } from '@/lib/post-pulse-types'
-import { validateStoredProposal } from '@/lib/post-pulse-proposals'
+import { findNameCollision, validateStoredProposal } from '@/lib/post-pulse-proposals'
 import { usePostPulse } from './Shell'
 
 interface Props {
@@ -89,6 +89,8 @@ export function QueueClient({ items: initial }: Props) {
         // Same validator the accept handler runs — a row it would refuse is
         // shown as such here instead of failing on click.
         const shape = validateStoredProposal(item)
+        const collision =
+          shape.kind === 'tool_create' && typeof changes.name === 'string' ? findNameCollision(changes.name, { tools, departments }) : null
 
         const title = isDept ? (
           targetDept ? (
@@ -137,6 +139,15 @@ export function QueueClient({ items: initial }: Props) {
                 <p className="mb-3 rounded-lg border border-press-down/30 bg-press-down/10 px-3 py-2 text-xs text-press-down">
                   {shape.flag === 'ambiguous' ? 'Ambiguous review note. ' : shape.flag === 'incomplete' ? 'Incomplete proposal. ' : 'Cannot be applied. '}
                   {shape.error}
+                </p>
+              )}
+              {collision && (
+                <p className="mb-3 rounded-lg border border-press-down/30 bg-press-down/10 px-3 py-2 text-xs text-press-down">
+                  Already tracked as{' '}
+                  <Link href={`/post-pulse/tools/${collision.tool.id}`} className="underline">
+                    {collision.tool.name}
+                  </Link>{' '}
+                  in {collision.departmentName}. Accept will refuse this; reject it or propose an update to that entry.
                 </p>
               )}
               {typeof changes.note === 'string' && (

@@ -76,7 +76,11 @@ function departmentLine(d: PpDepartment, dataset: PpDataset): string {
         )
         .join('\n')
     : '    (no tools tracked yet)'
-  return `- ${d.name} (slug=${d.slug}, id=${d.id}, stage=${stage}${sub}; compare attributes: ${attrs})\n${toolLines}`
+  const related = d.related_department_ids
+    .map((id) => dataset.departments.find((x) => x.id === id)?.name)
+    .filter(Boolean)
+    .join(', ')
+  return `- ${d.name} (slug=${d.slug}, id=${d.id}, stage=${stage}${sub}; compare attributes: ${attrs}${related ? `; related: ${related}` : ''})\n${toolLines}`
 }
 
 export function buildSystemPrompt(dataset: PpDataset, contextDepartment: PpDepartment | null): string {
@@ -88,7 +92,10 @@ export function buildSystemPrompt(dataset: PpDataset, contextDepartment: PpDepar
   const context = contextDepartment
     ? `\n\n## Session context: ${contextDepartment.name}\n` +
       `This session was opened from the "${contextDepartment.name}" department doc. Use it as the DEFAULT frame for ambiguous references only ("this tool", "here", "this department"). It is not a filter: a question about another department, or something unrelated to it, gets a normal, complete answer — never a redirect back to ${contextDepartment.name}.\n\n` +
-      `Current overview doc for ${contextDepartment.name}:\n"""\n${contextDepartment.overview_doc.trim() || '(empty)'}\n"""`
+      `Current overview doc for ${contextDepartment.name}:\n"""\n${contextDepartment.overview_doc.trim() || '(empty)'}\n"""` +
+      (contextDepartment.follow_up_sources.length
+        ? `\n\nThe last research pass for ${contextDepartment.name} recommended starting the next look at these sources: ${contextDepartment.follow_up_sources.map((f) => f.source).join('; ')}. If the user asks you to research this department, check those first.`
+        : '')
     : ''
 
   return (
@@ -107,7 +114,7 @@ export function buildSystemPrompt(dataset: PpDataset, contextDepartment: PpDepar
     `## Proposals\n` +
     `When you are confident, call propose_change once per distinct proposal: a new tool, a new department, or an edit to an existing tool or department. The call writes to the review queue immediately — there is no separate confirmation step, and the user reviews it in the Queue view. Do not ask "shall I add it?"; either propose it or ask the clarifying question that would let you. ` +
     `After the call, tell the user in one line each what you queued; do not restate the whole record.\n` +
-    `- Use the ids listed above for updates. If something is already tracked, propose an update to that id, never a duplicate "new" entry.\n` +
+    `- Use the ids listed above for updates. If something is already tracked — in ANY department, including a related one — propose an update to that id, never a duplicate "new" entry; a duplicate name is refused at write time.\n` +
     `- For a tool edit, include only the fields that change.\n` +
     `- For a new tool: name, department_slug, tier, host_app (Maya | Houdini | Nuke | standalone | web | plugin | native), status, vendor, blurb (one line), attributes keyed to that department's compare attributes, source_urls.\n` +
     `- For a department doc edit, overview_doc is replaced wholesale on accept: send the COMPLETE new doc, keep the opening synthesis paragraph and the "## Tier 1 — Automated {#tier-1}", "## Tier 2 — AI-assisted {#tier-2}", "## Tier 3 — Artist-led {#tier-3}" sections.\n` +
@@ -213,7 +220,7 @@ async function handleProposal(input: ProposeInput, dataset: PpDataset, turnSourc
       const tool = targetId ? dataset.tools.find((t) => t.id === targetId) : null
       if (!tool) return { ok: false, error: 'target_id does not match a tracked tool; use an id from the department list, or action=create' }
       if (Object.keys(changes).length === 0) return { ok: false, error: 'no editable tool fields in changes' }
-      const res = await enqueueProposal({ kind: 'tool_update', toolId: tool.id, changes, note: rationale, source: 'chat', sourceUrls })
+      const res = await enqueueProposal({ kind: 'tool_update', toolId: tool.id, changes, note: rationale, source: 'chat', sourceUrls }, dataset)
       if ('error' in res) return { ok: false, error: res.error }
       return { ok: true, queued: { id: res.id, label: `Update ${tool.name} (${Object.keys(changes).join(', ')})`, targetType: 'tool' } }
     }
@@ -222,14 +229,17 @@ async function handleProposal(input: ProposeInput, dataset: PpDataset, turnSourc
     const name = typeof changes.name === 'string' ? changes.name.trim() : ''
     const dup = name ? dataset.tools.find((t) => t.department_id === department.id && t.name.toLowerCase() === name.toLowerCase()) : null
     if (dup) return { ok: false, error: `"${dup.name}" is already tracked in ${department.name} (id=${dup.id}); propose an update to it instead` }
-    const res = await enqueueProposal({
-      kind: 'tool_create',
-      department: { id: department.id, slug: department.slug },
-      fields: changes,
-      note: rationale,
-      source: 'chat',
-      sourceUrls,
-    })
+    const res = await enqueueProposal(
+      {
+        kind: 'tool_create',
+        department: { id: department.id, slug: department.slug },
+        fields: changes,
+        note: rationale,
+        source: 'chat',
+        sourceUrls,
+      },
+      dataset
+    )
     if ('error' in res) return { ok: false, error: res.error }
     return { ok: true, queued: { id: res.id, label: `New tool: ${name} → ${department.name}`, targetType: 'tool' } }
   }
@@ -239,7 +249,7 @@ async function handleProposal(input: ProposeInput, dataset: PpDataset, turnSourc
   if (action === 'update') {
     const department = targetId ? dataset.departments.find((d) => d.id === targetId) : null
     if (!department) return { ok: false, error: 'target_id does not match a department; use an id from the department list, or action=create' }
-    const res = await enqueueProposal({ kind: 'department_update', departmentId: department.id, changes, note: rationale, source: 'chat', sourceUrls })
+    const res = await enqueueProposal({ kind: 'department_update', departmentId: department.id, changes, note: rationale, source: 'chat', sourceUrls }, dataset)
     if ('error' in res) return { ok: false, error: res.error }
     return {
       ok: true,
@@ -250,7 +260,7 @@ async function handleProposal(input: ProposeInput, dataset: PpDataset, turnSourc
   const slug = (typeof changes.slug === 'string' && changes.slug.trim()) || deptSlug || (name ? slugifyHeading(name) : '')
   const clash = dataset.departments.find((d) => (slug && d.slug === slug) || (name && d.name.toLowerCase() === name.toLowerCase()))
   if (clash) return { ok: false, error: `department "${clash.name}" already exists (id=${clash.id}); propose an update instead` }
-  const res = await enqueueProposal({ kind: 'department_create', fields: { ...changes, slug }, note: rationale, source: 'chat', sourceUrls })
+  const res = await enqueueProposal({ kind: 'department_create', fields: { ...changes, slug }, note: rationale, source: 'chat', sourceUrls }, dataset)
   if ('error' in res) return { ok: false, error: res.error }
   return { ok: true, queued: { id: res.id, label: `New department: ${name}`, targetType: 'department' } }
 }

@@ -22,11 +22,12 @@ import {
   enqueueProposal,
   fetchKnownSourceUrls,
   fetchPostPulseDataset,
+  saveDepartmentFollowUps,
   stampDepartmentsResearched,
   stampToolsVerified,
 } from '@/lib/post-pulse'
 import { fetchRssItems, isKnownSourceUrl, PP_RSS_SOURCES, type PpRssItem } from '@/lib/post-pulse-rss'
-import { normalizeToolFields } from '@/lib/post-pulse-proposals'
+import { findNameCollision, normalizeToolFields } from '@/lib/post-pulse-proposals'
 import { containerIdFromEvent } from '@/lib/post-pulse-chat'
 import {
   PP_HOST_APPS,
@@ -46,13 +47,25 @@ export const PP_RESEARCH_CADENCE_DAYS = 14 // uniform for now (spec §5)
 const RSS_LOOKBACK_DAYS = 21
 const SEARCH_MODEL = DEFAULT_MODEL // claude-sonnet-5: tier/status judgment
 const EXTRACT_MODEL = 'claude-haiku-4-5' // RSS extraction / dedup / routing
-const MAX_SEARCHES_PER_DEPARTMENT = 5
+// Search budget per department pass. Tunable, like PULSE_PP_CHAT_EFFORT:
+// cost scales roughly linearly with searches (measured ≈ $0.15–0.25 per
+// department at 5, so expect ≈ $0.45–0.70 at 15 and a full cycle in the
+// $6–9 range). Raised 5 → 15 on 2026-09-14 after a pass exhausted itself on
+// generic searches before reaching the good sources.
+function intFromEnv(name: string, fallback: number, min: number, max: number): number {
+  const n = Number(process.env[name])
+  return Number.isFinite(n) && n >= min && n <= max ? Math.floor(n) : fallback
+}
+const MAX_SEARCHES_PER_DEPARTMENT = intFromEnv('PULSE_PP_RESEARCH_SEARCHES', 15, 1, 40)
 // web_search_20260209's dynamic filtering runs the model's searches inside a
 // code-execution step, and Sonnet will happily batch several in one block —
 // which hits max_uses before any result is read (observed 2026-09-14: five
 // searches, zero results). The prompt states MAX_SEARCHES as the budget and
 // asks for one search at a time; the hard cap sits above it as headroom.
-const MAX_USES_HEADROOM = 3
+const MAX_USES_HEADROOM = intFromEnv('PULSE_PP_RESEARCH_SEARCH_HEADROOM', 5, 0, 20)
+// Trade sources with better signal-to-noise than generic search; the query
+// plan puts them first, then vendor release notes, then generic queries.
+const TRADE_SOURCES = ['vp-land.com/tools', 'fxguide.com', 'cgchannel.com', 'beforesandafters.com']
 const MAX_ROUNDS = 6
 const CONCURRENCY = Math.max(1, Number(process.env.PULSE_PP_RESEARCH_CONCURRENCY ?? 4) || 4)
 const EFFORT = (['low', 'medium', 'high', 'xhigh', 'max'].includes(process.env.PULSE_PP_RESEARCH_EFFORT ?? '')
@@ -131,6 +144,12 @@ const REPORT_TOOL: Anthropic.Tool = {
         description:
           'true if you actually checked the tracked tools and the leads; false if the search budget or an error stopped you before you could (the pass will be retried).',
       },
+      follow_up_sources: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'Where the NEXT pass for this department should start: specific URLs or named sources (a vendor release-notes page, "fxguide search for X") that you recommend but did not reach, or that proved productive. The next pass is given these first. Leave empty if the generic plan was enough.',
+      },
     },
     required: ['findings', 'complete'],
   },
@@ -176,12 +195,47 @@ function toolLine(t: PpTool): string {
   return `- ${t.name} [id=${t.id}; ${t.tier}; ${hostAppLabel(t.host_app)}; ${t.status}; vendor=${t.vendor ?? '—'}; verified=${t.last_verified_at?.slice(0, 10) ?? 'never'}] blurb: ${t.blurb ?? ''}${attrs}`
 }
 
-function suggestedQueries(dept: PpDepartment, tools: PpTool[]): string[] {
+function cleanName(s: string): string {
+  return s.replace(/\s*\(.*?\)\s*/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+// Ordered search plan. The order is the point: (0) what the previous pass
+// said to check next, (1) trade sources with real signal, (2) the major
+// vendors' own release notes (from the department's tool list — it already
+// knows who matters), (3) generic catch-all queries LAST. A budget-exhausted
+// pass should fail having checked the good sources, not having spent itself
+// on generic searches that were unproductive earlier in the same run.
+function buildQueryPlan(dept: PpDepartment, tools: PpTool[]): { title: string; queries: string[] }[] {
   const year = new Date().getFullYear()
-  const base = dept.name.replace(/\s*\(.*?\)\s*/g, ' ').trim()
-  const queries = [`${base} AI tools ${year}`, `${base} machine learning VFX ${year} release`]
-  for (const t of tools.slice(0, 6)) queries.push(`${t.name.replace(/\s*\(.*?\)\s*/g, ' ').trim()} ${year}`)
-  return queries
+  const base = cleanName(dept.name)
+  const plan: { title: string; queries: string[] }[] = []
+  if (dept.follow_up_sources.length) {
+    plan.push({ title: 'Start here — recommended by the previous pass for this department', queries: dept.follow_up_sources.map((f) => f.source) })
+  }
+  plan.push({
+    title: 'Trade sources (high signal; search them by name)',
+    queries: [`vp-land.com tools ${base} ${year}`, `fxguide ${base} AI ${year}`, `cgchannel ${base} ${year}`],
+  })
+  const vendors = Array.from(
+    new Set(
+      tools
+        .map((t) => (t.vendor ? cleanName(t.vendor).replace(/\s*\/.*$/, '').replace(/,.*$/, '') : ''))
+        .filter((v) => v && !/^open[- ]?source$/i.test(v) && !/^various/i.test(v))
+    )
+  ).slice(0, 8)
+  const majors = tools.slice(0, 8).map((t) => cleanName(t.name))
+  plan.push({
+    title: 'Vendor release notes / changelogs for the major tracked players',
+    queries: [
+      ...vendors.map((v) => `${v} release notes ${year}`),
+      ...majors.map((n) => `${n} changelog ${year}`),
+    ],
+  })
+  plan.push({
+    title: 'Generic catch-all (last; stop after two unproductive searches in a row)',
+    queries: [`${base} AI tools ${year}`, `${base} machine learning VFX ${year} release`, `new ${base} AI tool announced ${year}`],
+  })
+  return plan
 }
 
 function researchSystemPrompt(dept: PpDepartment, tools: PpTool[], dataset: PpDataset, sinceLabel: string): string {
@@ -189,15 +243,33 @@ function researchSystemPrompt(dept: PpDepartment, tools: PpTool[], dataset: PpDa
     .filter((d) => d.id !== dept.id)
     .map((d) => `${d.name} (slug=${d.slug})`)
     .join(', ')
+  // Related departments (migration 026): their rosters are "already
+  // tracked" context so a pass doesn't spend its budget rediscovering
+  // tools that live one department over.
+  const related = dept.related_department_ids
+    .map((id) => dataset.departments.find((d) => d.id === id))
+    .filter((d): d is PpDepartment => !!d)
+  const relatedSection = related.length
+    ? `\n\n## Related departments — already tracked, do NOT report as new\n` +
+      related
+        .map((r) => {
+          const rt = dataset.tools.filter((t) => t.department_id === r.id)
+          return `${r.name} (slug=${r.slug}): ${rt.length ? rt.map((t) => `${t.name} [id=${t.id}]`).join(', ') : '(no tools yet)'}`
+        })
+        .join('\n') +
+      `\nNews about these tools is a kind=update or kind=confirmation with that tool_id and department_slug=<their slug>, never a new_tool here.`
+    : ''
   const known = PP_RSS_SOURCES.map((s) => s.domains.join('/')).join(', ')
   return (
     `You are the research pass for Post Pulse, a structured reference of AI tools across the commercial VFX pipeline. This pass covers ONE department: ${dept.name}. Your job is to find what changed for this department since ${sinceLabel} — new tools, version or status changes, acquisitions, discontinuations, tier-relevant capability shifts — verify it, and report structured findings with the report_findings tool.\n\n` +
     `## Tier framework\n${tierFramework()}\n\n` +
     `## The department doc (current state; the reasoning the dataset holds today)\n"""\n${dept.overview_doc.trim() || '(empty)'}\n"""\n\n` +
     `## Tools tracked in ${dept.name}\n${tools.length ? tools.map(toolLine).join('\n') : '(none yet)'}\n\n` +
-    `Other departments (use their slug only if a finding clearly belongs there): ${otherDepts}.\n\n` +
+    `Other departments (use their slug only if a finding clearly belongs there): ${otherDepts}.${relatedSection}\n\n` +
     `## Rules\n` +
-    `- You have ${MAX_SEARCHES_PER_DEPARTMENT} web searches. Run them ONE AT A TIME and read each result before deciding the next — never batch several searches in a single step, or the budget is spent before you see anything. When the budget is exhausted the tool returns an error — that is the budget, not an outage; report what you have. Prefer vendor pages, release notes, and trade press. Known sources (their claims count as vendor-grade): ${known}; also befores & afters, fxguide.\n` +
+    `- You have ${MAX_SEARCHES_PER_DEPARTMENT} web searches. Run them ONE AT A TIME and read each result before deciding the next — never batch several searches in a single step, or the budget is spent before you see anything. When the budget is exhausted the tool returns an error — that is the budget, not an outage; report what you have.\n` +
+    `- Follow the search plan in the user message IN ORDER: previous-pass recommendations, then trade sources (${TRADE_SOURCES.join(', ')}), then vendor release notes, and only then generic queries. Generic search and news roundups are the catch-all, not the opening move; if two generic searches in a row add nothing, stop searching and report. Known sources (their claims count as vendor-grade): ${known}; also befores & afters, fxguide.\n` +
+    `- In report_findings, fill follow_up_sources with the specific places the next pass should start (URLs or named sources you recommend but could not reach, or that proved productive). That list is handed to the next pass verbatim, so make it concrete.\n` +
     `- Verify each RSS lead you are given first (cite its URL in source_urls and set from_lead), then run the suggested queries you have budget for.\n` +
     `- kind=update: an existing tool (tool_id) changed — include ONLY changed fields in changes, and only fields you can support with a source. kind=confirmation: you found current evidence that the entry is accurate and nothing changed (tool_id required). kind=new_tool: a tool not in the list, worth tracking — changes MUST include tier (automated | assisted | artist_led), host_app (${PP_HOST_APPS.join(' | ')}), status, vendor, blurb, and source_urls; a new_tool without a tier is stored only as an incomplete note a human has to redo, so decide the tier or report it as ambiguous instead. kind=noop: nothing found worth recording (one per pass is enough).\n` +
     `- Hard rule: when a named entity cannot be confidently resolved — several unrelated things share the name, sources conflict, nothing matches, or the fit is a coin flip — report kind=ambiguous with what you saw and why it is unresolved. Never assert a tier, status, or identity you could not verify; a wrong guess looks as credible as a verified entry to a reviewer.\n` +
@@ -294,7 +366,7 @@ async function researchDepartment(
   dataset: PpDataset,
   leads: Lead[],
   spend: Spend
-): Promise<{ findings: Finding[]; notes: string; searches: number; complete: boolean }> {
+): Promise<{ findings: Finding[]; notes: string; searches: number; complete: boolean; followUps: string[] }> {
   const tools = dataset.tools.filter((t) => t.department_id === dept.id)
   const since = dept.last_researched_at
     ? new Date(dept.last_researched_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
@@ -305,11 +377,10 @@ async function researchDepartment(
         .map((l) => `[lead ${l.index}] ${l.item.sourceName}: ${l.item.title}${l.toolId ? ` (about tool id=${l.toolId})` : ''}\n    ${l.note}\n    ${l.item.link}`)
         .join('\n')
     : '(none this cycle)'
+  const plan = buildQueryPlan(dept, tools)
   const user =
-    `Research ${dept.name} for changes since ${since}.\n\n## RSS leads to verify first\n${leadText}\n\n## Suggested queries (use what the budget allows)\n` +
-    suggestedQueries(dept, tools)
-      .map((q) => `- ${q}`)
-      .join('\n')
+    `Research ${dept.name} for changes since ${since}. Budget: ${MAX_SEARCHES_PER_DEPARTMENT} searches, one at a time, in plan order.\n\n## RSS leads to verify first\n${leadText}\n\n## Search plan (in order; skip what you have already covered)\n` +
+    plan.map((section, i) => `### ${i + 1}. ${section.title}\n${section.queries.map((q) => `- ${q}`).join('\n')}`).join('\n\n')
 
   const messages: Anthropic.MessageParam[] = [{ role: 'user', content: user }]
   let searches = 0
@@ -340,11 +411,14 @@ async function researchDepartment(
 
     const report = final.content.find((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use' && b.name === REPORT_TOOL.name)
     if (report) {
-      const input = report.input as { findings?: unknown[]; notes?: string; complete?: boolean }
+      const input = report.input as { findings?: unknown[]; notes?: string; complete?: boolean; follow_up_sources?: unknown }
       const findings = (Array.isArray(input.findings) ? input.findings : []).filter(
         (f): f is Finding => !!f && typeof f === 'object' && typeof (f as Finding).kind === 'string' && typeof (f as Finding).name === 'string'
       )
-      return { findings, notes: typeof input.notes === 'string' ? input.notes : '', searches, complete: input.complete !== false }
+      const followUps = Array.isArray(input.follow_up_sources)
+        ? input.follow_up_sources.filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
+        : []
+      return { findings, notes: typeof input.notes === 'string' ? input.notes : '', searches, complete: input.complete !== false, followUps }
     }
     if (final.stop_reason === 'pause_turn' || final.stop_reason === 'tool_use') {
       // pause_turn: the server tool loop paused; tool_use for an unknown
@@ -365,7 +439,7 @@ async function researchDepartment(
     messages.push({ role: 'assistant', content: final.content })
     messages.push({ role: 'user', content: 'Call report_findings now with what you established (kind=noop if nothing).' })
   }
-  return { findings: [], notes: 'The research pass ended without reporting findings.', searches, complete: false }
+  return { findings: [], notes: 'The research pass ended without reporting findings.', searches, complete: false, followUps: [] }
 }
 
 // ── Publishing ──────────────────────────────────────────────────────────
@@ -427,14 +501,17 @@ async function publishFindings(
           continue
         }
       }
-      const res = await enqueueProposal({
-        kind: 'tool_update',
-        toolId: tool.id,
-        changes,
-        note: keys.length ? note : `${note} (no concrete field change supplied — accepting only re-verifies the entry)`,
-        source,
-        sourceUrls: urls,
-      })
+      const res = await enqueueProposal(
+        {
+          kind: 'tool_update',
+          toolId: tool.id,
+          changes,
+          note: keys.length ? note : `${note} (no concrete field change supplied — accepting only re-verifies the entry)`,
+          source,
+          sourceUrls: urls,
+        },
+        dataset
+      )
       if ('error' in res) console.warn(`[post-pulse research] proposal refused (${tool.name}): ${res.error}`)
       else queued.push({ label: `Update ${tool.name} (${keys.join(', ') || 'see note'})`, queueId: res.id, source })
       continue
@@ -453,7 +530,8 @@ async function publishFindings(
               source,
               sourceUrls: urls,
               flag: 'ambiguous',
-            }
+            },
+        dataset
       )
       if ('error' in res) console.warn(`[post-pulse research] ambiguous note refused (${f.name}): ${res.error}`)
       else queued.push({ label: `Ambiguous: ${f.name}`, queueId: res.id, source })
@@ -461,9 +539,12 @@ async function publishFindings(
     }
 
     // new_tool (or an update that named no tracked tool): always reviewed.
-    const existing = dataset.tools.find(
-      (t) => t.department_id === targetDept.id && t.name.toLowerCase() === f.name.trim().toLowerCase()
-    )
+    // A name already tracked in ANY department is an update to that entry,
+    // not a duplicate — the cross-department check that was missing when
+    // Concept & Image Generation rediscovered the Generative Media roster.
+    const existing =
+      dataset.tools.find((t) => t.department_id === targetDept.id && t.name.toLowerCase() === f.name.trim().toLowerCase()) ??
+      findNameCollision(f.name, dataset)?.tool
     const fields: Record<string, unknown> = { ...changes, name: f.name.trim() }
     // The model must supply a tier for a real create; without one the row
     // is stored as an incomplete note rather than a proposal Accept would
@@ -480,7 +561,8 @@ async function publishFindings(
             source,
             sourceUrls: urls,
             ...(incomplete ? { flag: 'incomplete' as const } : {}),
-          }
+          },
+      dataset
     )
     if ('error' in res) {
       console.warn(`[post-pulse research] proposal refused (${f.name}): ${res.error}`)
@@ -694,16 +776,26 @@ export async function runResearch(opts: {
   const remaining: string[] = []
   let cursor = 0
 
+  // A department pass at the 15-search budget takes ~3 minutes, so "is
+  // there budget left?" is not enough — a pass started with 100s left would
+  // overrun Vercel's 300s limit and be killed mid-write. Don't start one
+  // unless the longest pass seen so far (or a conservative default) fits.
+  let longestPassMs = 150_000
   const worker = async () => {
     while (cursor < targets.length) {
-      if (Date.now() - startedAt.getTime() > budget) {
+      const elapsed = Date.now() - startedAt.getTime()
+      if (elapsed + longestPassMs > budget) {
         remaining.push(targets[cursor++].id)
         continue
       }
       const dept = targets[cursor++]
       const leads = leadsBySlug.get(dept.slug) ?? []
+      const passStarted = Date.now()
       try {
-        const { findings, notes: n, searches, complete } = await researchDepartment(dept, dataset, leads, spend)
+        const { findings, notes: n, searches, complete, followUps } = await researchDepartment(dept, dataset, leads, spend)
+        // Persist the "check these next" list whether the pass completed or
+        // not — an incomplete pass's recommendations are the most valuable.
+        await saveDepartmentFollowUps(dept.id, followUps)
         if (!complete) {
           // The model says it never got to check the tools (budget/error):
           // no stamp, so the department stays due and is retried.
@@ -712,7 +804,9 @@ export async function runResearch(opts: {
         const outcome = await publishFindings(dept, findings, leads, dataset, runTag)
         if (n) notes[dept.id] = n
         results.push({ departmentId: dept.id, slug: dept.slug, name: dept.name, status: 'done', searches, leads: leads.length, ...outcome })
+        longestPassMs = Math.max(longestPassMs, Date.now() - passStarted)
       } catch (err) {
+        longestPassMs = Math.max(longestPassMs, Date.now() - passStarted)
         results.push({
           departmentId: dept.id,
           slug: dept.slug,

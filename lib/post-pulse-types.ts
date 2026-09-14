@@ -33,8 +33,16 @@ export interface PpDepartment {
   pipeline_stage: PpPipelineStage | null
   pipeline_substage: PpPipelineSubstage | null
   last_researched_at: string | null // migration 024: stamped by every research run that touched it
+  related_department_ids: string[] // migration 026: cross-references, not shared ownership of tools
+  follow_up_sources: PpFollowUpSource[] // migration 027: where the next research pass should start
   created_at: string
   updated_at: string
+}
+
+// A research pass's "check this next" recommendation (migration 027).
+export interface PpFollowUpSource {
+  source: string // a URL or a named source ("Midjourney release notes")
+  added_at: string
 }
 
 // ── Research runs (spec §5) — client-safe result shapes ─────────────────

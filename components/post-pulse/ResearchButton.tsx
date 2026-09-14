@@ -76,7 +76,7 @@ export function ResearchButton({ department, compact }: Props) {
       </button>
       {running && (
         <p className="text-[11px] text-ink-50">
-          {department ? 'Usually one to two minutes.' : 'Several minutes; departments not reached in time stay due for the next daily run.'}
+          {department ? 'Usually three to four minutes at the current search budget.' : 'About four departments fit in one run; the rest stay due for the next daily run.'}
         </p>
       )}
       {error && <p className="text-xs text-press-down">{error}</p>}

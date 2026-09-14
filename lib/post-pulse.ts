@@ -1,7 +1,13 @@
 // Post Pulse — server-only data access. Imports the service-role Supabase
 // client, so this file must never be imported from a 'use client' file.
 import { supabase } from '@/lib/supabase'
-import { buildProposal, validateStoredProposal, type PpProposalInput } from '@/lib/post-pulse-proposals'
+import {
+  buildProposal,
+  findNameCollision,
+  validateStoredProposal,
+  type PpProposalContext,
+  type PpProposalInput,
+} from '@/lib/post-pulse-proposals'
 import {
   PP_CHAT_DEFAULT_NAME,
   PP_DEPARTMENT_EDITABLE_FIELDS,
@@ -31,6 +37,13 @@ function normalizeDepartment(row: Record<string, unknown>): PpDepartment {
     pipeline_stage: (row.pipeline_stage as PpDepartment['pipeline_stage']) ?? null,
     pipeline_substage: (row.pipeline_substage as PpDepartment['pipeline_substage']) ?? null,
     last_researched_at: (row.last_researched_at as string | null) ?? null,
+    related_department_ids: Array.isArray(row.related_department_ids) ? (row.related_department_ids as string[]) : [],
+    follow_up_sources: Array.isArray(row.follow_up_sources)
+      ? (row.follow_up_sources as unknown[]).filter(
+          (f): f is PpDepartment['follow_up_sources'][number] =>
+            !!f && typeof f === 'object' && typeof (f as { source?: unknown }).source === 'string'
+        )
+      : [],
   }
 }
 
@@ -261,6 +274,25 @@ export async function stampDepartmentsResearched(departmentIds: string[], at = n
   if (error) console.warn('[post-pulse] last_researched_at stamp failed:', error.message)
 }
 
+// Replaces a department's follow-up list with what the latest pass
+// recommended (an empty list clears it). Degrades to a warning until
+// migration 027 adds the column, so a run never fails on it.
+let followUpColumnMissing = false
+export async function saveDepartmentFollowUps(departmentId: string, sources: string[]): Promise<void> {
+  if (followUpColumnMissing) return
+  const at = new Date().toISOString()
+  const rows = Array.from(new Set(sources.map((s) => s.trim()).filter(Boolean))).slice(0, 12).map((source) => ({ source, added_at: at }))
+  const { error } = await supabase.from('pp_departments').update({ follow_up_sources: rows }).eq('id', departmentId)
+  if (error) {
+    if (/follow_up_sources|schema cache/i.test(error.message)) {
+      followUpColumnMissing = true
+      console.warn('[post-pulse] pp_departments.follow_up_sources missing — run supabase/migrations/027_post_pulse_follow_up_sources.sql; follow-up sources not persisted.')
+      return
+    }
+    console.warn('[post-pulse] follow_up_sources save failed:', error.message)
+  }
+}
+
 export async function stampToolsVerified(toolIds: string[], at = new Date().toISOString()): Promise<void> {
   if (!toolIds.length) return
   const { error } = await supabase.from('pp_tools').update({ last_verified_at: at }).in('id', toolIds)
@@ -305,6 +337,17 @@ async function acceptToolItem(item: PpQueueItem): Promise<QueueResolution> {
       ok: false,
       status: 400,
       error: 'A new-tool proposal needs at least name, department (id or slug), and tier',
+    }
+  }
+  // Rows written before the cross-department check existed can still
+  // collide; refuse them here rather than create a duplicate.
+  const dataset = await fetchPostPulseDataset()
+  const clash = findNameCollision(String(changes.name), dataset)
+  if (clash) {
+    return {
+      ok: false,
+      status: 422,
+      error: `"${changes.name}" is already tracked as "${clash.tool.name}" in ${clash.departmentName} (id=${clash.tool.id}). Propose an update to that entry, or link the departments via related_department_ids, instead of duplicating it.`,
     }
   }
   const insert: Record<string, unknown> = {
@@ -419,8 +462,14 @@ export async function rejectQueueItem(queueId: string): Promise<QueueResolution>
 // research job, the manual POST /api/post-pulse/queue — passes a typed
 // PpProposalInput; buildProposal() validates and normalises it, so a row
 // that the accept handler could not apply is refused HERE, at write time.
-export async function enqueueProposal(input: PpProposalInput): Promise<{ id: string; label: string } | { error: string }> {
-  const built = buildProposal(input)
+export async function enqueueProposal(
+  input: PpProposalInput,
+  context?: PpProposalContext
+): Promise<{ id: string; label: string } | { error: string }> {
+  // The cross-department name check needs the live roster; callers that
+  // already hold the dataset pass it, everyone else pays one fetch.
+  const ctx = context ?? (await fetchPostPulseDataset())
+  const built = buildProposal(input, ctx)
   if (!built.ok) return { error: built.error }
   const { data, error } = await supabase.from('pp_queue').insert(built.row).select('id').single()
   if (error) return { error: error.message }
