@@ -13,6 +13,7 @@ import {
   type PpSort,
   type PpTool,
 } from '@/lib/post-pulse-types'
+import { useQueue } from '@/contexts/QueueContext'
 import { usePostPulse } from './Shell'
 import { listHref } from './Sidebar'
 import { HostChip, StatusBadge, TierBadge } from './Badges'
@@ -71,6 +72,13 @@ export function ToolList() {
     return sorted
   }, [tools, dept, tier, host, status, q, sort, deptById])
 
+  // The Listen Queue's mini player is `fixed bottom-0 z-40` (MiniPlayer.tsx)
+  // and shows whenever there's a current item or a "queue finished" notice.
+  // The compare bar has to sit above it in both senses: higher z-index and
+  // offset by the player's height, or it's unreachable behind the player.
+  const queue = useQueue()
+  const playerVisible = !queue.expanded && (queue.current !== null || queue.finished !== null)
+
   // Compare selection lives here (not in the URL): it's a transient overlay.
   const [selected, setSelected] = useState<string[]>([])
   const [comparing, setComparing] = useState(false)
@@ -112,7 +120,7 @@ export function ToolList() {
   const activeFilters = [tier && 'tier', host && 'host', status && 'status', q && 'q'].filter(Boolean).length
 
   return (
-    <div>
+    <div className={playerVisible || selected.length > 0 ? 'pb-32' : ''}>
       {/* Heading */}
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-1">
         <h1 className="font-display text-2xl text-ink-300">{title}</h1>
@@ -244,8 +252,13 @@ export function ToolList() {
       )}
 
       {/* Compare bar */}
-      {selected.length > 0 && (
-        <div className="sticky bottom-4 mt-4 flex justify-center pointer-events-none">
+      {selected.length > 0 && !comparing && (
+        <div
+          className={[
+            'fixed left-0 right-0 z-50 flex justify-center pointer-events-none px-4',
+            playerVisible ? 'bottom-[calc(72px+env(safe-area-inset-bottom,0px))]' : 'bottom-[calc(1rem+env(safe-area-inset-bottom,0px))]',
+          ].join(' ')}
+        >
           <div className="pointer-events-auto flex items-center gap-3 px-4 py-2.5 rounded-full bg-ink-300 text-cream-50 shadow-xl text-sm">
             <span className="tabular-nums">
               {selected.length} of {MAX_COMPARE} selected
