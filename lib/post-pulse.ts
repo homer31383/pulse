@@ -29,6 +29,7 @@ function normalizeDepartment(row: Record<string, unknown>): PpDepartment {
       : [],
     pipeline_stage: (row.pipeline_stage as PpDepartment['pipeline_stage']) ?? null,
     pipeline_substage: (row.pipeline_substage as PpDepartment['pipeline_substage']) ?? null,
+    last_researched_at: (row.last_researched_at as string | null) ?? null,
   }
 }
 
@@ -209,6 +210,73 @@ async function resolveDepartmentId(changes: Record<string, unknown>): Promise<st
   return null
 }
 
+// The single write path for changes to an existing tool: diff against the
+// current row, apply, log one pp_changelog row per changed field, and stamp
+// the row verified. Used by queue accept AND by the research auto-publish
+// path (spec §5), so both leave identical history.
+export async function applyToolUpdate(
+  toolId: string,
+  changes: Record<string, unknown>,
+  source: string
+): Promise<{ ok: true; changedFields: string[] } | { ok: false; status: number; error: string }> {
+  const { data: current, error: curErr } = await supabase.from('pp_tools').select('*').eq('id', toolId).maybeSingle()
+  if (curErr) return { ok: false, status: 500, error: curErr.message }
+  if (!current) return { ok: false, status: 404, error: 'Tool no longer exists' }
+
+  const update: Record<string, unknown> = {}
+  const changedFields: string[] = []
+  const logRows: Omit<PpChangelogEntry, 'id' | 'created_at'>[] = []
+  for (const [field, value] of Object.entries(pickFields(changes, PP_TOOL_EDITABLE_FIELDS))) {
+    const before = stringifyValue(current[field])
+    const after = stringifyValue(value)
+    if (before === after) continue
+    update[field] = value
+    changedFields.push(field)
+    logRows.push({ target_type: 'tool', tool_id: current.id, department_id: null, field_changed: field, old_value: before, new_value: after, source })
+  }
+
+  // Even a no-op acceptance is a verification: bump the verified stamp.
+  update.last_verified_at = new Date().toISOString()
+  update.confidence = 'verified'
+
+  const { error: updErr } = await supabase.from('pp_tools').update(update).eq('id', current.id)
+  if (updErr) return { ok: false, status: 500, error: updErr.message }
+  if (logRows.length) {
+    const { error: logErr } = await supabase.from('pp_changelog').insert(logRows)
+    if (logErr) return { ok: false, status: 500, error: logErr.message }
+  }
+  return { ok: true, changedFields }
+}
+
+// Research runs stamp what they touched (migration 024) and what they
+// confirmed. Both are best-effort: a stamp failure never fails a run.
+export async function stampDepartmentsResearched(departmentIds: string[], at = new Date().toISOString()): Promise<void> {
+  if (!departmentIds.length) return
+  const { error } = await supabase.from('pp_departments').update({ last_researched_at: at }).in('id', departmentIds)
+  if (error) console.warn('[post-pulse] last_researched_at stamp failed:', error.message)
+}
+
+export async function stampToolsVerified(toolIds: string[], at = new Date().toISOString()): Promise<void> {
+  if (!toolIds.length) return
+  const { error } = await supabase.from('pp_tools').update({ last_verified_at: at }).in('id', toolIds)
+  if (error) console.warn('[post-pulse] last_verified_at stamp failed:', error.message)
+}
+
+// Every URL the dataset has already seen — used to skip RSS items that
+// were already proposed or cited, so a fortnightly sweep doesn't re-file
+// the same story.
+export async function fetchKnownSourceUrls(): Promise<Set<string>> {
+  const [tools, queue] = await Promise.all([
+    supabase.from('pp_tools').select('source_urls'),
+    supabase.from('pp_queue').select('source_urls'),
+  ])
+  const seen = new Set<string>()
+  for (const row of [...(tools.data ?? []), ...(queue.data ?? [])]) {
+    for (const u of (row.source_urls as string[] | null) ?? []) seen.add(u)
+  }
+  return seen
+}
+
 async function acceptToolItem(item: PpQueueItem): Promise<QueueResolution> {
   const rawChanges = item.proposed_changes
   const changes = pickFields(rawChanges, PP_TOOL_EDITABLE_FIELDS) as Partial<Record<PpToolEditableField, unknown>>
@@ -222,36 +290,9 @@ async function acceptToolItem(item: PpQueueItem): Promise<QueueResolution> {
   const changedFields: string[] = []
 
   if (item.proposed_tool_id) {
-    const { data: current, error: curErr } = await supabase
-      .from('pp_tools')
-      .select('*')
-      .eq('id', item.proposed_tool_id)
-      .maybeSingle()
-    if (curErr) return { ok: false, status: 500, error: curErr.message }
-    if (!current) return { ok: false, status: 404, error: 'Proposed tool no longer exists' }
-
-    const update: Record<string, unknown> = {}
-    const logRows: Omit<PpChangelogEntry, 'id' | 'created_at'>[] = []
-    for (const [field, value] of Object.entries(changes)) {
-      const before = stringifyValue(current[field])
-      const after = stringifyValue(value)
-      if (before === after) continue
-      update[field] = value
-      changedFields.push(field)
-      logRows.push({ target_type: 'tool', tool_id: current.id, department_id: null, field_changed: field, old_value: before, new_value: after, source })
-    }
-
-    // Even a no-op acceptance is a verification: bump the verified stamp.
-    update.last_verified_at = now
-    update.confidence = 'verified'
-
-    const { error: updErr } = await supabase.from('pp_tools').update(update).eq('id', current.id)
-    if (updErr) return { ok: false, status: 500, error: updErr.message }
-    if (logRows.length) {
-      const { error: logErr } = await supabase.from('pp_changelog').insert(logRows)
-      if (logErr) return { ok: false, status: 500, error: logErr.message }
-    }
-    return { ok: true, targetType: 'tool', toolId: current.id, departmentId: null, changedFields }
+    const applied = await applyToolUpdate(item.proposed_tool_id, changes, source)
+    if (!applied.ok) return { ok: false, status: applied.status, error: applied.error }
+    return { ok: true, targetType: 'tool', toolId: item.proposed_tool_id, departmentId: null, changedFields: applied.changedFields }
   }
 
   if (!changes.name || !changes.department_id || !changes.tier) {

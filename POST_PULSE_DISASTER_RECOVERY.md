@@ -123,7 +123,7 @@ Only the REST key is available in some environments. The seed can be applied thr
 
 ## 7. What is deferred
 
-- **Scheduled automation** (spec §5): RSS sources (CG Channel, SideFX, Foundry, ActionVFX, superrendersfarm, VP Land) + a `web_search` pass per department, every two weeks plus a manual trigger, Haiku for extraction/dedup and Sonnet for tier judgment, confidence-based auto-publish vs queue. Stub route + cron entry exist.
+- **Per-department cadence**: uniform 14 days until `last_researched_at` data shows how uneven the pace is (spec §5).
 - **Layer 1 overview doc**: no table or view yet.
 
 ## 8. Research chat (built Sept 14 2026, migration 023)
@@ -134,7 +134,16 @@ Only the REST key is available in some environments. The seed can be applied thr
 - **Rules the prompt enforces**: confidence before proposals (ambiguity → clarifying question, no queue write); every proposal queues immediately (no in-chat confirm); department context is a default frame, not a filter; `overview_doc` edits are whole-doc replacements.
 - **Restore**: run 023 after 021/022; nothing else to seed. Sessions are user data with no backup beyond the table.
 
-## 9. Later migrations
+## 9. Research runs (built Sept 14 2026, spec §5, migration 024)
+
+- **Files**: `lib/post-pulse-rss.ts` (sources, minimal RSS/Atom parser, `fetchRssItems`, `isKnownSourceUrl`), `lib/post-pulse-research.ts` (`runResearch`, `isDepartmentDue`, `composeBriefing`, `PP_RESEARCH_CADENCE_DAYS`), `app/api/post-pulse/research/route.ts` (POST `{departmentId?, timeBudgetMs?}`), `app/api/cron/post-pulse-sync/route.ts` (GET, `CRON_SECRET`, `dueOnly`), `components/post-pulse/ResearchButton.tsx`, `vercel.json` (`0 12 * * *`).
+- **Flow per run**: RSS (21-day lookback, dedup against known URLs) → Haiku `route_items` → per department (concurrency 4, time budget) Sonnet + web_search (`max_uses` = 5 + 3 headroom, one search at a time) → `report_findings` → publish (auto: high confidence, factual fields only, known domain or verified entry, via `applyToolUpdate`; else `pp_queue` with source rss|search; confirmation → `last_verified_at` only; `complete:false` → failed, no stamp) → `last_researched_at` stamp → briefing row in the `Post Pulse Research` channel (`scheduled: true`, Listen Queue, `last_briefed_at`) → `usage_logs` `pp_research`.
+- **Feeds** (checked Sept 2026): CG Channel `https://www.cgchannel.com/feed/`, VP Land `https://www.vp-land.com/feed`. No feed: SideFX, Foundry, superrendersfarm. ActionVFX blocks bots (429). Their domains still count as known sources.
+- **Env**: `PULSE_PP_RESEARCH_PROFILE_ID` (briefing owner, default profile 1), `PULSE_PP_RESEARCH_CONCURRENCY` (4), `PULSE_PP_RESEARCH_EFFORT` (medium), `CRON_SECRET`.
+- **Costs measured**: one department ≈ $0.15–0.25 and 60–70s; five in parallel ≈ $0.94 and 100s. A full 14-department sweep ≈ $3 spread over one or two daily runs.
+- **Known limits**: briefings are profile-scoped, so research briefings land in one profile; the research channel is an ordinary channel (a manual Generate on it produces a normal briefing). No lock against a cron run and a manual sweep overlapping — the stamp makes the second mostly a no-op but both would spend.
+
+## 10. Later migrations
 
 - **024** `pp_departments.last_researched_at` (timestamptz, nullable) — stamped by research runs; unused by the UI so far.
 - **025** `pp_changelog` generalised: `tool_id` nullable, `target_type` ('tool' | 'department', default 'tool'), `department_id` (fk, cascade), check constraint that exactly one id is set to match `target_type`, index on `department_id`. `acceptQueueItem` logs department accepts with the same field/old/new shape as tool rows (`overview_doc` rows hold the whole before/after text). Run 024 and 025 after 023.

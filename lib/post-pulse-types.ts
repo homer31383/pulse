@@ -32,8 +32,39 @@ export interface PpDepartment {
   comparison_attributes: PpComparisonAttribute[]
   pipeline_stage: PpPipelineStage | null
   pipeline_substage: PpPipelineSubstage | null
+  last_researched_at: string | null // migration 024: stamped by every research run that touched it
   created_at: string
   updated_at: string
+}
+
+// ── Research runs (spec §5) — client-safe result shapes ─────────────────
+
+export type PpResearchTrigger = 'scheduled' | 'manual_global' | 'manual_department'
+
+export interface PpResearchDepartmentSummary {
+  departmentId: string
+  slug: string
+  name: string
+  status: 'done' | 'failed' | 'skipped'
+  error?: string
+  searches: number
+  leads: number
+  published: { tool: string; fields: string[] }[]
+  queued: { label: string; queueId: string; source: 'rss' | 'search' }[]
+  confirmed: string[]
+  sourceUrls: string[]
+}
+
+export interface PpResearchRunSummary {
+  trigger: PpResearchTrigger
+  startedAt: string
+  finishedAt: string
+  departments: PpResearchDepartmentSummary[]
+  remainingDepartmentIds: string[]
+  rss: { sources: number; fetched: number; fresh: number; routed: number; errors: { source: string; error: string }[] }
+  briefingId: string | null
+  channelId: string | null
+  costUsd: number
 }
 
 export const PP_PIPELINE_STAGES: { value: PpPipelineStage; label: string; short: string; description: string }[] = [

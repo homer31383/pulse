@@ -10,6 +10,7 @@ import {
   type PpPipelineSubstage,
 } from '@/lib/post-pulse-types'
 import { usePostPulse } from './Shell'
+import { ResearchButton } from './ResearchButton'
 
 // Landing view: the production pipeline as a four-stage flow. A stage
 // expands in place (no route change, same idea as the compare overlay).
@@ -54,6 +55,10 @@ export function PipelineMap() {
               {pendingQueueCount} {pendingQueueCount === 1 ? 'proposal' : 'proposals'} waiting for review →
             </Link>
           )}
+        </div>
+        {/* Global manual trigger (spec §5): same mechanism as the scheduled sweep, every department, now */}
+        <div className="mt-3">
+          <ResearchButton compact />
         </div>
       </header>
 

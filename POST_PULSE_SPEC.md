@@ -68,11 +68,15 @@ Every department maps to one of four standard filmmaking stages via `pipeline_st
 - RSS-able: CG Channel, SideFX news/changelog, Foundry blog, ActionVFX blog, superrendersfarm, VP Land.
 - Search-based: Anthropic API with the `web_search` tool, run against a fixed query set per department (queries seeded from this project's research, refined over time).
 
-**Cadence:** every 2 weeks via scheduled job (Vercel cron or Supabase edge function), plus a manual trigger button.
+**Cadence:** every 2 weeks via scheduled job (Vercel cron or Supabase edge function), uniform across all departments for now — deliberately not differentiated per department yet, even though pace clearly isn't even (Generative Media Models moves weekly, Muscle & Skinning barely moved this whole project). Revisit per-department cadence once there's actual data on how uneven it gets in practice, rather than guessing now. In the meantime: a global manual trigger button (run the full sweep now) plus a **per-department manual trigger** on each department's doc page ("research this department now") — runs the same RSS+search mechanism scoped to just that department's sources and queries, for when you want a targeted check without waiting for the cycle or opening a chat session.
+
+**Every research run** — scheduled, global manual trigger, or per-department manual trigger — **stamps `last_researched_at` on each department it touched.** Not used for cadence logic yet (see above), but surfaced on the department doc ("last checked: 4 days ago") and gives future cadence work real data to work from instead of a guess.
+
+**Every research run also produces a proactive Pulse briefing**, not just a changelog entry — summarizing what was found, what auto-published, and what landed in the queue for review. This should hook into Pulse's existing briefing/notification mechanism (the same one that already produces Pulse's channel-based briefings) rather than inventing a parallel notification system — Post Pulse research becomes another source feeding Pulse's existing briefing generator, the same pattern as any other channel. A per-department manual trigger produces a smaller, department-scoped version of the same briefing; the scheduled global sweep produces one briefing covering everything touched that cycle.
 
 **Publishing logic — confidence-based:**
 - Source is RSS from a known vendor/publication, or the finding directly matches/confirms an existing verified entry → auto-publish, log to changelog.
-- Source is ambiguous, a new tool not previously tracked, or a tier/status judgment call → lands in `pp_queue` for review.
+- Source is ambiguous, a new tool not previously tracked, or a tier/status judgment call → lands in `pp_queue` for review. Same ambiguity rule as chat (§6): an unresolvable match produces a note flagged for review, not a guessed publish.
 
 **Classification pass:** after each pull, a Claude call (Haiku for extraction/dedup, Sonnet for tier judgment calls) reads new findings against existing `pp_tools` rows and decides: new entry, update, or no-op. Same pattern as the existing Memoria extraction job.
 
@@ -88,7 +92,7 @@ A chat surface for researching tools, deciding where they fit, and proposing add
 
 **Ambiguity must produce a question, not a guess.** This is the behavior the Fable case exposed directly: when a named entity can't be confidently resolved from search results — multiple unrelated things share a name, sources conflict, or nothing matches — the assistant asks a clarifying question in chat and does *not* write a queue proposal. A wrong guess seeded as a queue row is worse than no row at all, since it looks equally credible to a rushed accept as a verified one.
 
-**Queue proposals can now target a department, not just a tool.** The original `pp_queue` schema only supported tool-row proposals (`proposed_tool_id`). Chat surfaced a real need beyond that — proposing an entirely new department (as happened with Generative Media Models & Platforms) or an edit to a department's `overview_doc`. See §6a for the schema change this requires.
+**Queue proposals can now target a department, not just a tool.** The original `pp_queue` schema only supported tool-row proposals (`proposed_tool_id`). Chat surfaced a real need beyond that — proposing an entirely new department (as happened with Generative Media Models & Platforms) or an edit to a department's `overview_doc`. See §3a for the schema change this requires.
 
 ## 6a. Queue schema change (§3 update)
 

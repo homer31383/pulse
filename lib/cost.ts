@@ -4,6 +4,8 @@ const PRICING: Record<string, { input: number; output: number }> = {
   // here so costs aren't underreported after it lapses.
   'claude-sonnet-5':   { input: 3,  output: 15 },
   'claude-opus-4-8':   { input: 5,  output: 25 },
+  // Post Pulse research: Haiku does RSS extraction/routing
+  'claude-haiku-4-5':  { input: 1,  output: 5 },
   // Legacy models kept for profiles that haven't re-saved settings yet
   'claude-sonnet-4-6': { input: 3,  output: 15 },
   'claude-opus-4-6':   { input: 5,  output: 25 },

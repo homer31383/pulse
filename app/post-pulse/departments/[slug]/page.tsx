@@ -4,6 +4,14 @@ import { fetchDepartmentBySlug, fetchPostPulseDataset } from '@/lib/post-pulse'
 import { PP_TIERS } from '@/lib/post-pulse-types'
 import { AnchoredMarkdown } from '@/components/post-pulse/AnchoredMarkdown'
 import { TierDot } from '@/components/post-pulse/Badges'
+import { ResearchButton } from '@/components/post-pulse/ResearchButton'
+
+function relativeDays(iso: string): string {
+  const days = Math.floor((Date.now() - Date.parse(iso)) / 86_400_000)
+  if (days <= 0) return 'today'
+  if (days === 1) return 'yesterday'
+  return `${days} days ago`
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -44,17 +52,26 @@ export default async function DepartmentDocPage({ params }: PageProps) {
           <Link href={`/post-pulse/tools?dept=${department.slug}`} className="text-press-accent hover:underline">
             {tools.length} {tools.length === 1 ? 'tool' : 'tools'} tracked
           </Link>
+          {' · '}
+          {/* Stamped by every research run that touched this department (migration 024) */}
+          <span title={department.last_researched_at ?? undefined}>
+            last checked {department.last_researched_at ? relativeDays(department.last_researched_at) : 'never'}
+          </span>
         </p>
-        {/* In-context chat launch: resumes this department's latest session, or starts one */}
-        <Link
-          href={`/post-pulse/chat/start?dept=${department.slug}`}
-          className="mt-3 inline-flex items-center gap-2 rounded-lg border border-cream-400 bg-cream-50 px-3 py-1.5 text-sm text-ink-200 hover:border-press-accent hover:text-press-accent transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M8 10h8m-8 4h5m-9 6l3.5-3.5H18a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v14z" />
-          </svg>
-          Research this department
-        </Link>
+        <div className="mt-3 flex flex-wrap items-start gap-2">
+          {/* In-context chat launch: resumes this department's latest session, or starts one */}
+          <Link
+            href={`/post-pulse/chat/start?dept=${department.slug}`}
+            className="inline-flex items-center gap-2 rounded-lg border border-cream-400 bg-cream-50 px-3 py-1.5 text-sm text-ink-200 hover:border-press-accent hover:text-press-accent transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M8 10h8m-8 4h5m-9 6l3.5-3.5H18a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v14z" />
+            </svg>
+            Discuss in chat
+          </Link>
+          {/* Per-department research trigger: the RSS + search mechanism, scoped to this department */}
+          <ResearchButton department={{ id: department.id, name: department.name }} compact />
+        </div>
       </header>
 
       {/* Roster by tier, each linking to its detail view and its anchor */}
