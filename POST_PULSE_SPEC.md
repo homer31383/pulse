@@ -18,10 +18,23 @@ Roto & Tracking · Compositing · Modeling · Texturing · Look Development · R
 
 Departments are addable later via the chat feature (§6) without a schema change — department is a row, not a hardcoded type.
 
+### 2a. Pipeline stage mapping
+
+Every department maps to one of four standard filmmaking stages via `pipeline_stage`: `pre_production`, `production`, `post_production`, `finishing_delivery`. As of this pass, `pre_production`, `production`, and `finishing_delivery` are intentionally empty — nothing tracked yet covers previs/bidding (pre-production), on-set tools like LIDAR capture or virtual production (production), or color/mastering/deliverable QC (finishing & delivery). Leave them visible-but-empty rather than hiding them; the gap is real information, not a bug.
+
+`post_production` holds all 13 current departments and additionally uses `pipeline_substage` to group them into the pipeline's internal flow:
+
+- **`asset_creation`**: Modeling, Texturing, Look Development, Rigging
+- **`performance_simulation`**: Mocap & Animation, Muscle & Skinning, Simulation (FX), Crowds
+- **`rendering_capture`**: Rendering & Denoising, Capture (Gaussian Splats, Photogrammetry)
+- **`comp_generative`**: Roto & Tracking, Compositing, Generative / ComfyUI Workflows
+
+`pipeline_substage` is null for departments outside `post_production`.
+
 ## 3. Data model (Supabase, prefixed `pp_`)
 
 **`pp_departments`**
-`id, slug, name, overview_doc (markdown), comparison_attributes (jsonb — ordered list of {key, label, type}), created_at, updated_at`
+`id, slug, name, overview_doc (markdown), comparison_attributes (jsonb — ordered list of {key, label, type}), pipeline_stage (pre_production | production | post_production | finishing_delivery), pipeline_substage (nullable, only set within post_production — see §2a), created_at, updated_at`
 
 **`pp_tools`**
 `id, department_id (fk), name, tier (enum: automated | assisted | artist_led), host_app (Maya | Houdini | Nuke | standalone | web | plugin | native), status (active | discontinued), replacement_tool_id (fk, nullable, self-reference), vendor, blurb (short), doc_anchor (string, points into department overview_doc), attributes (jsonb, matches department's comparison_attributes schema), source_urls (text[]), last_verified_at, confidence (verified | queued), created_at, updated_at`
@@ -37,7 +50,9 @@ Departments are addable later via the chat feature (§6) without a schema change
 
 ## 4. Navigation & UI
 
-**Sidebar** (Palomar-style collapsible tree, purpose-built for this data, not copied wholesale): three top-level toggles — **Department**, **Tier**, **Host App** — each expandable with counts, same underlying tool set reorganized under a different lens. Department is the default landing view. Search bar always visible, filters independent of which toggle is active. A **Queue** section shows pending-review count as a badge.
+**Landing page: pipeline map.** Replaces the tool list as the front door. Four stage boxes (Pre-production, Production, Post-production, Finishing & delivery) rendered as a flowchart, each showing a department count. Empty stages stay visible with a "0 departments" state rather than being hidden. Clicking a stage expands it in place. Post-production, since it currently holds all 13 departments, expands to its four sub-groups (§2a) rather than a flat chip list; clicking a sub-group reveals its department chips. Clicking a department chip navigates into that department's doc view (§ below). The other three stages expand directly to an empty state, no sub-group needed until they're populated.
+
+**Sidebar** (Palomar-style collapsible tree, purpose-built for this data, not copied wholesale), reachable from within a department rather than being the landing view: three toggles — **Department**, **Tier**, **Host App** — each expandable with counts, same underlying tool set reorganized under a different lens. Search bar always visible, filters independent of which toggle is active. A **Queue** section shows pending-review count as a badge.
 
 **Main panel:** dense list/card hybrid, not a visual grid — name, tier badge, host app, status, one-line blurb, all visible without clicking. Sortable, filterable.
 
@@ -63,9 +78,21 @@ Departments are addable later via the chat feature (§6) without a schema change
 
 ## 6. Chat feature
 
-A chat surface scoped to this dataset — ask it to go deep on a tool, add a missing department, or research something you heard about ("what does X do, where would it fit"). Backed by Claude with the `web_search` tool, same mechanism as the scheduled job, same department-doc and tool-entry conventions.
+A chat surface for researching tools, deciding where they fit, and proposing additions or updates — backed by Claude with the `web_search` tool, same mechanism as the scheduled job, same department-doc and tool-entry conventions. Built and validated manually once already in this project (the Wan/Nano Banana/Astra/Fable research pass) before being specced here, so the behavior below reflects what that pass actually required, not a guess.
 
-**Every proposal from chat routes through `pp_queue` — no exceptions, even when initiated live.** This differs from the confidence-based auto-publish in §5: chat-initiated changes always queue, since a conversational research pass hasn't been cross-checked the way a scheduled RSS pull has.
+**Sessions, not one continuous thread.** Named, resumable, listed by most recent activity. A user can start a new session or pick up an old one. `pp_chat_sessions` needs `name`, `messages` (jsonb), `department_context_id` (nullable fk), `updated_at`.
+
+**Context-aware, not context-locked.** Launching chat from within a department doc scopes the session's `department_context_id` to that department by default — the system prompt includes that department's name and overview for framing ambiguous references ("this tool," "here"). This is a default, not a filter: a question about an unrelated department must still get answered normally, not redirected or refused. Chat is reachable two ways: a dedicated page (session list, start fresh), and launched in-context from any department doc (pre-scoped to that department).
+
+**Auto-queue on every proposal.** Unlike the confirm-before-queue pattern considered and rejected during spec'ing: the moment the assistant proposes a new tool, a new department, or a change to an existing entry, it writes to `pp_queue` immediately — no separate in-chat confirmation step. Review happens once, at the Queue view, same place automation-sourced proposals get reviewed. This keeps the chat conversation itself lightweight (research and discussion) and the queue as the single review surface (accept/reject), rather than splitting review across two places.
+
+**Ambiguity must produce a question, not a guess.** This is the behavior the Fable case exposed directly: when a named entity can't be confidently resolved from search results — multiple unrelated things share a name, sources conflict, or nothing matches — the assistant asks a clarifying question in chat and does *not* write a queue proposal. A wrong guess seeded as a queue row is worse than no row at all, since it looks equally credible to a rushed accept as a verified one.
+
+**Queue proposals can now target a department, not just a tool.** The original `pp_queue` schema only supported tool-row proposals (`proposed_tool_id`). Chat surfaced a real need beyond that — proposing an entirely new department (as happened with Generative Media Models & Platforms) or an edit to a department's `overview_doc`. See §6a for the schema change this requires.
+
+## 6a. Queue schema change (§3 update)
+
+`pp_queue` gains `target_type` (`tool` | `department`, default `tool` for backward compatibility) and `proposed_department_id` (nullable fk, mirrors `proposed_tool_id`'s pattern — set when target_type is `department`). `proposed_changes` continues to hold the actual field values/diff for either case. Department-doc edits (a proposed change to `overview_doc` prose, not just structured fields) replace the affected content wholesale on accept — no diff view in the queue UI, full section replacement — relying on `pp_changelog` for history if it's ever needed. Decided this way deliberately: a diff view for long-form prose is real UI complexity for a case that comes up rarely, and the changelog already gives an audit trail.
 
 ## 7. Discontinued tools
 
@@ -73,11 +100,11 @@ Stay visible in all views with a "discontinued" badge. `replacement_tool_id` lin
 
 ## 8. Design
 
-Reuses Pulse's existing tokens: background `#EDE6DE`, cards `#F7F3EF`, borders `#DDD5CB`, text `#2C2522`, accent `#6B5CA5`. No new design system.
+Reuses Pulse's existing tokens. Note: the hex values originally listed here were guessed from the wrong app's design system; Claude Code mapped Post Pulse onto Pulse's actual cream/ink palette with its press accent during the build. Treat Pulse's real token values (not this doc) as source of truth going forward — pull them from the live codebase rather than restating hex codes here.
 
 ## 9. Stack
 
-Same as the rest of the suite: Vite + React + TypeScript + Tailwind + Supabase (Postgres) + Vercel, PWA conventions, serverless functions for the scheduled pull and chat endpoint. New tables live in the existing `Axiom Tasks` Supabase project with the `pp_` prefix, consistent with the rest of the suite's naming convention.
+Corrected after build: Pulse itself runs Next.js 16 on its own Supabase project (not the shared Vite/Axiom Tasks stack the rest of the app suite uses), deployed on Vercel. Post Pulse was built to match, `pp_`-prefixed tables in Pulse's own Supabase project, Next.js routes, serverless functions for the scheduled pull and chat endpoint. Design tokens were mapped onto Pulse's actual cream/ink palette with its press accent rather than the hex values originally listed in §8, which were guessed from the wrong app's conventions.
 
 ## 10. Seed data
 

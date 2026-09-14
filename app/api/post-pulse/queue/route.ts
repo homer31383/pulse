@@ -35,9 +35,16 @@ export async function POST(req: NextRequest) {
   }
   const sourceUrls = body.sourceUrls ?? body.source_urls
   const proposedToolId = body.proposedToolId ?? body.proposed_tool_id
+  const proposedDepartmentId = body.proposedDepartmentId ?? body.proposed_department_id
+  const targetType = body.targetType ?? body.target_type ?? 'tool'
+  if (targetType !== 'tool' && targetType !== 'department') {
+    return Response.json({ error: 'targetType must be tool or department' }, { status: 400 })
+  }
 
   const result = await enqueueProposal({
+    targetType,
     proposedToolId: typeof proposedToolId === 'string' ? proposedToolId : null,
+    proposedDepartmentId: typeof proposedDepartmentId === 'string' ? proposedDepartmentId : null,
     proposedChanges: changes as Record<string, unknown>,
     source: source as 'rss' | 'search' | 'chat',
     sourceUrls: Array.isArray(sourceUrls) ? sourceUrls.map(String) : [],

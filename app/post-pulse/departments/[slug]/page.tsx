@@ -45,6 +45,16 @@ export default async function DepartmentDocPage({ params }: PageProps) {
             {tools.length} {tools.length === 1 ? 'tool' : 'tools'} tracked
           </Link>
         </p>
+        {/* In-context chat launch: resumes this department's latest session, or starts one */}
+        <Link
+          href={`/post-pulse/chat/start?dept=${department.slug}`}
+          className="mt-3 inline-flex items-center gap-2 rounded-lg border border-cream-400 bg-cream-50 px-3 py-1.5 text-sm text-ink-200 hover:border-press-accent hover:text-press-accent transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M8 10h8m-8 4h5m-9 6l3.5-3.5H18a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v14z" />
+          </svg>
+          Research this department
+        </Link>
       </header>
 
       {/* Roster by tier, each linking to its detail view and its anchor */}

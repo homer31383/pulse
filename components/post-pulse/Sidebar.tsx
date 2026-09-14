@@ -273,12 +273,11 @@ export function Sidebar({ onNavigate }: Props) {
           </svg>
           <span className="flex-1">What changed</span>
         </Link>
-        <Link href="/post-pulse/chat" onClick={onNavigate} className={linkClass(pathname === '/post-pulse/chat')}>
+        <Link href="/post-pulse/chat" onClick={onNavigate} className={linkClass(pathname.startsWith('/post-pulse/chat'))}>
           <svg className="w-4 h-4 text-ink-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M8 10h8m-8 4h5m-9 6l3.5-3.5H18a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v14z" />
           </svg>
           <span className="flex-1">Research chat</span>
-          <span className="text-[9px] uppercase tracking-wider text-ink-50">soon</span>
         </Link>
       </nav>
     </div>

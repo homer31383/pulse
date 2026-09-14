@@ -100,15 +100,67 @@ export interface PpChangelogEntry {
   created_at: string
 }
 
+// A proposal targets a tool row (the original case) or, since migration
+// 023, a department row — new department, or a wholesale overview_doc edit.
+export type PpQueueTargetType = 'tool' | 'department'
+
 export interface PpQueueItem {
   id: string
+  target_type: PpQueueTargetType
   proposed_tool_id: string | null
+  proposed_department_id: string | null
   proposed_changes: Record<string, unknown>
   source: PpQueueSource
   source_urls: string[]
   status: PpQueueStatus
   created_at: string
   resolved_at: string | null
+}
+
+// Chat (spec §6): sessions are named and resumable; messages are a jsonb
+// array of these. Assistant turns carry the web sources the model saw and
+// the queue rows it filed during that turn (for the inline indicator).
+export interface PpChatSource {
+  title: string
+  url: string
+}
+
+export interface PpChatQueued {
+  id: string
+  label: string
+  targetType: PpQueueTargetType
+}
+
+export interface PpChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+  created_at: string
+  sources?: PpChatSource[]
+  queued?: PpChatQueued[]
+}
+
+export interface PpChatSession {
+  id: string
+  name: string
+  department_context_id: string | null
+  messages: PpChatMessage[]
+  proposed_queue_ids: string[]
+  created_at: string
+  updated_at: string
+}
+
+export const PP_CHAT_DEFAULT_NAME = 'New session'
+
+// Session list row: name + snippet of the last message, most recent first.
+export interface PpChatSessionSummary {
+  id: string
+  name: string
+  department_context_id: string | null
+  updated_at: string
+  created_at: string
+  messageCount: number
+  lastMessage: string | null
+  lastRole: 'user' | 'assistant' | null
 }
 
 // Everything the /post-pulse shell needs: the dataset is small (tens of
@@ -181,6 +233,19 @@ export const PP_TOOL_EDITABLE_FIELDS = [
 ] as const
 
 export type PpToolEditableField = (typeof PP_TOOL_EDITABLE_FIELDS)[number]
+
+// Columns a department-targeted proposal may set. overview_doc is replaced
+// wholesale on accept (spec §6a) — no prose diff.
+export const PP_DEPARTMENT_EDITABLE_FIELDS = [
+  'name',
+  'slug',
+  'overview_doc',
+  'comparison_attributes',
+  'pipeline_stage',
+  'pipeline_substage',
+] as const
+
+export type PpDepartmentEditableField = (typeof PP_DEPARTMENT_EDITABLE_FIELDS)[number]
 
 export const PP_SORTS = [
   { value: 'name', label: 'Name' },

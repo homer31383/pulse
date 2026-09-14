@@ -124,7 +124,15 @@ Only the REST key is available in some environments. The seed can be applied thr
 ## 7. What is deferred
 
 - **Scheduled automation** (spec §5): RSS sources (CG Channel, SideFX, Foundry, ActionVFX, superrendersfarm, VP Land) + a `web_search` pass per department, every two weeks plus a manual trigger, Haiku for extraction/dedup and Sonnet for tier judgment, confidence-based auto-publish vs queue. Stub route + cron entry exist.
-- **Research chat** (spec §6): Claude + `web_search`, scoped to the dataset; all proposals → `pp_queue`. Stub route + page exist. `pp_chat_sessions` may be replaced by a generic Pulse chat log.
 - **Layer 1 overview doc**: no table or view yet.
+- **Department changelog**: `pp_changelog.tool_id` is NOT NULL, so accepted department proposals leave no history row.
+
+## 8. Research chat (built Sept 14 2026, migration 023)
+
+- **Schema (023)**: `pp_chat_sessions` gains `name` (default 'Untitled session'), `department_context_id` (fk → pp_departments, set null), `updated_at` (+ trigger, index); `pp_queue` gains `target_type` ('tool' | 'department', default 'tool') and `proposed_department_id` (fk, set null).
+- **Engine**: `lib/post-pulse-chat.ts` → `runChatTurn({session, userMessage, onEvent})`. Model `claude-sonnet-5`, adaptive thinking, effort `PULSE_PP_CHAT_EFFORT` (default medium), `max_tokens` 8000, `web_search_20260209` with `max_uses` 6, plus the client-side `propose_change` tool `{target_type, action: create|update, target_id?, department_slug?, changes, rationale, source_urls?}`. Loop: stream → `finalMessage()` → `tool_use` (validate + `enqueueProposal` + tool_result) / `pause_turn` (append assistant content) / else stop; max 8 rounds. System prompt is rebuilt from the database each turn (`buildSystemPrompt`). Persists user + assistant messages (`{role, content, created_at, sources?, queued?}`), auto-names the session from the first message, logs `usage_logs.call_type='pp_chat'`.
+- **Routes**: `POST /api/post-pulse/chat` (SSE), `GET/POST /api/post-pulse/chat/sessions`, `GET/PATCH{name}/DELETE /api/post-pulse/chat/sessions/[id]`. Pages: `/post-pulse/chat` (list), `/post-pulse/chat/[id]` (thread), `/post-pulse/chat/start?dept=slug[&fresh=1]` (resume-or-create, then redirect).
+- **Rules the prompt enforces**: confidence before proposals (ambiguity → clarifying question, no queue write); every proposal queues immediately (no in-chat confirm); department context is a default frame, not a filter; `overview_doc` edits are whole-doc replacements.
+- **Restore**: run 023 after 021/022; nothing else to seed. Sessions are user data with no backup beyond the table.
 - **Per-department `comparison_attributes` refinement** after first real use.
 - **Phone layout verification** in a real browser (the automation profile couldn't resize the window).
