@@ -9,7 +9,7 @@
 -- then performed/simulated, then rendered or captured, then composited.
 
 update pp_departments set pipeline_stage = 'post_production', pipeline_substage = 'asset_creation'
-where slug in ('modeling', 'texturing', 'rigging');
+where slug in ('modeling', 'texturing', 'rigging', 'hair-groom-feathers');
 
 update pp_departments set pipeline_stage = 'post_production', pipeline_substage = 'performance_simulation'
 where slug in ('mocap-animation', 'muscle-skinning', 'simulation-fx', 'crowds');
