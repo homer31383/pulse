@@ -10,6 +10,14 @@ interface PageProps {
   params: Promise<{ id: string }>
 }
 
+// "Search on Google" for a tool. The name is quoted and the vendor rides
+// alongside it: several tools here have ambiguous bare names (Wrap, Astra,
+// Fable were all real collision cases), so name alone risks the wrong target.
+function googleSearchUrl(name: string, vendor: string | null): string {
+  const q = vendor ? `"${name}" ${vendor}` : `"${name}"`
+  return `https://www.google.com/search?q=${encodeURIComponent(q)}`
+}
+
 function formatDate(iso: string | null): string {
   if (!iso) return 'never'
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -58,6 +66,20 @@ export default async function ToolDetailPage({ params }: PageProps) {
           <HostChip host={tool.host_app} />
           <StatusBadge status={tool.status} />
           {tool.vendor && <span className="text-sm text-ink-100">· {tool.vendor}</span>}
+          <a
+            href={googleSearchUrl(tool.name, tool.vendor)}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={`Search Google for "${tool.name}"${tool.vendor ? ` ${tool.vendor}` : ''}`}
+            className="inline-flex items-center gap-1 rounded-full border border-cream-400 bg-cream-50 px-2.5 py-1 text-xs text-ink-200 hover:border-press-accent/50 hover:text-press-accent transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+              <circle cx="11" cy="11" r="7" strokeWidth={2} />
+              <path strokeLinecap="round" strokeWidth={2} d="M20 20l-3.5-3.5" />
+            </svg>
+            Search on Google
+            <span aria-hidden className="text-ink-50">↗</span>
+          </a>
         </div>
       </header>
 
