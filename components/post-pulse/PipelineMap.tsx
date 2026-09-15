@@ -15,8 +15,10 @@ import { ResearchButton } from './ResearchButton'
 // Landing view: the production pipeline as a four-stage flow. A stage
 // expands in place (no route change, same idea as the compare overlay).
 // Post-production is the only stage with an inner structure, so it expands
-// to its four sub-groups, each of which expands to department chips; the
-// other stages expand straight to their (currently empty) department list.
+// to its four sub-groups, each of which expands to department cards; the
+// other stages expand straight to their department cards. Sub-groups and
+// departments share one card (MapCard) so opening any stage looks the same
+// whether or not that stage has a sub-group layer yet.
 // Everything is driven by pp_departments.pipeline_stage / pipeline_substage.
 export function PipelineMap() {
   const { departments, tools, pendingQueueCount } = usePostPulse()
@@ -144,27 +146,14 @@ export function PipelineMap() {
                   const isOpen = openSub === sub.value
                   return (
                     <li key={sub.value} className="min-w-0">
-                      <button
-                        type="button"
+                      <MapCard
+                        as="button"
                         onClick={() => setOpenSub((cur) => (cur === sub.value ? null : sub.value))}
-                        aria-expanded={isOpen}
-                        className={[
-                          'w-full text-left rounded-lg border px-3 py-2.5 transition-colors',
-                          isOpen
-                            ? 'border-press-accent bg-press-accent/10'
-                            : 'border-cream-300 bg-cream-100/60 hover:border-press-accent/50',
-                        ].join(' ')}
-                      >
-                        <p className="text-[10px] uppercase tracking-[1.5px] text-ink-50 font-medium">
-                          {i + 1} of {PP_PIPELINE_SUBSTAGES.length}
-                        </p>
-                        <p className={['text-sm font-medium leading-tight mt-0.5', isOpen ? 'text-press-accent' : 'text-ink-300'].join(' ')}>
-                          {sub.label}
-                        </p>
-                        <p className="text-[11px] text-ink-50 mt-1 tabular-nums">
-                          {list.length} {list.length === 1 ? 'department' : 'departments'}
-                        </p>
-                      </button>
+                        active={isOpen}
+                        eyebrow={`${i + 1} of ${PP_PIPELINE_SUBSTAGES.length}`}
+                        title={sub.label}
+                        meta={`${list.length} ${list.length === 1 ? 'department' : 'departments'}`}
+                      />
                     </li>
                   )
                 })}
@@ -178,19 +167,19 @@ export function PipelineMap() {
                       {PP_PIPELINE_SUBSTAGES.find((s) => s.value === openSub)?.description}
                     </span>
                   </p>
-                  <DepartmentChips departments={bySub(openSub)} toolCount={toolCount} />
+                  <DepartmentCards departments={bySub(openSub)} toolCount={toolCount} />
                 </div>
               )}
 
               {postUnsubbed.length > 0 && (
                 <div className="mt-3 pt-3 border-t border-cream-300">
                   <p className="text-[10px] uppercase tracking-[1.5px] text-ink-50 font-medium mb-2">Not in a sub-group yet</p>
-                  <DepartmentChips departments={postUnsubbed} toolCount={toolCount} />
+                  <DepartmentCards departments={postUnsubbed} toolCount={toolCount} />
                 </div>
               )}
             </>
           ) : (
-            <DepartmentChips departments={byStage(openStage)} toolCount={toolCount} />
+            <DepartmentCards departments={byStage(openStage)} toolCount={toolCount} />
           )}
         </section>
       )}
@@ -212,15 +201,65 @@ export function PipelineMap() {
   )
 }
 
-// "checked 3d ago" on a chip: the guide's housekeeping step asks you to
-// glance at these ages on the map and notice anything drifting past 14 days.
+// "checked 3d ago" on a department card: the guide's housekeeping step asks
+// you to glance at these ages on the map and notice anything drifting past 14 days.
 function checkedAge(iso: string | null): { label: string; stale: boolean } {
   if (!iso) return { label: 'never checked', stale: true }
   const days = Math.floor((Date.now() - Date.parse(iso)) / 86_400_000)
   return { label: days <= 0 ? 'checked today' : `checked ${days}d ago`, stale: days >= 14 }
 }
 
-function DepartmentChips({
+// The one card used inside an expanded stage: for a sub-group (a button that
+// expands in place) and for a department (a link to its doc). Same size, same
+// eyebrow / title / meta treatment, so a stage without sub-groups reads exactly
+// like one with them. The eyebrow is the "1 of 4" counter for a sub-group and
+// the research age for a department — the counter has no meaning there.
+type MapCardProps = {
+  eyebrow: string
+  eyebrowTone?: 'default' | 'stale'
+  title: string
+  meta: string
+  active?: boolean
+  titleAttr?: string
+} & ({ as: 'button'; onClick: () => void } | { as: 'link'; href: string })
+
+function MapCard(props: MapCardProps) {
+  const { eyebrow, eyebrowTone = 'default', title, meta, active = false, titleAttr } = props
+  const className = [
+    'block w-full h-full text-left rounded-lg border px-3 py-2.5 transition-colors',
+    active ? 'border-press-accent bg-press-accent/10' : 'border-cream-300 bg-cream-100/60 hover:border-press-accent/50',
+  ].join(' ')
+  const body = (
+    <>
+      <p
+        className={[
+          'text-[10px] uppercase tracking-[1.5px] font-medium tabular-nums',
+          eyebrowTone === 'stale' ? 'text-press-down' : 'text-ink-50',
+        ].join(' ')}
+      >
+        {eyebrow}
+      </p>
+      <p className={['text-sm font-medium leading-tight mt-0.5', active ? 'text-press-accent' : 'text-ink-300'].join(' ')}>
+        {title}
+      </p>
+      <p className="text-[11px] text-ink-50 mt-1 tabular-nums">{meta}</p>
+    </>
+  )
+  if (props.as === 'link') {
+    return (
+      <Link href={props.href} title={titleAttr} className={[className, 'hover:text-press-accent'].join(' ')}>
+        {body}
+      </Link>
+    )
+  }
+  return (
+    <button type="button" onClick={props.onClick} aria-expanded={active} title={titleAttr} className={className}>
+      {body}
+    </button>
+  )
+}
+
+function DepartmentCards({
   departments,
   toolCount,
 }: {
@@ -235,23 +274,21 @@ function DepartmentChips({
     )
   }
   return (
-    <ul className="flex flex-wrap gap-2">
+    <ul className="grid grid-cols-2 lg:grid-cols-4 gap-2">
       {departments.map((d) => {
         const n = toolCount(d)
         const age = checkedAge(d.last_researched_at)
         return (
-          <li key={d.id}>
-            <Link
+          <li key={d.id} className="min-w-0">
+            <MapCard
+              as="link"
               href={`/post-pulse/departments/${d.slug}`}
-              title={d.last_researched_at ? `Last checked ${new Date(d.last_researched_at).toLocaleString()}` : 'Never researched'}
-              className="inline-flex items-center gap-2 rounded-full border border-cream-400 bg-cream-50 pl-3 pr-2 py-1.5 text-sm text-ink-300 hover:border-press-accent hover:text-press-accent transition-colors"
-            >
-              {d.name}
-              <span className="text-[11px] tabular-nums px-1.5 py-px rounded-full bg-cream-300/70 text-ink-100">
-                {n}
-              </span>
-              <span className={['text-[10px] tabular-nums', age.stale ? 'text-press-down' : 'text-ink-50'].join(' ')}>{age.label}</span>
-            </Link>
+              titleAttr={d.last_researched_at ? `Last checked ${new Date(d.last_researched_at).toLocaleString()}` : 'Never researched'}
+              eyebrow={age.label}
+              eyebrowTone={age.stale ? 'stale' : 'default'}
+              title={d.name}
+              meta={`${n} ${n === 1 ? 'tool' : 'tools'} tracked`}
+            />
           </li>
         )
       })}
