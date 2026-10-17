@@ -23,6 +23,7 @@ import { BriefingSheet } from './BriefingSheet'
 import { GroupSection } from './GroupSection'
 import { Masthead } from './press/Masthead'
 import { TickerBar } from './press/TickerBar'
+import { SectionSwitcher } from './press/SectionSwitcher'
 import { PressNav } from './press/PressNav'
 import type { Channel, ChannelGroup, BriefingState, BriefingStreamEvent, AppSettings, Profile, Briefing, Digest } from '@/lib/types'
 
@@ -719,17 +720,6 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
                   Pinned
                 </Link>
                 <Link
-                  href="/post-pulse"
-                  onClick={() => setMenuOpen(false)}
-                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-ink-200 hover:bg-cream-200 transition-colors"
-                >
-                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
-                      d="M4 6h16M4 12h10M4 18h6" />
-                  </svg>
-                  Post Pulse
-                </Link>
-                <Link
                   href="/briefing-history"
                   onClick={() => setMenuOpen(false)}
                   className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-ink-200 hover:bg-cream-200 transition-colors"
@@ -780,8 +770,9 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
         </div>
       </header>
 
-      {/* ── Masthead + ticker ── */}
+      {/* ── Masthead + section tabs + ticker ── */}
       <Masthead />
+      <SectionSwitcher active="pulse" rule={!settings.ticker_items?.length} />
       <TickerBar items={settings.ticker_items ?? []} />
 
       <main className="max-w-screen-xl mx-auto px-4 pt-6">

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import type { PpDataset } from '@/lib/post-pulse-types'
 import { Sidebar } from './Sidebar'
+import { SectionSwitcher } from '@/components/press/SectionSwitcher'
 
 // The dataset snapshot the /post-pulse layout loads once. Every view under
 // the route reads from here; server pages that need fresh joins (detail,
@@ -45,6 +46,10 @@ export function PostPulseShell({ data, children }: Props) {
   return (
     <DatasetContext.Provider value={data}>
       <div className="min-h-screen bg-cream-200 text-ink-300">
+        {/* Section tabs shared with the Pulse home masthead; scrolls away with the page */}
+        <div className="border-b-[0.5px] border-press-hair">
+          <SectionSwitcher active="post-pulse" rule={false} />
+        </div>
         {/* Phone header */}
         <header className="md:hidden sticky top-0 z-30 bg-cream-200/95 backdrop-blur-sm border-b border-cream-300/60 px-4 py-3">
           <div className="flex items-center gap-3">
