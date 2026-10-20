@@ -11,6 +11,7 @@ create table if not exists pp_departments (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+grant select, insert, update, delete on public.pp_departments to anon, authenticated, service_role;
 
 create table if not exists pp_tools (
   id uuid primary key default gen_random_uuid(),
@@ -30,6 +31,7 @@ create table if not exists pp_tools (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+grant select, insert, update, delete on public.pp_tools to anon, authenticated, service_role;
 
 create index if not exists idx_pp_tools_department on pp_tools(department_id);
 create index if not exists idx_pp_tools_tier on pp_tools(tier);
@@ -56,6 +58,7 @@ create table if not exists pp_changelog (
   source text,
   created_at timestamptz not null default now()
 );
+grant select, insert, update, delete on public.pp_changelog to anon, authenticated, service_role;
 
 create index if not exists idx_pp_changelog_tool on pp_changelog(tool_id);
 create index if not exists idx_pp_changelog_created on pp_changelog(created_at desc);
@@ -70,6 +73,7 @@ create table if not exists pp_queue (
   created_at timestamptz not null default now(),
   resolved_at timestamptz
 );
+grant select, insert, update, delete on public.pp_queue to anon, authenticated, service_role;
 
 create index if not exists idx_pp_queue_status on pp_queue(status);
 
@@ -81,6 +85,7 @@ create table if not exists pp_chat_sessions (
   proposed_queue_ids uuid[] not null default '{}',
   created_at timestamptz not null default now()
 );
+grant select, insert, update, delete on public.pp_chat_sessions to anon, authenticated, service_role;
 
 -- updated_at trigger, mirrors whatever pattern the rest of the Pulse schema
 -- already uses — replace with the existing shared function if one exists

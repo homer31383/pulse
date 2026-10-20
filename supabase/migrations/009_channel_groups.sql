@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS channel_groups (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+grant select, insert, update, delete on public.channel_groups to anon, authenticated, service_role;
 
 ALTER TABLE channels
   ADD COLUMN IF NOT EXISTS group_id UUID REFERENCES channel_groups(id) ON DELETE SET NULL;

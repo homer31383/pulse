@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS tts_audio (
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (kind, item_id, voice_id, model_id)
 );
+grant select, insert, update, delete on public.tts_audio to anon, authenticated, service_role;
 
 CREATE INDEX IF NOT EXISTS tts_audio_item_idx ON tts_audio (kind, item_id);
 

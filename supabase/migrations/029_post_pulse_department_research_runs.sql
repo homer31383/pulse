@@ -12,5 +12,6 @@ create table if not exists pp_department_research_runs (
   queued_count integer not null default 0,
   auto_published_count integer not null default 0
 );
+grant select, insert, update, delete on public.pp_department_research_runs to anon, authenticated, service_role;
 
 create index if not exists idx_pp_department_research_runs_dept_ran on pp_department_research_runs(department_id, ran_at desc);

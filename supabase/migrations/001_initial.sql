@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS channels (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+grant select, insert, update, delete on public.channels to anon, authenticated, service_role;
 
 -- ─── Briefings ───────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS briefings (
@@ -21,6 +22,7 @@ CREATE TABLE IF NOT EXISTS briefings (
   model       TEXT        NOT NULL DEFAULT 'claude-sonnet-4-6',
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+grant select, insert, update, delete on public.briefings to anon, authenticated, service_role;
 
 -- ─── Config conversations ─────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS config_conversations (
@@ -31,6 +33,7 @@ CREATE TABLE IF NOT EXISTS config_conversations (
   created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+grant select, insert, update, delete on public.config_conversations to anon, authenticated, service_role;
 
 -- ─── Indexes ─────────────────────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS briefings_channel_id_idx  ON briefings(channel_id);

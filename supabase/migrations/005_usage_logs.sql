@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS usage_logs (
   cost_usd      NUMERIC(12,8) NOT NULL,
   created_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );
+grant select, insert, update, delete on public.usage_logs to anon, authenticated, service_role;
 
 CREATE INDEX IF NOT EXISTS usage_logs_created_at  ON usage_logs (created_at DESC);
 CREATE INDEX IF NOT EXISTS usage_logs_channel_id  ON usage_logs (channel_id);

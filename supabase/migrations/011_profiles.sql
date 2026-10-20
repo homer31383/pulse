@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   name TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+grant select, insert, update, delete on public.profiles to anon, authenticated, service_role;
 
 -- ── 2. Insert default profiles ────────────────────────────────────────────────
 INSERT INTO profiles (id, name) VALUES

@@ -92,6 +92,7 @@ CREATE TABLE channels (
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+grant select, insert, update, delete on public.channels to anon, authenticated, service_role;
 
 -- Briefings
 CREATE TABLE briefings (
@@ -102,6 +103,7 @@ CREATE TABLE briefings (
   model TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+grant select, insert, update, delete on public.briefings to anon, authenticated, service_role;
 CREATE INDEX idx_briefings_channel ON briefings(channel_id, created_at DESC);
 
 -- Config conversations
@@ -113,6 +115,7 @@ CREATE TABLE config_conversations (
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+grant select, insert, update, delete on public.config_conversations to anon, authenticated, service_role;
 CREATE INDEX idx_config_conv_channel ON config_conversations(channel_id);
 
 -- Auto-update updated_at trigger
@@ -145,6 +148,7 @@ CREATE TABLE settings (
   briefing_density TEXT DEFAULT 'balanced',
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+grant select, insert, update, delete on public.settings to anon, authenticated, service_role;
 INSERT INTO settings (id) VALUES ('default');
 ```
 
@@ -172,6 +176,7 @@ CREATE TABLE notes (
   content TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+grant select, insert, update, delete on public.notes to anon, authenticated, service_role;
 
 CREATE TABLE briefing_feedback (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -179,6 +184,7 @@ CREATE TABLE briefing_feedback (
   vote SMALLINT NOT NULL CHECK (vote IN (-1, 1)),
   created_at TIMESTAMPTZ DEFAULT now()
 );
+grant select, insert, update, delete on public.briefing_feedback to anon, authenticated, service_role;
 
 CREATE TABLE shared_briefings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -186,6 +192,7 @@ CREATE TABLE shared_briefings (
   slug TEXT NOT NULL UNIQUE,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+grant select, insert, update, delete on public.shared_briefings to anon, authenticated, service_role;
 ```
 
 ### Migration 005 — Usage Logs
@@ -202,6 +209,7 @@ CREATE TABLE usage_logs (
   cost_usd NUMERIC(10, 6) NOT NULL,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+grant select, insert, update, delete on public.usage_logs to anon, authenticated, service_role;
 CREATE INDEX idx_usage_created ON usage_logs(created_at DESC);
 CREATE INDEX idx_usage_channel ON usage_logs(channel_id);
 ```
@@ -224,6 +232,7 @@ CREATE TABLE digests (
   model TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+grant select, insert, update, delete on public.digests to anon, authenticated, service_role;
 ```
 
 ### Migration 008 — Weekly Summaries
@@ -237,6 +246,7 @@ CREATE TABLE weekly_summaries (
   week_start DATE,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+grant select, insert, update, delete on public.weekly_summaries to anon, authenticated, service_role;
 ```
 
 ### Migration 009 — Channel Groups
@@ -249,6 +259,7 @@ CREATE TABLE channel_groups (
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+grant select, insert, update, delete on public.channel_groups to anon, authenticated, service_role;
 CREATE TRIGGER channel_groups_updated_at BEFORE UPDATE ON channel_groups
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
@@ -279,6 +290,7 @@ CREATE TABLE profiles (
   name TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+grant select, insert, update, delete on public.profiles to anon, authenticated, service_role;
 
 -- Default profiles
 INSERT INTO profiles (id, name) VALUES

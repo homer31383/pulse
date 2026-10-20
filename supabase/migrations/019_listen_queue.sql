@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS listen_queue (
   last_played_at    TIMESTAMPTZ,
   UNIQUE (profile_id, kind, item_id)
 );
+grant select, insert, update, delete on public.listen_queue to anon, authenticated, service_role;
 
 CREATE INDEX IF NOT EXISTS listen_queue_profile_idx ON listen_queue (profile_id, played_at, position);
 CREATE INDEX IF NOT EXISTS listen_queue_item_idx ON listen_queue (kind, item_id);

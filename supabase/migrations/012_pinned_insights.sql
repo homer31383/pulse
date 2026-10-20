@@ -7,5 +7,6 @@ CREATE TABLE IF NOT EXISTS pinned_insights (
   profile_id   UUID        REFERENCES profiles(id) ON DELETE CASCADE,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+grant select, insert, update, delete on public.pinned_insights to anon, authenticated, service_role;
 
 CREATE INDEX IF NOT EXISTS idx_pinned_insights_profile ON pinned_insights (profile_id, created_at DESC);

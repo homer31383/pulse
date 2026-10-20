@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS settings (
   briefing_density TEXT        NOT NULL DEFAULT 'balanced',
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+grant select, insert, update, delete on public.settings to anon, authenticated, service_role;
 
 -- Seed the single row so reads always return a result
 INSERT INTO settings (id, model, briefing_density)

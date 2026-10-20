@@ -16,6 +16,7 @@ create table if not exists pp_workflow_docs (
   created_at timestamptz not null default now(),
   last_verified_at timestamptz
 );
+grant select, insert, update, delete on public.pp_workflow_docs to anon, authenticated, service_role;
 
 create index if not exists idx_pp_workflow_docs_department on pp_workflow_docs(department_id, created_at desc);
 create index if not exists idx_pp_workflow_docs_referenced_tools on pp_workflow_docs using gin (referenced_tool_ids);

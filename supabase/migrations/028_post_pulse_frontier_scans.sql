@@ -13,6 +13,7 @@ create table if not exists pp_frontier_scans (
   findings_count integer not null default 0,
   queued_count integer not null default 0
 );
+grant select, insert, update, delete on public.pp_frontier_scans to anon, authenticated, service_role;
 
 create index if not exists idx_pp_frontier_scans_stage_ran on pp_frontier_scans(pipeline_stage, ran_at desc);
 

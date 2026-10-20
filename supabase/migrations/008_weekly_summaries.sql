@@ -7,3 +7,4 @@ CREATE TABLE IF NOT EXISTS weekly_summaries (
   week_start    DATE        NOT NULL,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+grant select, insert, update, delete on public.weekly_summaries to anon, authenticated, service_role;

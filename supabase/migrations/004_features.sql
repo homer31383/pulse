@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS notes (
   content      TEXT        NOT NULL,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+grant select, insert, update, delete on public.notes to anon, authenticated, service_role;
 
 -- ── Briefing feedback ────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS briefing_feedback (
@@ -31,6 +32,7 @@ CREATE TABLE IF NOT EXISTS briefing_feedback (
   vote        SMALLINT  NOT NULL CHECK (vote IN (-1, 1)),
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+grant select, insert, update, delete on public.briefing_feedback to anon, authenticated, service_role;
 
 -- ── Shareable briefing links ─────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS shared_briefings (
@@ -39,3 +41,4 @@ CREATE TABLE IF NOT EXISTS shared_briefings (
   slug        TEXT      NOT NULL UNIQUE,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+grant select, insert, update, delete on public.shared_briefings to anon, authenticated, service_role;
