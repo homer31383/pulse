@@ -9,4 +9,4 @@ CREATE TABLE IF NOT EXISTS digests (
   model         TEXT        NOT NULL DEFAULT '',
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-grant select, insert, update, delete on public.digests to anon, authenticated, service_role;
+grant select, insert, update, delete on public.digests to service_role;
