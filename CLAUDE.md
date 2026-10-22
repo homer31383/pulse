@@ -7,7 +7,7 @@ Pulse is a personal AI briefing platform. Users create **channels** — topic-ba
 ## Tech Stack
 
 - **Framework**: Next.js 16.1.6 (App Router, React 18)
-- **Database**: Supabase (PostgreSQL via service-role key, server-side only)
+- **Database**: Supabase (PostgreSQL via the `sb_secret_` secret key in `SUPABASE_SERVICE_ROLE_KEY`, server-side only)
 - **AI**: Anthropic Claude API (`@anthropic-ai/sdk` 0.115.0) with web search
 - **Styling**: Tailwind CSS 3.4. Reading/home/archive views use the broadsheet "press" design (lavender paper `#F0ECF4`, indigo accent `#6B5CA5`, Georgia serif); utility pages (settings, channel config, notes) keep the older warm/parchment palette
 - **Fonts**: Lora (serif body), Playfair Display (headings), Inter (UI/sans)
@@ -23,7 +23,7 @@ Pulse is a personal AI briefing platform. Users create **channels** — topic-ba
 npm install
 # Set env vars in .env.local:
 #   NEXT_PUBLIC_SUPABASE_URL=https://lnuxspwttddbbpomcekg.supabase.co
-#   SUPABASE_SERVICE_ROLE_KEY=<your key>
+#   SUPABASE_SERVICE_ROLE_KEY=<sb_secret_... key>   # the new secret key (legacy JWT keys are disabled)
 #   ANTHROPIC_API_KEY=<your key>
 #   ELEVENLABS_API_KEY=<your key>   # optional: premium TTS; without it the app falls back to browser speech
 npm run dev
@@ -143,7 +143,7 @@ lib/
   post-pulse-types.ts — Client-safe Post Pulse types + constants (tiers, host apps, editable fields, sorts)
   post-pulse.ts       — Server-only Post Pulse data access: dataset, detail, changelog, queue accept/reject, enqueueProposal
   types.ts      — All TypeScript types and interfaces
-  supabase.ts   — Server-only Supabase client (service_role key)
+  supabase.ts   : Server-only Supabase client (`sb_secret_` key; keyAwareFetch sends it as `apikey`, never as Bearer)
   anthropic.ts  — Anthropic client + DEFAULT_MODEL constant
   generation.ts — Shared briefing/digest generation (prompts, web-search stream, persist, usage) used by SSE routes AND the cron route
   cost.ts       — Token cost calculation and formatting
@@ -164,6 +164,8 @@ All Supabase calls use the service-role key and happen exclusively in:
 - API Route Handlers (app/api/)
 
 The `lib/supabase.ts` client must **never** be imported in `'use client'` files.
+
+`SUPABASE_SERVICE_ROLE_KEY` holds the non-JWT `sb_secret_` key, so `lib/supabase.ts` passes `global.fetch: keyAwareFetch(key)`, which strips the `Authorization: Bearer <key>` header supabase-js adds and sends the key only as `apikey` (PostgREST and Storage); legacy JWTs pass through unchanged. The diagnostic scripts in `scripts/` build their client with `serviceClient()` from `scripts/_supabase.mjs`, which applies the same guard.
 
 ### Table grants (required since Supabase change, Oct 30 2026)
 
