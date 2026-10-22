@@ -1,5 +1,7 @@
 # Pulse - Project Documentation
 
+> **Security source of truth:** read `D:\AI\Claude\SECURITY-STATE.md` before changing sign-in, keys, grants, RLS, storage or any public-facing page. It overrides anything in this file that says otherwise (PIN gates, user pickers, RLS off, anon grants, legacy anon or service_role keys, public tables).
+
 ## Overview
 
 Pulse is a personal AI briefing platform. Users create **channels** — topic-based feeds like "AI & Machine Learning" or "Cybersecurity" — and Pulse generates rich, web-researched briefings on demand using Claude's web search tool. Think of it as a personalized intelligence briefing system.
@@ -26,10 +28,11 @@ npm install
 #   SUPABASE_SERVICE_ROLE_KEY=<sb_secret_... key>   # the new secret key (legacy JWT keys are disabled)
 #   ANTHROPIC_API_KEY=<your key>
 #   ELEVENLABS_API_KEY=<your key>   # optional: premium TTS; without it the app falls back to browser speech
+#   SMTP_USER / SMTP_PASS=<IONOS mailbox + password>  # optional: Weekly Recap email; SMTP_HOST (smtp.ionos.com), SMTP_PORT (587), RECAP_FROM, RECAP_TO, PULSE_BASE_URL override defaults
 npm run dev
 ```
 
-Run all migrations in `supabase/migrations/` in order (001 through 032) in the Supabase SQL editor. Optionally run `supabase/seed.sql` for sample channels (run it once only — the channel insert has no conflict target) and `supabase/seed_post_pulse.sql` + `supabase/post_pulse_pipeline_stages_seed_update.sql` for the Post Pulse reference dataset (both idempotent, re-run to refresh).
+Run all migrations in `supabase/migrations/` in order (001 through 033) in the Supabase SQL editor. Optionally run `supabase/seed.sql` for sample channels (run it once only — the channel insert has no conflict target) and `supabase/seed_post_pulse.sql` + `supabase/post_pulse_pipeline_stages_seed_update.sql` for the Post Pulse reference dataset (both idempotent, re-run to refresh).
 
 ## File Structure
 
@@ -85,7 +88,9 @@ app/
     settings/route.ts                    — GET/PATCH settings (profile-scoped)
     profiles/route.ts                    — GET list, POST create profile
     cron/scheduled-briefings/route.ts    — GET (Vercel Cron, hourly): pre-generate scheduled briefings/digests
-    cron/post-pulse-sync/route.ts        — GET (Vercel Cron, 1st+15th): STUB for the Post Pulse RSS/search pull
+    cron/post-pulse-sync/route.ts        — GET (Vercel Cron, daily): Post Pulse research run
+    cron/weekly-recap/route.ts           — GET (Vercel Cron, hourly): sends the Weekly Recap email at each profile's slot — compile only, never generates
+    recap/route.ts                       — GET: preview this week's recap HTML (?format=text|json); POST: send it now (cookie profile)
     post-pulse/queue/route.ts            — GET pending proposals, POST file a proposal (the only write path into pp_tools)
     post-pulse/queue/[id]/route.ts       — PATCH {action: accept|reject}: accept applies to pp_tools + logs pp_changelog
     post-pulse/chat/route.ts             — POST: STUB (501) for the Post Pulse research chat
@@ -153,6 +158,7 @@ lib/
   tts.ts        — Server-only ElevenLabs synthesis, Supabase Storage audio cache, TTS usage logging, cleanup
   queue.ts      — Server-only Listen Queue: enqueue, list (+cost), reorder, progress, batch sort, cleanup
   usage.ts      — Server-side usage logging to Supabase
+  recap.ts      — Server-only Weekly Recap: fetch last-7-day rows, compile into Pulse/Post-Pulse sections, render email HTML/text, send via Nodemailer
   speech.ts     — stripMarkdown() and splitSentences() for TTS
 ```
 
@@ -299,6 +305,16 @@ The queue is "what's next" — each item can be listened to or read — and the 
 - **Article bar** (`AudioPlayer`): Listen/Pause shortcut (Listen = queue it if needed + play through the queue), length, provider, sentence position, and the queue toggle. No inline transport — that lives in the player. `SpokenArticle` swaps in the highlighted view while an article is being read aloud, on every surface.
 - `/listen` is the full-page version of the queue (Play all/Resume, cost line, list, Played section with Re-queue), linked from PressNav.
 
+## Weekly Recap Email (migration 033)
+
+One email a week that **compiles** whatever briefings/digests were created in the previous 7 days (scheduled or on demand) and sends it to the profile's `email_address`. **Compile only, never generate**: `lib/recap.ts` imports nothing from `lib/generation.ts` and never calls the Anthropic client. A channel on a longer interval that produced nothing that week is simply absent; there is no catch-up generation.
+- **Grouping**: `channels.recap_group` ('pulse' | 'post_pulse', default 'pulse'; the migration sets The Foundry Nuke, SideFX Houdini, Autodesk Maya, AI in cg pipelines, and Post-Production Tech to post_pulse). Edited on the channel config page ("Weekly recap" pills); PATCH `/api/channels/[id]` accepts it.
+- **Compilation** (`compileRecap`, pure): briefings filed under their channel; a digest is **split into its channel stories** with `parsePressSections` (channel names as `neverAside`) and each story is filed under its channel, so one digest can appear in both sections — matched case-insensitively because the model's heading casing drifts from the channel name. A digest with no recognisable stories is filed under each of its `channel_ids`. Excerpt = first Key Takeaways bullet, else first paragraph, ~280 chars, markdown stripped. Headline = the `#` line, else "Channel · Briefing"; digest stories are "Channel · Digest". Order: Pulse then Post-Pulse, channels by position, newest first. Empty sections are omitted; an empty week sends nothing.
+- **Email**: 600px table layout, inline styles, Georgia + system sans, paper/accent palette, double rule per section, hairline per channel, headline + date + "scheduled"/"on demand" + excerpt + link to `/read/{kind}/{id}` (the links need no profile cookie). Plain-text alternative included. Base URL from `PULSE_BASE_URL` (default the Vercel URL).
+- **Schedule**: settings `recap_email_enabled`, `recap_day` (0 = Sunday), `recap_time` ('HH:MM' ET), `recap_last_run_at`. `vercel.json` runs `/api/cron/weekly-recap` hourly; a profile is eligible from its (day, hour) slot for 3 catch-up hours, deduped by `recap_last_run_at` within 20h — stamped whether or not an email went out, so an empty week is checked once. Recipient = `settings.email_address`, fallback env `RECAP_TO`.
+- **Sending**: Nodemailer → IONOS (`SMTP_HOST` default smtp.ionos.com, `SMTP_PORT` default 587 STARTTLS, 465 = implicit TLS; `SMTP_USER`/`SMTP_PASS` required; `RECAP_FROM` default "Pulse <SMTP_USER>"). Settings page "Send weekly recap email" block: toggle, day/time, address, **"Send this week's recap now"** (POST `/api/recap`) and **Preview** (GET `/api/recap`, renders the HTML; `?format=text`). Neither touches `recap_last_run_at`.
+- Verified Oct 1 2026 against the live Sept 24–Oct 1 window (8 briefings + 1 digest): both sections, the 5-channel digest split 3 Post-Pulse / 2 Pulse stories, nothing unplaced, rendered in Chrome. SMTP sending itself is unverified until the IONOS credentials are set.
+
 ## Read/Unread Tracking
 
 - `briefings.read_at` / `digests.read_at` (migration 017), NULL = unread; `is_read` is derived, never stored. Per-item state is effectively per-user because content is profile-owned.
@@ -383,10 +399,9 @@ A second, unrelated dataset inside the same app: a structured reference of AI to
 ## Unimplemented / Stub Features
 
 These settings exist in the UI but have **no backend implementation**:
-- **Email delivery** (`email_enabled`, `email_address`) — toggle and input exist, no sending logic
+- **Email delivery** (`email_enabled`, `email_address`) — the per-briefing toggle has no sending logic; the Weekly Recap email (migration 033) is implemented and reuses `email_address` as its recipient
 - **Push notifications** (`notifications_enabled`, `notification_time`) — toggle exists, no subscription/push logic
 - **Briefing retention cleanup** runs in `app/page.tsx` on every page load — works but would be better as a cron/edge function
-- **Post Pulse automation** (`/api/cron/post-pulse-sync`) and **research chat** (`/api/post-pulse/chat`, `/post-pulse/chat`) — stubs only; see the Post Pulse section
 
 ## Companion Files
 
