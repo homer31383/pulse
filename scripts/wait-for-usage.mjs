@@ -1,6 +1,6 @@
 // Poll usage_logs until a briefing/digest row newer than start time appears,
 // then print it with full cost columns and exit.
-import { createClient } from '@supabase/supabase-js'
+import { serviceClient } from './_supabase.mjs'
 import { readFileSync } from 'fs'
 
 const env = Object.fromEntries(
@@ -9,7 +9,7 @@ const env = Object.fromEntries(
     .filter((l) => l.includes('='))
     .map((l) => [l.slice(0, l.indexOf('=')).trim(), l.slice(l.indexOf('=') + 1).trim()])
 )
-const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
+const supabase = serviceClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
 
 const since = new Date(Date.now() - 10 * 60 * 1000).toISOString()
 const deadline = Date.now() + 8 * 60 * 1000

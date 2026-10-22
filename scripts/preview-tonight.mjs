@@ -1,12 +1,12 @@
 // Preview which channels tonight's cron will generate, using the same
 // per-channel anchor + interval logic as /api/cron/scheduled-briefings.
-import { createClient } from '@supabase/supabase-js'
+import { serviceClient } from './_supabase.mjs'
 import { readFileSync } from 'fs'
 const env = Object.fromEntries(
   readFileSync('D:/AI/Claude/Pulse/.env.local', 'utf8').split('\n').filter((l) => l.includes('='))
     .map((l) => [l.slice(0, l.indexOf('=')).trim(), l.slice(l.indexOf('=') + 1).trim()])
 )
-const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
+const supabase = serviceClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
 
 const TZ = 'America/New_York'
 const key = (d) => new Date(d).toLocaleDateString('en-CA', { timeZone: TZ })

@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { serviceClient } from './_supabase.mjs'
 import { readFileSync } from 'fs'
 
 const env = Object.fromEntries(
@@ -8,7 +8,7 @@ const env = Object.fromEntries(
     .map((l) => [l.slice(0, l.indexOf('=')).trim(), l.slice(l.indexOf('=') + 1).trim()])
 )
 
-const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
+const supabase = serviceClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
 
 // 1. Usage logs 7/23 → 7/27 (briefing + digest calls), to compare mornings
 const { data: logs, error: e1 } = await supabase
