@@ -1,0 +1,178 @@
+{
+  "generated_from": "Claude research session, Sept 2026 — commercial VFX AI pipeline deep dive",
+  "note": "Tiers: automated (Tier 1), assisted (Tier 2), artist_led (Tier 3). Verify source_urls before auto-publishing; treat as a manual seed, not a live-verified feed.",
+
+  "departments": [
+    {
+      "slug": "roto-tracking",
+      "name": "Roto & Tracking",
+      "overview_doc": "Nearly fully industrialized. SLAPSHOT's Autopilot rotoscopes every layer in a shot automatically, exporting an organized cryptomatte. Silhouette's ML tracking suite (Head Track ML, Object Tracker, Point Track ML) handles facial, object, and point tracking through occlusion. Foundry's BigCat scales CopyCat-style roto/cleanup training to hundreds or thousands of frames inside Nuke. Industry-wide: ~62% of studios have adopted automated compositing tasks with meaningful timeline reduction; matte/roto generation adoption is above 50%.",
+      "comparison_attributes": [
+        {"key": "throughput", "label": "Throughput", "type": "text"},
+        {"key": "handles_occlusion", "label": "Handles Occlusion", "type": "boolean"},
+        {"key": "output_format", "label": "Output Format", "type": "text"}
+      ]
+    },
+    {
+      "slug": "compositing",
+      "name": "Compositing",
+      "overview_doc": "Comp itself (final grain/light/color integration judgment) remains artist-led. What's AI-assisted: generative elements natively inside the comp graph (Bria/Griptape in Nuke, rights-clear, provenance-tracked) and relighting-from-footage (Beeble) feeding clean PBR passes into the comp. The differentiator between AI-assisted and AI-replaced compositors is whether they can make a generated element actually match plate grain, light, and motion — not a solved problem.",
+      "comparison_attributes": [
+        {"key": "native_integration", "label": "Native DCC Integration", "type": "text"},
+        {"key": "licensing", "label": "Licensing / Rights", "type": "text"}
+      ]
+    },
+    {
+      "slug": "modeling",
+      "name": "Modeling",
+      "overview_doc": "Fast-moving from artist-led toward assisted, but only for background/set-dressing/blockout work. Rodin leads geometric fidelity (hard-surface/mechanical), Meshy is most complete end-to-end (model+texture in one pass), Tripo is fastest/best for stylized, TRELLIS 2 is the leading open-source option with Gaussian-splat output. 2026 trend: tools converging on finishing pipelines (retopo, UV, format conversion) rather than raw generation, since that's the real bottleneck. Hero assets and exact brand/product geometry still need manual retopology and review.",
+      "comparison_attributes": [
+        {"key": "topology_quality", "label": "Topology Quality", "type": "text"},
+        {"key": "speed", "label": "Generation Speed", "type": "text"},
+        {"key": "export_formats", "label": "Export Formats", "type": "text"},
+        {"key": "pricing", "label": "Pricing", "type": "text"}
+      ]
+    },
+    {
+      "slug": "texturing",
+      "name": "Texturing",
+      "overview_doc": "Closest discipline to fully automated for standard PBR work. A hand-authored material set used to run 2-8 hours in Substance Designer; AI tools now generate UV-aware, seam-handled PBR sets in minutes. Pragmatic 2026 split: AI-generate the bulk material library, hand-author the small set of hero surfaces where the material itself is the star of the shot. Known gap: AI-derived normal maps are typically inferred from luminance/shading, which breaks down on anything needing true displacement.",
+      "comparison_attributes": [
+        {"key": "uv_aware", "label": "UV-Aware", "type": "boolean"},
+        {"key": "map_types", "label": "PBR Maps Generated", "type": "text"},
+        {"key": "pricing", "label": "Pricing", "type": "text"}
+      ]
+    },
+    {
+      "slug": "lookdev",
+      "name": "Look Development",
+      "overview_doc": "Still solidly artist-led. No tool does end-to-end shading/lookdev decision-making — calibrating a hero material under production lighting, matching client reference, balancing shader complexity against render cost. AI touches the edges (generating a starting material, generating reference concept art to light-match against) but the actual judgment call hasn't moved. Net effect: lookdev artists spend less time building materials from scratch, more time judging and correcting AI-generated ones.",
+      "comparison_attributes": [
+        {"key": "renderer_support", "label": "Renderer Support", "type": "text"}
+      ]
+    },
+    {
+      "slug": "rigging",
+      "name": "Rigging",
+      "overview_doc": "Split cleanly by character type. Auto-rigging matches junior-to-mid rigger quality for standard humanoid work. What stays manual: facial rigs, non-humanoid/stylized creatures, custom deformation systems, anything interfacing with a sim rig. Maya path: Advanced Skeleton (native Maya nodes, more future-proof, HumanIK-compatible) or mGear (open-source, more flexible, custom-node dependency risk). Houdini path: KineFX (procedural, tag-based) + APEX (rig logic layer) + Autorig Builder (one-click on top of KineFX, fully editable output, not a fixed template).",
+      "comparison_attributes": [
+        {"key": "host_app", "label": "Host App", "type": "text"},
+        {"key": "mocap_compatible", "label": "Mocap-Compatible", "type": "boolean"},
+        {"key": "future_proofing", "label": "Node Dependency Risk", "type": "text"}
+      ]
+    },
+    {
+      "slug": "muscle-skinning",
+      "name": "Muscle & Skinning",
+      "overview_doc": "Ziva VFX defined this category (ML-based muscle/tissue deformation as a Maya plugin) but Unity discontinued sales, updates, and support. Perpetual licenses still function in current Maya but are unsupported and will eventually break. Current path: Maya's native ML Deformer (Autodesk AI, ships with Maya, trains a fast approximation of a complex/slow rig) and Houdini's Otis organic tissue solver (native, explicitly positioned as the Ziva migration path) plus Houdini's own ML Deform node network. ngSkinTools remains the standard manual weight-painting layer on top of native skinClusters, used alongside these rather than competing with them.",
+      "comparison_attributes": [
+        {"key": "host_app", "label": "Host App", "type": "text"},
+        {"key": "approach", "label": "Approach", "type": "text"},
+        {"key": "status", "label": "Support Status", "type": "text"}
+      ]
+    },
+    {
+      "slug": "simulation-fx",
+      "name": "Simulation (FX)",
+      "overview_doc": "The discipline every source agrees holds up best against AI replacement. Fluid, destruction, cloth, and crowd-adjacent sim require an artist's judgment on turbulence scale, art-directed flicker, and reading subtle instabilities — AI can propose solver defaults or auto-tune substeps/resolution targets, but the creative decisions remain human. Houdini (Pyro, FLIP, Vellum, MPM) is the correct core to build around; the 2026 roadmap leans into GPU-accelerated SOPs/VEX and tighter USD/Hydra integration, not away from procedural artistry.",
+      "comparison_attributes": [
+        {"key": "solver_type", "label": "Solver Type", "type": "text"}
+      ]
+    },
+    {
+      "slug": "crowds",
+      "name": "Crowds",
+      "overview_doc": "Autodesk acquired Golaem's IP in August 2024 and folded the Golaem-for-Maya plugin directly into the Maya Media & Entertainment Collection as of the 2025/2026 release — explicitly pitched for stadium-scale crowds. It's procedural at its core (rule-based behavior you define) with AI-assisted workflows layered on top, not learned behavior end-to-end. Miarmy leans further into genuine AI behavioral animation, cheaper, steeper learning curve. Massive is the higher-end reference point for crowds that react to environment via real AI decision-making rather than pure procedural rules. Houdini Crowds is the native alternative if you're staffing toward Houdini-fluent TDs — more technical setup, no third-party plugin/version risk.",
+      "comparison_attributes": [
+        {"key": "host_app", "label": "Host App", "type": "text"},
+        {"key": "behavior_model", "label": "Behavior Model", "type": "text"},
+        {"key": "licensing", "label": "Licensing", "type": "text"}
+      ]
+    },
+    {
+      "slug": "rendering-denoising",
+      "name": "Rendering & Denoising",
+      "overview_doc": "Denoising and up-res are the clearest Tier 1 case in the whole pipeline. NVIDIA OptiX and Intel Open Image Denoise are standard across V-Ray, Arnold, Redshift, Cycles, and Karma, cutting required sample counts from ~2000-4000 down to ~200-500 for comparable quality (40-60% render-time reduction reported). OIDN won a Technical Achievement Award from the Academy in 2025. What doesn't move: renderer choice and lighting design remain a creative/cost/turnaround decision, not an AI-adoption one.",
+      "comparison_attributes": [
+        {"key": "denoiser", "label": "Denoiser", "type": "text"},
+        {"key": "gpu_cpu", "label": "GPU/CPU", "type": "text"},
+        {"key": "pricing", "label": "Pricing", "type": "text"}
+      ]
+    },
+    {
+      "slug": "capture-splats-photogrammetry",
+      "name": "Capture (Gaussian Splats & Photogrammetry)",
+      "overview_doc": "Moved from research novelty to shipped production tooling fast. Framestore used 4D Gaussian splatting on Superman (2025) to deliver ~40 final-pixel shots. By early 2026: Nuke 17 ships native splat support, Houdini 21 has a technical preview, OpenUSD 26.03 added a first-class schema, V-Ray 7 can ray-trace splats. Real, currently-unsolved gaps: no full-material relighting in any shipping commercial tool as of April 2026, no clean mesh/retopology extraction, no traditional AOVs (diffuse/specular/shadow passes). Best for environment/background capture, not a drop-in replacement for a lit CG asset yet.",
+      "comparison_attributes": [
+        {"key": "engine_support", "label": "Engine/DCC Support", "type": "text"},
+        {"key": "relightable", "label": "Relightable", "type": "boolean"},
+        {"key": "mesh_extraction", "label": "Clean Mesh Extraction", "type": "boolean"}
+      ]
+    },
+    {
+      "slug": "generative-comfyui",
+      "name": "Generative / ComfyUI Workflows",
+      "overview_doc": "Split between consumer-grade open pipelines and studio-safe licensed pipelines. ComfyUI is the node-based, open-source visual-programming layer for Stable Diffusion and similar models, flexible but with uncertain-provenance training data for some models — a legal exposure issue for commercial work. Foundry's Griptape/Bria integration is the studio-safe answer: rights-clear, licensed-data-trained nodes native inside Nuke, keeping alpha/metadata/provenance intact instead of round-tripping through a browser tool.",
+      "comparison_attributes": [
+        {"key": "licensing_clarity", "label": "Licensing Clarity", "type": "text"},
+        {"key": "native_dcc", "label": "Native DCC", "type": "text"}
+      ]
+    },
+    {
+      "slug": "mocap-animation",
+      "name": "Mocap & Animation",
+      "overview_doc": "Markerless capture (Move AI, DeepMotion) turns phone/multi-camera video into 3D motion data without a suit, exporting directly to Maya HIK format; Move AI explicitly supports multi-person capture for background/crowd characters. Cascadeur is not capture — it's an AI-assisted keyframe editor (auto-posing, physics-aware in-betweening) used to polish capture output. Known limitation across every source: gross body motion (walking, gesturing) is production-usable, but fine finger articulation, foot-ground contact, and occluded limbs still need manual cleanup.",
+      "comparison_attributes": [
+        {"key": "capture_type", "label": "Capture Type", "type": "text"},
+        {"key": "multi_person", "label": "Multi-Person Capture", "type": "boolean"},
+        {"key": "export_format", "label": "Export Format", "type": "text"}
+      ]
+    }
+  ],
+
+  "tools": [
+    {"department_slug": "roto-tracking", "name": "SLAPSHOT Autopilot", "tier": "automated", "host_app": "web", "status": "active", "vendor": "SLAPSHOT", "blurb": "Fully autonomous roto across every layer in a shot, exports organized cryptomatte.", "source_urls": ["https://slapshot.ai/", "https://www.televisual.com/news/slapshot-launches-auto-ai-rotoscoping-system/"]},
+    {"department_slug": "roto-tracking", "name": "Silhouette (ML tracking suite)", "tier": "automated", "host_app": "standalone", "status": "active", "vendor": "Boris FX", "blurb": "Head Track ML, Object Tracker, Point Track ML — automated tracking through occlusion and lighting change.", "source_urls": ["https://borisfx.com/products/silhouette/"]},
+    {"department_slug": "roto-tracking", "name": "BigCat / CopyCat", "tier": "automated", "host_app": "Nuke", "status": "active", "vendor": "Foundry", "blurb": "Trains ML roto/cleanup models, scaled to hundreds or thousands of frames, native to Nuke.", "source_urls": ["https://www.foundry.com/ai-solutions"]},
+
+    {"department_slug": "compositing", "name": "Bria / Griptape for Nuke", "tier": "assisted", "host_app": "Nuke", "status": "active", "vendor": "Bria / Foundry", "blurb": "Rights-clear generative nodes native in the Nuke comp graph, provenance-tracked, licensed training data.", "source_urls": ["https://bria.ai/blog/bringing-generative-ai-into-nuke-natively"]},
+    {"department_slug": "compositing", "name": "Beeble (relighting/pass generation)", "tier": "assisted", "host_app": "plugin", "status": "active", "vendor": "Beeble", "blurb": "Extracts full PBR passes from ordinary footage for post-capture relighting; local desktop version runs fully on-prem.", "source_urls": ["https://beeble.ai/", "https://www.cined.com/beeble-studio-launches-with-local-4k-ai-relighting-and-switchlight-3-0-engine/"]},
+
+    {"department_slug": "modeling", "name": "Rodin (Hyper3D)", "tier": "assisted", "host_app": "web", "status": "active", "vendor": "Deemos / ByteDance-backed", "blurb": "Leads on geometric fidelity, hard-surface and mechanical objects, professional export workflows.", "source_urls": ["https://www.indiehackers.com/post/best-ai-3d-model-generator-in-2026-i-tested-9-of-the-best-and-here-is-what-i-found-70ecab1a0a"]},
+    {"department_slug": "modeling", "name": "Meshy", "tier": "assisted", "host_app": "web", "status": "active", "vendor": "Meshy", "blurb": "Most complete end-to-end pipeline: text/image to model to PBR texture in one platform.", "source_urls": ["https://www.meshy.ai/blog/best-ai-tools-for-3d-game-assets"]},
+    {"department_slug": "modeling", "name": "Tripo AI", "tier": "assisted", "host_app": "web", "status": "active", "vendor": "Tripo", "blurb": "Fastest generation, best for stylized/hand-painted look, quad retopology via Smart Mesh.", "source_urls": ["https://www.strayspark.studio/blog/generative-3d-tools-comparison-meshy-rodin-tripo-csm-2026"]},
+    {"department_slug": "modeling", "name": "TRELLIS 2", "tier": "assisted", "host_app": "standalone", "status": "active", "vendor": "Microsoft Research (open-source)", "blurb": "Leading open-source option; image-to-3D with Gaussian-splat output, runs inside ComfyUI.", "source_urls": ["https://trellis2.app/blog/best-ai-3d-model-generator"]},
+
+    {"department_slug": "texturing", "name": "Meshy AI Texture Generator", "tier": "automated", "host_app": "web", "status": "active", "vendor": "Meshy", "blurb": "UV-aware texturing, automatic seam handling, full PBR set output.", "source_urls": ["https://www.meshy.ai/blog/best-ai-texture-generators"]},
+    {"department_slug": "texturing", "name": "Adobe Substance 3D (generative)", "tier": "assisted", "host_app": "standalone", "status": "active", "vendor": "Adobe", "blurb": "Generative AI embedded directly in the industry-standard texturing toolset, not a bolt-on.", "source_urls": ["https://www.aimagicx.com/blog/ai-texture-generator-game-development-2026"]},
+
+    {"department_slug": "rigging", "name": "Advanced Skeleton", "tier": "assisted", "host_app": "Maya", "status": "active", "vendor": "Advanced Skeleton", "blurb": "Native Maya nodes only (no custom node dependency), HumanIK-compatible, includes facial/ARKit rigging.", "source_urls": ["https://forums.3dmodels.org/autodesk-maya/whats-your-go-to-autorigger-for-maya/"]},
+    {"department_slug": "rigging", "name": "mGear", "tier": "assisted", "host_app": "Maya", "status": "active", "vendor": "Open-source (MIT)", "blurb": "Modular rig framework, biped/quadruped templates, maps mocap from HumanIK skeleton to rig templates.", "source_urls": ["https://www.cgchannel.com/2018/05/miquel-campos-releases-mgear-2-0-for-maya/"]},
+    {"department_slug": "rigging", "name": "Maya HumanIK", "tier": "assisted", "host_app": "Maya", "status": "active", "vendor": "Autodesk (native)", "blurb": "Built-in retargeting backbone for bipedal mocap-driven rigs; what Advanced Skeleton and mGear both hook into.", "source_urls": []},
+    {"department_slug": "rigging", "name": "KineFX + APEX + Autorig Builder", "tier": "assisted", "host_app": "Houdini", "status": "active", "vendor": "SideFX (native)", "blurb": "Procedural rigging (tag joints, assign components) plus one-click Autorig Builder on top, fully editable output.", "source_urls": ["https://digitalproduction.com/2026/07/01/houdini-rigging-how-i-learned-to-stop-worrying-and-start-loving-apex/"]},
+    {"department_slug": "rigging", "name": "AccuRIG", "tier": "assisted", "host_app": "standalone", "status": "active", "vendor": "Reallusion", "blurb": "Free standalone auto-rigger for clean humanoid rigs, exports to Blender/Maya/Unreal/Unity.", "source_urls": ["https://www.meshy.ai/blog/best-ai-auto-rigging-tool"]},
+
+    {"department_slug": "muscle-skinning", "name": "Ziva VFX", "tier": "assisted", "host_app": "Maya", "status": "discontinued", "vendor": "Unity (formerly)", "blurb": "ML-based muscle/tissue deformation. Sales and updates discontinued by Unity; perpetual licenses still function but unsupported.", "replacement_note": "houdini-otis-solver / maya-ml-deformer", "source_urls": ["https://superrendersfarm.com/article/ziva-vfx-vs-houdini-simulation"]},
+    {"department_slug": "muscle-skinning", "name": "Maya ML Deformer", "tier": "assisted", "host_app": "Maya", "status": "active", "vendor": "Autodesk (native)", "blurb": "Native machine-learned fast approximation of complex/slow deformation rigs; introduced 2025.2, refined in Maya 2026.", "source_urls": ["https://www.cgchannel.com/2025/03/autodesk-releases-maya-2026-and-maya-creative-2026/"]},
+    {"department_slug": "muscle-skinning", "name": "Houdini Otis (organic tissue solver)", "tier": "assisted", "host_app": "Houdini", "status": "active", "vendor": "SideFX (native)", "blurb": "SideFX's explicit migration path for teams moving off Ziva; native muscle activation, tissue, muscle transfer.", "source_urls": ["https://www.cgchannel.com/2025/08/sneak-peek-houdini-21-see-300-features-listed-in-the-video/"]},
+    {"department_slug": "muscle-skinning", "name": "Houdini ML Deform", "tier": "assisted", "host_app": "Houdini", "status": "active", "vendor": "SideFX (native)", "blurb": "Houdini-native equivalent to Maya's ML Deformer, built into KineFX, PCA-compressed displacement training.", "source_urls": ["https://www.sidefx.com/docs/houdini/news/20_5/ml.html"]},
+    {"department_slug": "muscle-skinning", "name": "ngSkinTools", "tier": "artist_led", "host_app": "Maya", "status": "active", "vendor": "ngSkinTools", "blurb": "Industry-standard manual skin-weight painting layer on top of native skinClusters, not itself AI.", "source_urls": []},
+
+    {"department_slug": "crowds", "name": "Golaem", "tier": "assisted", "host_app": "Maya", "status": "active", "vendor": "Autodesk (acquired Aug 2024)", "blurb": "Now bundled in Maya's M&E Collection; explicitly pitched for stadium crowds. Procedural core with AI-assisted workflows layered in.", "source_urls": ["https://blogs.autodesk.com/media-and-entertainment/2025/03/26/introducing-new-crowd-tools-ai-and-connected-workflows/"]},
+    {"department_slug": "crowds", "name": "Miarmy", "tier": "assisted", "host_app": "Maya", "status": "active", "vendor": "Basefount", "blurb": "AI behavioral animation engine, character logic networks, used on FIFA and Assassin's Creed.", "source_urls": ["https://www.renderhub.com/blog/enhancing-game-realism-top-5-crowd-simulation-tools"]},
+    {"department_slug": "crowds", "name": "Massive", "tier": "assisted", "host_app": "standalone", "status": "active", "vendor": "Massive Software", "blurb": "Higher-end reference point for crowds reacting to environment via real AI decision-making rather than pure rules.", "source_urls": ["https://windowsreport.com/crowd-simulation-software/"]},
+    {"department_slug": "crowds", "name": "Houdini Crowds", "tier": "assisted", "host_app": "Houdini", "status": "active", "vendor": "SideFX (native)", "blurb": "Native procedural crowd system with agent intelligence; no third-party plugin/version risk.", "source_urls": ["https://www.sidefx.com/products/houdini/characters/"]},
+
+    {"department_slug": "rendering-denoising", "name": "OptiX / Intel OIDN (AI denoising)", "tier": "automated", "host_app": "standalone", "status": "active", "vendor": "NVIDIA / Intel", "blurb": "Standard across V-Ray, Arnold, Redshift, Cycles, Karma. Cuts sample counts ~2000-4000 to ~200-500. OIDN won an Academy Technical Achievement Award (2025).", "source_urls": ["https://superrendersfarm.com/article/vfx-industry-trends-2026"]},
+    {"department_slug": "rendering-denoising", "name": "Topaz Video AI", "tier": "automated", "host_app": "standalone", "status": "active", "vendor": "Topaz Labs", "blurb": "Local upscaling, denoising/restoration, stabilization, frame interpolation; 19+ specialized models as of 2026.", "source_urls": ["https://unifab.ai/resource/topaz-video-ai-review"]},
+
+    {"department_slug": "capture-splats-photogrammetry", "name": "3D Gaussian Splatting (production tooling)", "tier": "assisted", "host_app": "standalone", "status": "active", "vendor": "Various (Nuke 17, Houdini 21 preview, V-Ray 7, OpenUSD 26.03)", "blurb": "Framestore delivered ~40 final-pixel shots on Superman (2025). No full-material relighting or clean mesh extraction yet in commercial tools.", "source_urls": ["https://cglounge.studio/journal/gaussian-splatting-for-vfx", "https://superrendersfarm.com/article/vfx-industry-trends-2026"]},
+
+    {"department_slug": "generative-comfyui", "name": "ComfyUI", "tier": "assisted", "host_app": "standalone", "status": "active", "vendor": "Open-source", "blurb": "Node-based visual programming for Stable Diffusion and related models; flexible but licensing/provenance varies by model used.", "source_urls": ["https://www.actionvfx.com/blog/top-10-ai-tools-for-vfx-workflows"]},
+
+    {"department_slug": "mocap-animation", "name": "Move AI", "tier": "assisted", "host_app": "standalone", "status": "active", "vendor": "Move AI", "blurb": "Markerless mocap from phone/multi-camera video, exports pre/post-retarget FBX directly to Maya HIK, supports multi-person/crowd capture.", "source_urls": ["https://aitoolsexplorer.com/ai-tools/move-ai-markerless-motion-capture/"]},
+    {"department_slug": "mocap-animation", "name": "DeepMotion Animate 3D", "tier": "assisted", "host_app": "web", "status": "active", "vendor": "DeepMotion", "blurb": "Browser-based markerless mocap, up to 8 characters from a single video; gross motion strong, finger/foot-contact still weak.", "source_urls": ["https://www.aichatdaily.com/tools/deepmotion"]},
+    {"department_slug": "mocap-animation", "name": "Cascadeur", "tier": "assisted", "host_app": "standalone", "status": "active", "vendor": "Nekki", "blurb": "AI-assisted keyframe editor: auto-posing, physics-aware in-betweening, collision cleanup. Used to polish raw mocap, not to capture it.", "source_urls": ["https://www.neolemon.com/blog/best-ai-motion-capture-tools-for-character-animation/"]},
+    {"department_slug": "mocap-animation", "name": "Autodesk Flow Studio (formerly Wonder Studio)", "tier": "assisted", "host_app": "web", "status": "active", "vendor": "Autodesk", "blurb": "Full live-action-to-CG pipeline: markerless body/hand/face mocap, camera tracking, clean plates, character compositing.", "source_urls": ["https://www.neolemon.com/blog/best-ai-motion-capture-tools-for-character-animation/"]}
+  ]
+}

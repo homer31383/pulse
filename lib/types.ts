@@ -15,6 +15,9 @@ export interface ChannelGroup {
 // Per-channel scheduled output. NULL inherits the profile-level setting.
 export type ChannelScheduleOutput = 'briefing' | 'digest' | 'both'
 
+// Which section of the Weekly Recap email a channel's content is filed under (migration 033).
+export type RecapGroup = 'pulse' | 'post_pulse'
+
 export interface Channel {
   id: string
   name: string
@@ -27,6 +30,7 @@ export interface Channel {
   serendipity_mode: boolean
   schedule_interval_days?: number | null   // NULL = inherit profile setting (migration 017)
   schedule_output?: ChannelScheduleOutput | null // NULL = inherit profile setting
+  recap_group?: RecapGroup                       // default 'pulse' (migration 033)
   created_at: string
   updated_at: string
 }
@@ -152,6 +156,11 @@ export interface AppSettings {
   schedule_interval_days: number  // 1 = daily, 7 = weekly, 14 = bi-weekly, …
   schedule_channel_ids: string[]  // empty = all channels
   schedule_output: ScheduleOutput
+  // Weekly Recap email (migration 033): compiles the last 7 days, never generates
+  recap_email_enabled: boolean
+  recap_day: number               // 0 = Sunday … 6 = Saturday (Eastern Time)
+  recap_time: string              // 'HH:MM' Eastern Time; runs on the hour
+  recap_last_run_at?: string | null
   ticker_items: TickerItem[]
 }
 

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import type { Channel, ChannelGroup, ConversationMessage, ConfigChatStreamEvent, BriefingWithCost, Profile } from '@/lib/types'
+import type { Channel, ChannelGroup, ConversationMessage, ConfigChatStreamEvent, BriefingWithCost, Profile, RecapGroup } from '@/lib/types'
 import { BriefingHistorySection } from '@/components/BriefingHistorySection'
 
 type Tab = 'settings' | 'chat'
@@ -32,6 +32,7 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
   const [newQuery, setNewQuery] = useState('')
   const [groupId, setGroupId] = useState<string | null>(initialChannel.group_id ?? null)
   const [serendipityMode, setSerendipityMode] = useState(initialChannel.serendipity_mode ?? false)
+  const [recapGroup, setRecapGroup] = useState<RecapGroup>(initialChannel.recap_group ?? 'pulse')
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
 
   // ── Chat state ───────────────────────────────────────────────────────────────
@@ -71,6 +72,7 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
           search_queries: searchQueries.filter((q) => q.trim()),
           group_id: groupId,
           serendipity_mode: serendipityMode,
+          recap_group: recapGroup,
         }),
       })
       if (!res.ok) throw new Error()
@@ -425,6 +427,33 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
                 Add
               </button>
             </div>
+          </div>
+
+          {/* ── Weekly recap section ── */}
+          <div className="pt-2">
+            <label className="block text-xs font-sans font-medium text-ink-100 uppercase tracking-wider mb-3">
+              Weekly recap
+            </label>
+            <div className="flex gap-2">
+              {([['pulse', 'Pulse'], ['post_pulse', 'Post-Pulse']] as [RecapGroup, string][]).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setRecapGroup(id)}
+                  className={[
+                    'text-xs px-3 py-1.5 rounded-full border transition-colors',
+                    recapGroup === id
+                      ? 'border-brand-600 bg-brand-50 text-brand-700 font-medium'
+                      : 'border-cream-300 text-ink-100 hover:border-brand-600/50 hover:text-brand-700',
+                  ].join(' ')}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-ink-50 mt-2 leading-relaxed">
+              Which section of the weekly recap email this channel&rsquo;s briefings are filed under. Post-Pulse is for post-production and professional content.
+            </p>
           </div>
 
           {/* ── Serendipity Mode ── */}

@@ -36,6 +36,9 @@ export const SETTINGS_DEFAULTS: AppSettings = {
   schedule_interval_days: 1,
   schedule_channel_ids: [],
   schedule_output: 'briefings',
+  recap_email_enabled: false,
+  recap_day: 0,
+  recap_time: '07:00',
   ticker_items: [],
 }
 
@@ -51,6 +54,7 @@ const ALLOWED_FIELDS = [
   'briefing_retention_days',
   'tts_enabled', 'tts_voice', 'tts_speed', 'tts_provider', 'tts_elevenlabs_voice_id',
   'schedule_enabled', 'schedule_time', 'schedule_interval_days', 'schedule_channel_ids', 'schedule_output',
+  'recap_email_enabled', 'recap_day', 'recap_time',
   'ticker_items',
 ] as const
 

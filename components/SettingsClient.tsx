@@ -9,6 +9,8 @@ import type { UsageData } from '@/app/api/usage/route'
 
 const TTS_SPEEDS = [0.75, 1, 1.25, 1.5, 2] as const
 
+const RECAP_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
 const SCHEDULE_OUTPUTS: { id: ScheduleOutput; label: string; description: string }[] = [
   { id: 'briefings', label: 'Briefings', description: 'One briefing per channel' },
   { id: 'digest', label: 'Digest', description: 'A single unified digest' },
@@ -158,6 +160,30 @@ export function SettingsClient({ initialSettings, channels = [], costBasis }: Pr
   const [emailAddress, setEmailAddress] = useState(initialSettings.email_address ?? '')
   const [notificationsEnabled, setNotificationsEnabled] = useState(initialSettings.notifications_enabled)
   const [notificationTime, setNotificationTime] = useState(initialSettings.notification_time ?? '08:00')
+
+  // ── Weekly recap email (compile only — never generates) ──────────────────
+  const [recapEnabled, setRecapEnabled] = useState(initialSettings.recap_email_enabled ?? false)
+  const [recapDay, setRecapDay] = useState<number>(initialSettings.recap_day ?? 0)
+  const [recapTime, setRecapTime] = useState(initialSettings.recap_time ?? '07:00')
+  const [recapTest, setRecapTest] = useState<{ state: 'idle' | 'sending' | 'done' | 'error'; message?: string }>({ state: 'idle' })
+
+  async function sendRecapNow() {
+    if (recapTest.state === 'sending') return
+    setRecapTest({ state: 'sending' })
+    try {
+      const res = await fetch('/api/recap', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`)
+      const counts = [
+        data.briefingCount ? `${data.briefingCount} briefing${data.briefingCount === 1 ? '' : 's'}` : null,
+        data.digestCount ? `${data.digestCount} digest${data.digestCount === 1 ? '' : 's'}` : null,
+      ].filter(Boolean).join(', ')
+      const message = data.status === 'sent' ? `Sent to ${data.to} (${counts}).` : (data.message ?? 'Nothing to send.')
+      setRecapTest({ state: 'done', message })
+    } catch (err) {
+      setRecapTest({ state: 'error', message: err instanceof Error ? err.message : 'Send failed' })
+    }
+  }
 
   // ── Scheduled briefings ──────────────────────────────────────────────────
   const [scheduleEnabled, setScheduleEnabled] = useState(initialSettings.schedule_enabled ?? false)
@@ -1060,8 +1086,74 @@ export function SettingsClient({ initialSettings, channels = [], costBasis }: Pr
                   className="w-full bg-cream-100 border border-cream-300 rounded-xl px-3 py-2 text-sm text-ink-300 placeholder:text-ink-50 focus:outline-none focus:border-brand-500/60"
                 />
                 <p className="text-xs text-ink-50">
-                  Email sending is not yet connected. Your address is saved for when it is.
+                  Per-briefing email sending is not yet connected. Your address is saved for when it is.
                 </p>
+              </div>
+            )}
+          </div>
+
+          {/* Weekly recap email */}
+          <div>
+            <ToggleRow
+              label="Send weekly recap email"
+              description="One email a week compiling whatever was generated in the previous 7 days, in Pulse and Post-Pulse sections. It never generates anything itself."
+              checked={recapEnabled}
+              onChange={(v) => { setRecapEnabled(v); save({ recap_email_enabled: v }) }}
+            />
+            {recapEnabled && (
+              <div className="pb-4 space-y-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <label className="text-xs text-ink-100">Every</label>
+                  <select
+                    value={recapDay}
+                    onChange={(e) => { const d = parseInt(e.target.value, 10); setRecapDay(d); save({ recap_day: d }) }}
+                    className="bg-cream-100 border border-cream-300 rounded-lg px-2 py-1.5 text-sm text-ink-200 focus:outline-none focus:border-brand-500/60"
+                  >
+                    {RECAP_DAYS.map((name, i) => <option key={name} value={i}>{name}</option>)}
+                  </select>
+                  <label className="text-xs text-ink-100">at</label>
+                  <input
+                    type="time"
+                    step={3600}
+                    value={recapTime}
+                    onChange={(e) => setRecapTime(e.target.value)}
+                    onBlur={() => save({ recap_time: recapTime })}
+                    className="bg-cream-100 border border-cream-300 rounded-lg px-2 py-1.5 text-sm text-ink-200 focus:outline-none focus:border-brand-500/60"
+                  />
+                  <span className="text-xs text-ink-50">Eastern Time — runs on the hour</span>
+                </div>
+                <input
+                  type="email"
+                  value={emailAddress}
+                  onChange={(e) => setEmailAddress(e.target.value)}
+                  onBlur={() => save({ email_address: emailAddress || null })}
+                  placeholder="you@example.com"
+                  className="w-full bg-cream-100 border border-cream-300 rounded-xl px-3 py-2 text-sm text-ink-300 placeholder:text-ink-50 focus:outline-none focus:border-brand-500/60"
+                />
+                <p className="text-xs text-ink-50">
+                  Channels are filed under Pulse or Post-Pulse from each channel&rsquo;s config page. Sections with nothing that week are left out; if nothing was generated at all, no email is sent.
+                </p>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={sendRecapNow}
+                    disabled={recapTest.state === 'sending'}
+                    className="text-xs px-3 py-1.5 rounded-full border border-cream-300 text-ink-100 hover:border-brand-600/50 hover:text-brand-700 transition-colors disabled:opacity-50"
+                  >
+                    {recapTest.state === 'sending' ? 'Sending…' : 'Send this week’s recap now'}
+                  </button>
+                  <a
+                    href="/api/recap"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-brand-700 hover:underline"
+                  >
+                    Preview
+                  </a>
+                  {recapTest.message && (
+                    <span className={`text-xs ${recapTest.state === 'error' ? 'text-red-600' : 'text-ink-50'}`}>{recapTest.message}</span>
+                  )}
+                </div>
               </div>
             )}
           </div>
