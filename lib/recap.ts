@@ -2,7 +2,8 @@
 //
 // COMPILE ONLY, NEVER GENERATE. This module reads briefings/digests that
 // already exist in the database (created in the last 7 days, scheduled or
-// on demand), files them under two sections by the channel's recap_group,
+// on demand; the Post-Pulse catch-up panel reuses the same fetch + compile
+// over its own window), files them under two sections by the channel's recap_group,
 // renders email-safe broadsheet HTML, and sends it over SMTP. It imports
 // nothing from lib/generation.ts and never calls the Anthropic client. A
 // channel that produced nothing in the window simply does not appear.
@@ -35,6 +36,7 @@ export interface RecapBriefingRow {
   channel_id: string
   content: string
   scheduled?: boolean | null
+  read_at?: string | null
   created_at: string
 }
 export interface RecapDigestRow {
@@ -43,6 +45,7 @@ export interface RecapDigestRow {
   channel_ids: string[]
   channel_names: string[]
   scheduled?: boolean | null
+  read_at?: string | null
   created_at: string
 }
 
@@ -61,6 +64,7 @@ export interface RecapEntry {
   excerpt: string
   createdAt: string
   scheduled: boolean
+  readAt: string | null             // the email ignores it; the Post-Pulse catch-up panel shows the unread dot
   url: string
 }
 export interface RecapChannel {
@@ -91,10 +95,27 @@ const SECTION_ORDER: RecapGroup[] = ['pulse', 'post_pulse']
 
 // ── Database reads (the only I/O besides SMTP) ───────────────────────────────
 
-export async function fetchRecapInputs(profileId: string, now = new Date()): Promise<RecapInputs> {
-  const windowEnd = now
-  const windowStart = new Date(now.getTime() - RECAP_WINDOW_DAYS * 86_400_000)
-  const cutoff = windowStart.toISOString()
+// The window the weekly email covers: the 7 days up to `now`.
+export interface RecapRange {
+  since: Date   // exclusive
+  until: Date   // inclusive
+}
+export function recapWindow(now = new Date()): RecapRange {
+  return { since: new Date(now.getTime() - RECAP_WINDOW_DAYS * 86_400_000), until: now }
+}
+
+// Every briefing/digest the profile created in (since, until]. With `group`,
+// only content touching that recap_group's channels: briefings in those
+// channels, digests whose channel_ids overlap them. All channels are still
+// returned either way, because the digest splitter needs every channel name
+// to match stories and to keep a channel called "… Outlook" out of the asides.
+export async function fetchRecapInputs(
+  profileId: string,
+  range: RecapRange = recapWindow(),
+  opts: { group?: RecapGroup } = {},
+): Promise<RecapInputs> {
+  const since = range.since.toISOString()
+  const until = range.until.toISOString()
 
   const { data: channels, error: chErr } = await supabase
     .from('channels')
@@ -103,23 +124,33 @@ export async function fetchRecapInputs(profileId: string, now = new Date()): Pro
     .order('position', { ascending: true })
   if (chErr) throw new Error(`channels: ${chErr.message}`)
 
-  const channelIds = (channels ?? []).map((c) => c.id as string)
+  const channelIds = (channels ?? [])
+    .filter((c) => !opts.group || (c.recap_group ?? 'pulse') === opts.group)
+    .map((c) => c.id as string)
+
+  const digestQuery = supabase
+    .from('digests')
+    .select('id, content, channel_ids, channel_names, scheduled, read_at, created_at')
+    .eq('profile_id', profileId)
+    .gt('created_at', since)
+    .lte('created_at', until)
+    .order('created_at', { ascending: false })
 
   const [{ data: briefings, error: bErr }, { data: digests, error: dErr }] = await Promise.all([
     channelIds.length
       ? supabase
           .from('briefings')
-          .select('id, channel_id, content, scheduled, created_at')
+          .select('id, channel_id, content, scheduled, read_at, created_at')
           .in('channel_id', channelIds)
-          .gte('created_at', cutoff)
+          .gt('created_at', since)
+          .lte('created_at', until)
           .order('created_at', { ascending: false })
       : Promise.resolve({ data: [] as RecapBriefingRow[], error: null }),
-    supabase
-      .from('digests')
-      .select('id, content, channel_ids, channel_names, scheduled, created_at')
-      .eq('profile_id', profileId)
-      .gte('created_at', cutoff)
-      .order('created_at', { ascending: false }),
+    opts.group
+      ? channelIds.length
+        ? digestQuery.overlaps('channel_ids', channelIds)
+        : Promise.resolve({ data: [] as RecapDigestRow[], error: null })
+      : digestQuery,
   ])
   if (bErr) throw new Error(`briefings: ${bErr.message}`)
   if (dErr) throw new Error(`digests: ${dErr.message}`)
@@ -128,14 +159,12 @@ export async function fetchRecapInputs(profileId: string, now = new Date()): Pro
     channels: (channels ?? []) as RecapChannelRow[],
     briefings: (briefings ?? []) as RecapBriefingRow[],
     digests: (digests ?? []) as RecapDigestRow[],
-    windowStart,
-    windowEnd,
+    windowStart: range.since,
+    windowEnd: range.until,
   }
 }
 
-// ── Compilation (pure) ───────────────────────────────────────────────────────
-
-function normName(s: string): string {
+export function normName(s: string): string {
   return s.toLowerCase().replace(/\s+/g, ' ').trim()
 }
 
@@ -193,6 +222,7 @@ export function compileRecap(inputs: RecapInputs, baseUrl = recapBaseUrl()): Wee
       excerpt: excerptFor(parsed.sections),
       createdAt: b.created_at,
       scheduled: !!b.scheduled,
+      readAt: b.read_at ?? null,
       url: `${baseUrl}/read/briefing/${b.id}`,
     })
   }
@@ -218,6 +248,7 @@ export function compileRecap(inputs: RecapInputs, baseUrl = recapBaseUrl()): Wee
         excerpt: prose ? truncate(prose) : '',
         createdAt: d.created_at,
         scheduled: !!d.scheduled,
+        readAt: d.read_at ?? null,
         url: `${baseUrl}/read/digest/${d.id}`,
       })
       placed++
@@ -235,6 +266,7 @@ export function compileRecap(inputs: RecapInputs, baseUrl = recapBaseUrl()): Wee
           excerpt: excerptFor(parsed.sections),
           createdAt: d.created_at,
           scheduled: !!d.scheduled,
+          readAt: d.read_at ?? null,
           url: `${baseUrl}/read/digest/${d.id}`,
         })
       }
@@ -447,7 +479,7 @@ export interface RecapRunResult {
 }
 
 export async function compileAndSendRecap(profileId: string, recipient: string | null, now = new Date()): Promise<RecapRunResult> {
-  const inputs = await fetchRecapInputs(profileId, now)
+  const inputs = await fetchRecapInputs(profileId, recapWindow(now))
   const recap = compileRecap(inputs)
   if (recap.unplacedDigestStories.length) {
     console.warn(`[recap] digest stories matched no channel: ${recap.unplacedDigestStories.join(', ')}`)

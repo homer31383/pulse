@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import {
   buildProposal,
   findNameCollision,
+  normalizeToolName,
   validateStoredProposal,
   type PpProposalContext,
   type PpProposalInput,
@@ -553,6 +554,68 @@ export async function rejectQueueItem(queueId: string): Promise<QueueResolution>
     targetType: (item.target_type as PpQueueTargetType) ?? 'tool',
     toolId: item.proposed_tool_id ?? null,
     departmentId: item.proposed_department_id ?? null,
+    changedFields: [],
+  }
+}
+
+// Undo for a dismiss (the catch-up panel's 6-second toast), not a general
+// "reopen": nothing dedupes proposals against the queue, so a later research
+// run can re-propose a rejected item (DiffHDR, Sep/Oct 2026) and reopening an
+// old rejection could leave two pending copies. So it only acts on a row
+// rejected within REOPEN_WINDOW_MS, and refuses (409) when another pending
+// row already targets the same thing. Writes nothing but status/resolved_at.
+export const REOPEN_WINDOW_MS = 60_000
+
+export async function reopenQueueItem(queueId: string): Promise<QueueResolution> {
+  const { data: item, error } = await supabase.from('pp_queue').select('*').eq('id', queueId).maybeSingle()
+  if (error) return { ok: false, status: 500, error: error.message }
+  if (!item) return { ok: false, status: 404, error: 'Queue item not found' }
+  if (item.status !== 'rejected') return { ok: false, status: 409, error: `Only a dismissed item can be restored; this one is ${item.status}` }
+  const resolvedAt = item.resolved_at ? Date.parse(item.resolved_at as string) : NaN
+  if (!(Date.now() - resolvedAt <= REOPEN_WINDOW_MS)) {
+    return { ok: false, status: 409, error: 'Too late to undo: it was dismissed more than a minute ago' }
+  }
+
+  // Pending-duplicate guard: same tool/department for an update, same
+  // normalised name (findNameCollision's rule) for a create.
+  const queued = normalizeQueueItem(item as Record<string, unknown>)
+  const { data: pending, error: pendErr } = await supabase
+    .from('pp_queue')
+    .select('*')
+    .eq('status', 'pending')
+    .eq('target_type', queued.target_type)
+    .neq('id', queueId)
+  if (pendErr) return { ok: false, status: 500, error: pendErr.message }
+  const nameKey = (changes: Record<string, unknown>) =>
+    typeof changes.name === 'string' ? normalizeToolName(changes.name).join(' ') : ''
+  const ownKey = nameKey(queued.proposed_changes)
+  const dup = (pending ?? []).map((r) => normalizeQueueItem(r as Record<string, unknown>)).find((p) => {
+    if (queued.proposed_tool_id) return p.proposed_tool_id === queued.proposed_tool_id
+    if (queued.proposed_department_id) return p.proposed_department_id === queued.proposed_department_id
+    return !p.proposed_tool_id && !p.proposed_department_id && !!ownKey && nameKey(p.proposed_changes) === ownKey
+  })
+  if (dup) {
+    return {
+      ok: false,
+      status: 409,
+      error: `Not restored: another pending item already covers this (queued ${new Date(dup.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`,
+    }
+  }
+
+  const { data: reopened, error: updErr } = await supabase
+    .from('pp_queue')
+    .update({ status: 'pending', resolved_at: null })
+    .eq('id', queueId)
+    .eq('status', 'rejected')
+    .select('id')
+    .maybeSingle()
+  if (updErr) return { ok: false, status: 500, error: updErr.message }
+  if (!reopened) return { ok: false, status: 409, error: 'It changed while restoring; reload the review queue' }
+  return {
+    ok: true,
+    targetType: queued.target_type,
+    toolId: queued.proposed_tool_id,
+    departmentId: queued.proposed_department_id,
     changedFields: [],
   }
 }

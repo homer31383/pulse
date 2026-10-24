@@ -16,13 +16,14 @@ interface Props {
   sources: Source[]
   createdAt: string
   alreadyRead: boolean
+  backHref?: string                // '/post-pulse' when opened from the catch-up panel
 }
 
 function dateLabel(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
 }
 
-export function ReadArticleClient({ kind, id, title, subtitle, content, sources, createdAt, alreadyRead }: Props) {
+export function ReadArticleClient({ kind, id, title, subtitle, content, sources, createdAt, alreadyRead, backHref = '/listen' }: Props) {
   const speechId = `${kind}:${id}`
   const endRef = useRef<HTMLDivElement>(null)
   const [read, setRead] = useState(alreadyRead)
@@ -52,9 +53,9 @@ export function ReadArticleClient({ kind, id, title, subtitle, content, sources,
       <header className="sticky top-0 z-20 bg-[#F0ECF4]/95 backdrop-blur-sm border-b-[0.5px] border-press-hair px-4 py-3">
         <div className="max-w-2xl mx-auto flex items-center gap-3">
           <Link
-            href="/listen"
+            href={backHref}
             className="p-1.5 rounded-lg text-press-muted hover:text-press-ink hover:bg-press-accent/10 transition-colors"
-            aria-label="Back to the listen queue"
+            aria-label={backHref === '/listen' ? 'Back to the listen queue' : 'Back to Post-Pulse'}
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />

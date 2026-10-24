@@ -28,6 +28,35 @@ body {
   border-radius: 3px;
 }
 
+/* Catch-up panel review list: its own scroll area inside the page, so the
+   scrollbar has to be noticeable on desktop (the global 3px one isn't).
+   No overscroll-behavior on purpose: at either end the wheel/touch scroll
+   chains to the page. -webkit-scrollbar rules only apply while
+   scrollbar-width is unset, so Firefox gets the standard properties
+   separately. */
+.review-scroll {
+  -webkit-overflow-scrolling: touch;
+}
+@media (min-width: 768px) {
+  .review-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+  .review-scroll::-webkit-scrollbar-track {
+    background: rgba(107, 92, 165, 0.08);
+    border-radius: 3px;
+  }
+  .review-scroll::-webkit-scrollbar-thumb {
+    background: #b8b0c0;
+    border-radius: 3px;
+  }
+  @supports not selector(::-webkit-scrollbar) {
+    .review-scroll {
+      scrollbar-width: thin;
+      scrollbar-color: #b8b0c0 rgba(107, 92, 165, 0.08);
+    }
+  }
+}
+
 /* Smooth tap highlight removal on mobile */
 * {
   -webkit-tap-highlight-color: transparent;

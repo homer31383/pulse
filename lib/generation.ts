@@ -156,6 +156,62 @@ function openingLines(content: string): string {
   return JSON.stringify(joined.length > 160 ? joined.slice(0, 157) + '…' : joined)
 }
 
+// Output guards shared by every generation path (briefings/digests here, the
+// Post Pulse catch-up summary in lib/post-pulse-catchup.ts). Throws instead
+// of letting a caller persist or cache a stub or a cut-off text.
+//
+// Empty/stub guard: a "successful" stream that never produced text (budget
+// exhausted on thinking/search, e.g. stop max_tokens) must fail loudly, not
+// persist sources-with-no-text.
+//
+// Truncation guard: hitting max_tokens mid-article saves a briefing that
+// cuts off mid-sentence — worse than no briefing, since nothing flags it as
+// broken. max_tokens is a PER-PASS cap: only the final writing pass
+// (thinking + article) hit it. A request's output_tokens sums every search
+// pass, so it can legitimately exceed the cap — don't compare the two.
+export function assertCompleteOutput(p: {
+  content: string
+  stopReason: string | null
+  maxTokens: number
+  minChars?: number          // below this the output counts as empty (default 300)
+  tag?: string               // log prefix (default '[generation]')
+  label?: string             // error prefix (default 'Generation')
+  noun?: string              // what was being written (default 'article')
+  context: string            // appended to the empty-output log line
+  emptyDetail: string        // appended to the empty-output error
+  truncatedDetail?: string   // inserted into the truncation log line
+}): void {
+  const { content, stopReason, maxTokens, context, emptyDetail } = p
+  const minChars = p.minChars ?? 300
+  const tag = p.tag ?? '[generation]'
+  const label = p.label ?? 'Generation'
+  const noun = p.noun ?? 'article'
+
+  if (content.trim().length < minChars) {
+    console.warn(`${tag} no ${noun} text: stop_reason=${stopReason}, content=${content.length} chars, ${context}`)
+    throw new Error(`${label} produced no ${noun} text (stop_reason: ${stopReason}, ${emptyDetail})`)
+  }
+  if (stopReason === 'max_tokens') {
+    // The API doesn't break out thinking tokens for these requests, so
+    // derive the final pass's thinking share: cap minus the written text.
+    const textTokens = Math.round(content.length / 4)
+    const thinkingEstimate = Math.max(0, maxTokens - textTokens)
+    const opening = openingLines(content)
+    const Noun = noun.charAt(0).toUpperCase() + noun.slice(1)
+    console.warn(
+      `${tag} truncated at max_tokens: final writing pass hit the ${maxTokens}-token per-pass cap. ` +
+      `${Noun} ${content.length} chars (~${textTokens} tokens), so ~${thinkingEstimate} tokens of that pass ` +
+      `went to thinking. ${p.truncatedDetail ? p.truncatedDetail + ' ' : ''}` +
+      `Opening: ${opening}`
+    )
+    throw new Error(
+      `${label} truncated: the final writing pass hit the ${maxTokens}-token per-pass cap after ` +
+      `${content.length} chars of ${noun} (~${textTokens} tokens; ~${thinkingEstimate} tokens of the pass ` +
+      `went to thinking). Opening: ${opening}`
+    )
+  }
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -391,46 +447,18 @@ export async function runWebSearchStream(params: {
       content = narration.content
     }
 
-    // Empty/stub guard: a "successful" stream that never produced article
-    // text (budget exhausted on thinking/search, e.g. stop max_tokens) must
-    // fail loudly, not persist sources-with-no-text. Live routes surface the
-    // error; the cron's hourly catch-up regenerates the channel.
-    if (content.trim().length < 300) {
-      console.warn(
-        `[generation] no article text: stop_reason=${finalMsg.stop_reason}, content=${content.length} chars, ` +
-        `sources=${sources.length}, output_tokens=${total.outputTokens}, continuations=${continuations}`
-      )
-      throw new Error(
-        `Generation produced no article text (stop_reason: ${finalMsg.stop_reason}, ` +
-        `${sources.length} sources collected, ${total.outputTokens} output tokens spent)`
-      )
-    }
-    // Truncation guard: hitting max_tokens mid-article saves a briefing that
-    // cuts off mid-sentence — worse than no briefing, since nothing flags it
-    // as broken. Same recovery path as the empty-stub case above.
-    //
-    // max_tokens is a PER-PASS cap: only the final writing pass (thinking +
-    // article) hit it. The request's output_tokens sums every search pass,
-    // so it can legitimately exceed the cap — don't compare the two.
-    if ((finalMsg.stop_reason as string) === 'max_tokens') {
-      // The API doesn't break out thinking tokens for these requests, so
-      // derive the final pass's thinking share: cap minus the article text.
-      const articleTokens = Math.round(content.length / 4)
-      const thinkingEstimate = Math.max(0, maxTokens - articleTokens)
-      const opening = openingLines(content)
-      console.warn(
-        `[generation] truncated at max_tokens: final writing pass hit the ${maxTokens}-token per-pass cap. ` +
-        `Article ${content.length} chars (~${articleTokens} tokens), so ~${thinkingEstimate} tokens of that pass ` +
-        `went to thinking. This request: ${request.outputTokens} output tokens over ${request.webSearchCount} ` +
-        `searches (sums every pass — can exceed the cap); sources=${sources.length}, continuations=${continuations}. ` +
-        `Opening: ${opening}`
-      )
-      throw new Error(
-        `Generation truncated: the final writing pass hit the ${maxTokens}-token per-pass cap after ` +
-        `${content.length} chars of article (~${articleTokens} tokens; ~${thinkingEstimate} tokens of the pass ` +
-        `went to thinking). Opening: ${opening}`
-      )
-    }
+    // Live routes surface a guard error; the cron's hourly catch-up
+    // regenerates the channel.
+    assertCompleteOutput({
+      content,
+      stopReason: finalMsg.stop_reason as string,
+      maxTokens,
+      context: `sources=${sources.length}, output_tokens=${total.outputTokens}, continuations=${continuations}`,
+      emptyDetail: `${sources.length} sources collected, ${total.outputTokens} output tokens spent`,
+      truncatedDetail:
+        `This request: ${request.outputTokens} output tokens over ${request.webSearchCount} ` +
+        `searches (sums every pass — can exceed the cap); sources=${sources.length}, continuations=${continuations}.`,
+    })
     if (finalMsg.stop_reason !== 'end_turn') {
       console.warn(`[generation] non-end_turn completion: stop_reason=${finalMsg.stop_reason}, content=${content.length} chars`)
     }

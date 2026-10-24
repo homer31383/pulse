@@ -8,12 +8,18 @@ import type { Source } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
-interface Params { params: Promise<{ kind: string; id: string }> }
+interface Params {
+  params: Promise<{ kind: string; id: string }>
+  searchParams: Promise<{ from?: string }>
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-export default async function ReadPage({ params }: Params) {
+export default async function ReadPage({ params, searchParams }: Params) {
   const { kind, id } = await params
+  // Rows in the Post-Pulse catch-up panel link here with ?from=post-pulse so
+  // the back arrow returns to the panel instead of the listen queue.
+  const backHref = (await searchParams).from === 'post-pulse' ? '/post-pulse' : '/listen'
   if ((kind !== 'briefing' && kind !== 'digest') || !UUID_RE.test(id)) notFound()
 
   if (kind === 'briefing') {
@@ -36,6 +42,7 @@ export default async function ReadPage({ params }: Params) {
         sources={(data.sources ?? []) as Source[]}
         createdAt={data.created_at}
         alreadyRead={!!data.read_at}
+        backHref={backHref}
       />
     )
   }
@@ -57,6 +64,7 @@ export default async function ReadPage({ params }: Params) {
       sources={(data.sources ?? []) as Source[]}
       createdAt={data.created_at}
       alreadyRead={!!data.read_at}
+      backHref={backHref}
     />
   )
 }

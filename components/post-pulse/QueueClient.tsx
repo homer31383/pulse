@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -28,6 +28,17 @@ export function QueueClient({ items: initial }: Props) {
   const [items, setItems] = useState(initial)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // #q-<id> (the catch-up panel's review rows link here): highlight that
+  // card and scroll to it once more after Next's post-navigation scroll,
+  // the same workaround AnchoredMarkdown uses.
+  const [targetId, setTargetId] = useState<string | null>(null)
+  useEffect(() => {
+    const m = /^#q-(.+)$/.exec(window.location.hash)
+    if (!m) return
+    setTargetId(m[1])
+    const t = setTimeout(() => document.getElementById(`q-${m[1]}`)?.scrollIntoView({ block: 'start' }), 120)
+    return () => clearTimeout(t)
+  }, [])
 
   const toolById = new Map(tools.map((t) => [t.id, t]))
   const deptById = new Map(departments.map((d) => [d.id, d]))
@@ -119,7 +130,13 @@ export function QueueClient({ items: initial }: Props) {
         )
 
         return (
-          <article key={item.id} className="rounded-xl border border-cream-300 bg-cream-50 overflow-hidden">
+          <article
+            key={item.id}
+            id={`q-${item.id}`}
+            className={`scroll-mt-6 rounded-xl border bg-cream-50 overflow-hidden ${
+              targetId === item.id ? 'border-press-accent ring-1 ring-press-accent/40' : 'border-cream-300'
+            }`}
+          >
             <header className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 border-b border-cream-300/70">
               {item.source === 'frontier' ? (
                 // Exploratory finding (spec §5a): visually distinct so it is never
