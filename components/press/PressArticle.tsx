@@ -138,7 +138,7 @@ export function PressArticle({ content, channelName = null, sourceDate = null, p
     }
   }
 
-  function PinButton({ index }: { index: number }) {
+  function PinButton({ index, floating = false }: { index: number; floating?: boolean }) {
     if (!pinnable) return null
     return (
       <button
@@ -146,7 +146,13 @@ export function PressArticle({ content, channelName = null, sourceDate = null, p
         aria-label={pinned[index] ? 'Pinned' : 'Pin this section'}
         title={pinned[index] ? 'Pinned' : 'Pin this section'}
         className={[
-          'flex-shrink-0 p-1 transition-colors',
+          // 22px visible button; the ::after grows the hit area 18px up (22px
+          // reached into the line above) and, in a header row, 11px each side
+          // (44×40), never into the text below. A floating pin (untitled
+          // section) sits over the body's first line, so it doesn't grow
+          // sideways: 22×40, no overlap beyond the button.
+          "relative flex-shrink-0 p-1 transition-colors after:absolute after:-top-[18px] after:bottom-0 after:content-['']",
+          floating ? 'after:inset-x-0' : 'after:-inset-x-[11px]',
           pinned[index] ? 'text-press-accent' : 'text-press-pin hover:text-press-accent',
         ].join(' ')}
       >
@@ -201,7 +207,7 @@ export function PressArticle({ content, channelName = null, sourceDate = null, p
               )}
               {!section.title && pinnable && (
                 <div className="flex justify-end -mb-5 relative z-10">
-                  <PinButton index={i} />
+                  <PinButton index={i} floating />
                 </div>
               )}
               <div className={section.body.length > 1100 ? 'press-columns' : undefined}>
