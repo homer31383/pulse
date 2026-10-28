@@ -34,6 +34,7 @@ export default async function ReadPage({ params, searchParams }: Params) {
     const title = (Array.isArray(ch) ? ch[0]?.name : ch?.name) ?? 'Briefing'
     return (
       <ReadArticleClient
+        key={`briefing:${data.id}`}
         kind="briefing"
         id={data.id}
         title={title}
@@ -56,6 +57,7 @@ export default async function ReadPage({ params, searchParams }: Params) {
   const names = (data.channel_names ?? []) as string[]
   return (
     <ReadArticleClient
+      key={`digest:${data.id}`}
       kind="digest"
       id={data.id}
       title="Morning Digest"

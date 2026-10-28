@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { PressArticle } from './press/PressArticle'
 import { AudioPlayer, SpokenArticle } from './press/AudioPlayer'
 import { PressNav } from './press/PressNav'
+import { QueueNeighborBar, useQueueNeighbors } from './press/QueueNeighbors'
+import { CATCHUP_FROM_PARAM } from '@/lib/post-pulse-catchup-types'
 import type { Source } from '@/lib/types'
 
 interface Props {
@@ -27,6 +29,9 @@ export function ReadArticleClient({ kind, id, title, subtitle, content, sources,
   const speechId = `${kind}:${id}`
   const endRef = useRef<HTMLDivElement>(null)
   const [read, setRead] = useState(alreadyRead)
+  // Previous/Next keep the ?from= origin so the back arrow still returns there
+  const query = backHref === '/post-pulse' ? `?${CATCHUP_FROM_PARAM}` : ''
+  const neighbors = useQueueNeighbors(kind, id, query)
 
   // "Fully reading" = reaching the end of the article. Marks it read (the
   // same read_at the archive uses); the item stays in the listen queue —
@@ -71,6 +76,7 @@ export function ReadArticleClient({ kind, id, title, subtitle, content, sources,
       </header>
 
       <main className="max-w-2xl mx-auto px-4 pt-3 pb-28">
+        <QueueNeighborBar neighbors={neighbors} query={query} className="mb-3" />
         <AudioPlayer id={speechId} kind={kind} itemId={id} content={content} className="mb-4" />
         <SpokenArticle id={speechId}>
           <PressArticle content={content} channelName={title} sourceDate={createdAt} />
@@ -94,6 +100,7 @@ export function ReadArticleClient({ kind, id, title, subtitle, content, sources,
         {/* End-of-article sentinel */}
         <div ref={endRef} className="h-px" aria-hidden />
         <p className="font-chrome text-[9px] uppercase tracking-[2px] text-press-faint text-center mt-8">End</p>
+        <QueueNeighborBar neighbors={neighbors} query={query} className="mt-4" />
       </main>
 
       <PressNav />
