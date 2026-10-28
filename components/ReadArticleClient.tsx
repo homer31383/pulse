@@ -53,8 +53,10 @@ export function ReadArticleClient({ kind, id, title, subtitle, content, sources,
     return () => io.disconnect()
   }, [read, kind, id])
 
+  // Bottom padding clears the docked mini player / "Queue finished" bar;
+  // MiniPlayer sets --mini-player-h only while one is showing.
   return (
-    <div className="min-h-screen paper-page">
+    <div className="min-h-screen paper-page pb-[var(--mini-player-h,0px)]">
       <header className="sticky top-0 z-20 bg-[#F0ECF4]/95 backdrop-blur-sm border-b-[0.5px] border-press-hair px-4 py-3">
         <div className="max-w-2xl mx-auto flex items-center gap-3">
           <Link

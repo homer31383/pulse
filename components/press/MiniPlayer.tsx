@@ -1,5 +1,6 @@
 'use client'
 
+import { useCallback, useRef } from 'react'
 import { usePathname } from 'next/navigation'
 import { useQueue } from '@/contexts/QueueContext'
 import { useSpeech } from '@/contexts/SpeechContext'
@@ -31,10 +32,27 @@ export function Monogram({ title, size = 'sm' }: { title: string; size?: 'sm' | 
   )
 }
 
+// Publishes the docked bar's rendered height (either bar, safe area included)
+// as --mini-player-h on <html>, so pages can clear it; unset while no bar shows.
+function useDockHeightVar() {
+  const observer = useRef<ResizeObserver | null>(null)
+  return useCallback((el: HTMLDivElement | null) => {
+    observer.current?.disconnect()
+    observer.current = null
+    const root = document.documentElement
+    if (!el) { root.style.removeProperty('--mini-player-h'); return }
+    const publish = () => root.style.setProperty('--mini-player-h', `${el.getBoundingClientRect().height}px`)
+    publish()
+    observer.current = new ResizeObserver(publish)
+    observer.current.observe(el)
+  }, [])
+}
+
 export function MiniPlayer() {
   const queue = useQueue()
   const speech = useSpeech()
   const pathname = usePathname()
+  const dockRef = useDockHeightVar()
   const { current, currentIndex, unplayed, isCurrentActive, finished, expanded } = queue
 
   if (expanded) return null
@@ -46,7 +64,7 @@ export function MiniPlayer() {
 
   if (!current && finished) {
     return (
-      <div className={wrap}>
+      <div ref={dockRef} className={wrap}>
         <div className={`${surface} px-4 py-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom,0px))]`}>
           <div className="max-w-2xl mx-auto flex items-center gap-3 font-chrome text-[11px] text-press-muted">
             <span className="uppercase tracking-[1px] text-[9px] text-press-accent">Queue finished</span>
@@ -66,7 +84,7 @@ export function MiniPlayer() {
   const btn = 'p-2 rounded-full text-press-ink hover:bg-press-accent/10 transition-colors disabled:opacity-40'
 
   return (
-    <div className={wrap}>
+    <div ref={dockRef} className={wrap}>
       <div
         role="button"
         tabIndex={0}
