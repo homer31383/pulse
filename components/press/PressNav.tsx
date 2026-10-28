@@ -20,7 +20,7 @@ export function PressNav() {
     <nav className="mt-10 pb-8">
       <div className="max-w-2xl mx-auto px-4">
         <div className="press-rule-h mb-4" />
-        <div className="flex items-center justify-center gap-6 sm:gap-8">
+        <div className="flex flex-wrap items-center justify-between sm:justify-center gap-x-1.5 gap-y-3 sm:gap-8">
           {NAV_ITEMS.map((item) => {
             const isActive = pathname === item.href
             return (

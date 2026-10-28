@@ -194,7 +194,7 @@ export function PressArticle({ content, channelName = null, sourceDate = null, p
             <section className="my-4">
               {section.title && (
                 <div className="flex items-center gap-3 mb-1.5">
-                  <span className="press-label whitespace-nowrap">{section.title}</span>
+                  <span className="press-label min-w-0">{section.title}</span>
                   <div className="flex-1 press-rule-h" />
                   <PinButton index={i} />
                 </div>
