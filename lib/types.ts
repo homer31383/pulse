@@ -161,6 +161,8 @@ export interface AppSettings {
   recap_day: number               // 0 = Sunday … 6 = Saturday (Eastern Time)
   recap_time: string              // 'HH:MM' Eastern Time; runs on the hour
   recap_last_run_at?: string | null
+  // Axiom task after a scheduled run saves content (migration 035; default on)
+  axiom_task_enabled?: boolean
   ticker_items: TickerItem[]
 }
 

@@ -39,6 +39,7 @@ export const SETTINGS_DEFAULTS: AppSettings = {
   recap_email_enabled: false,
   recap_day: 0,
   recap_time: '07:00',
+  axiom_task_enabled: true,
   ticker_items: [],
 }
 
@@ -55,6 +56,7 @@ const ALLOWED_FIELDS = [
   'tts_enabled', 'tts_voice', 'tts_speed', 'tts_provider', 'tts_elevenlabs_voice_id',
   'schedule_enabled', 'schedule_time', 'schedule_interval_days', 'schedule_channel_ids', 'schedule_output',
   'recap_email_enabled', 'recap_day', 'recap_time',
+  'axiom_task_enabled',
   'ticker_items',
 ] as const
 

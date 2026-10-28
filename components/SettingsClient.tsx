@@ -187,6 +187,7 @@ export function SettingsClient({ initialSettings, channels = [], costBasis }: Pr
 
   // ── Scheduled briefings ──────────────────────────────────────────────────
   const [scheduleEnabled, setScheduleEnabled] = useState(initialSettings.schedule_enabled ?? false)
+  const [axiomTaskEnabled, setAxiomTaskEnabled] = useState(initialSettings.axiom_task_enabled ?? true)
   const [scheduleTime, setScheduleTime] = useState(initialSettings.schedule_time ?? '06:00')
   const [scheduleIntervalDays, setScheduleIntervalDays] = useState(initialSettings.schedule_interval_days ?? 1)
   const [scheduleOutput, setScheduleOutput] = useState<ScheduleOutput>(initialSettings.schedule_output ?? 'briefings')
@@ -983,6 +984,14 @@ export function SettingsClient({ initialSettings, channels = [], costBasis }: Pr
               )}
             </div>
           )}
+          <div className="border-t border-cream-300">
+            <ToggleRow
+              label="Create an Axiom task for new scheduled content"
+              description="After a scheduled run, adds one task to Axiom listing the channels that are ready to read. Manual generations never create one."
+              checked={axiomTaskEnabled}
+              onChange={(v) => { setAxiomTaskEnabled(v); save({ axiom_task_enabled: v }) }}
+            />
+          </div>
         </div>
       </section>
 

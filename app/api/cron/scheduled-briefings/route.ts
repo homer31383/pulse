@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { generateChannelBriefing, generateProfileDigest } from '@/lib/generation'
+import { generateChannelBriefing, generateProfileDigest, type GenerationResult } from '@/lib/generation'
 import { sortBatch } from '@/lib/queue'
+import { runTaskPayload, savedItemsFromRun, sendAxiomTask, type AxiomTaskOutcome, type SavedRunItem } from '@/lib/axiom-task'
 import type { Channel } from '@/lib/types'
 
 // Web-search generation can take minutes; channels run in parallel
@@ -38,6 +39,7 @@ function etDayDiff(from: Date, to: Date): number {
 }
 
 export async function GET(req: NextRequest) {
+  const startedAt = Date.now()
   // Vercel Cron sends Authorization: Bearer <CRON_SECRET>
   const cronSecret = process.env.CRON_SECRET
   if (!cronSecret || req.headers.get('authorization') !== `Bearer ${cronSecret}`) {
@@ -61,6 +63,7 @@ export async function GET(req: NextRequest) {
     succeeded: string[]
     failed: string[]
     detail?: string
+    axiomTask?: AxiomTaskOutcome
   }> = []
 
   for (const settings of scheduledSettings ?? []) {
@@ -177,18 +180,27 @@ export async function GET(req: NextRequest) {
       const digestDone = (doneDigests.data?.length ?? 0) > 0
 
       // ── Build the remaining work list ──────────────────────────────────
-      const tasks: Array<{ label: string; run: () => Promise<unknown> }> = []
+      const tasks: Array<{
+        label: string
+        kind: SavedRunItem['kind']
+        channelNames: string[]
+        run: () => Promise<GenerationResult>
+      }> = []
 
       for (const channel of briefingChannels) {
         if (doneChannelIds.has(channel.id)) continue
         tasks.push({
           label: channel.name,
+          kind: 'briefing',
+          channelNames: [channel.name],
           run: () => generateChannelBriefing({ channel, profileId, scheduled: true }),
         })
       }
       if (digestChannels.length > 0 && !digestDone) {
         tasks.push({
           label: `digest (${digestChannels.map((c) => c.name).join(', ')})`,
+          kind: 'digest',
+          channelNames: digestChannels.map((c) => c.name),
           run: () => generateProfileDigest({ channels: digestChannels, profileId, scheduled: true }),
         })
       }
@@ -227,11 +239,22 @@ export async function GET(req: NextRequest) {
           console.warn(`[cron] profile ${profileId}: queue sort failed — ${(err as Error).message}`))
       }
 
+      // One Axiom task for the run's saved items (never failed or empty ones).
+      // Awaited inside the run so it finishes within the function's lifetime:
+      // capped at 5s, or at what's left of maxDuration minus a margin (a run
+      // that used its whole generation budget skips it). Never throws.
+      // Off per profile in Settings (migration 035).
+      const axiomPayload = runTaskPayload(settings, savedItemsFromRun(tasks, settled))
+      const axiomTask = axiomPayload
+        ? await sendAxiomTask(axiomPayload, `profile ${profileId}`, maxDuration * 1000 - (Date.now() - startedAt) - 3_000)
+        : undefined
+
       results.push({
         profileId,
         status: failed.length === 0 ? 'generated' : succeeded.length > 0 ? 'partial' : 'error',
         succeeded,
         failed,
+        ...(axiomTask ? { axiomTask } : {}),
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error'

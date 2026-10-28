@@ -29,10 +29,12 @@ npm install
 #   ANTHROPIC_API_KEY=<your key>
 #   ELEVENLABS_API_KEY=<your key>   # optional: premium TTS; without it the app falls back to browser speech
 #   SMTP_USER / SMTP_PASS=<IONOS mailbox + password>  # optional: Weekly Recap email; SMTP_HOST (smtp.ionos.com), SMTP_PORT (587), RECAP_FROM, RECAP_TO, PULSE_BASE_URL override defaults
+#   AXIOM_INBOUND_URL=https://<axiom domain>/api/inbound/pulse-task  # optional, the FULL endpoint URL (posted to as-is): Axiom task after scheduled runs; skipped if either is unset
+#   PULSE_INBOUND_SECRET=<same value as Axiom's PULSE_INBOUND_SECRET>  # server-only, Sensitive in Vercel
 npm run dev
 ```
 
-Run all migrations in `supabase/migrations/` in order (001 through 034) in the Supabase SQL editor. Optionally run `supabase/seed.sql` for sample channels (run it once only — the channel insert has no conflict target) and `supabase/seed_post_pulse.sql` + `supabase/post_pulse_pipeline_stages_seed_update.sql` for the Post Pulse reference dataset (both idempotent, re-run to refresh).
+Run all migrations in `supabase/migrations/` in order (001 through 035) in the Supabase SQL editor. Optionally run `supabase/seed.sql` for sample channels (run it once only — the channel insert has no conflict target) and `supabase/seed_post_pulse.sql` + `supabase/post_pulse_pipeline_stages_seed_update.sql` for the Post Pulse reference dataset (both idempotent, re-run to refresh).
 
 ## File Structure
 
@@ -87,7 +89,7 @@ app/
     queue/[id]/content/route.ts          — GET item text for playback
     settings/route.ts                    — GET/PATCH settings (profile-scoped)
     profiles/route.ts                    — GET list, POST create profile
-    cron/scheduled-briefings/route.ts    — GET (Vercel Cron, hourly): pre-generate scheduled briefings/digests
+    cron/scheduled-briefings/route.ts    — GET (Vercel Cron, hourly): pre-generate scheduled briefings/digests, then one Axiom task per run
     cron/post-pulse-sync/route.ts        — GET (Vercel Cron, daily): Post Pulse research run
     cron/weekly-recap/route.ts           — GET (Vercel Cron, hourly): sends the Weekly Recap email at each profile's slot — compile only, never generates
     recap/route.ts                       — GET: preview this week's recap HTML (?format=text|json); POST: send it now (cookie profile)
@@ -163,6 +165,7 @@ lib/
   tts.ts        — Server-only ElevenLabs synthesis, Supabase Storage audio cache, TTS usage logging, cleanup
   queue.ts      — Server-only Listen Queue: enqueue, list (+cost), reorder, progress, batch sort, cleanup
   usage.ts      — Server-side usage logging to Supabase
+  axiom-task.ts — Server-only: one Axiom task per scheduled cron run (saved items → payload → one 5s-capped request)
   recap.ts      — Server-only Weekly Recap: fetch rows in a {since, until} window (optionally one recap_group), compile into Pulse/Post-Pulse sections, render email HTML/text, send via Nodemailer
   post-pulse-catchup.ts         — Server-only, COMPILE ONLY: the catch-up panel's data (reuses recap fetch + compile), footer counters, review-queue rows (fetchReviewQueue), summary input + estimate
   post-pulse-catchup-summary.ts — Server-only: the one on-demand catch-up summary call (no tools, effort low), cache + usage logging
@@ -323,6 +326,16 @@ One email a week that **compiles** whatever briefings/digests were created in th
 - **Schedule**: settings `recap_email_enabled`, `recap_day` (0 = Sunday), `recap_time` ('HH:MM' ET), `recap_last_run_at`. `vercel.json` runs `/api/cron/weekly-recap` hourly; a profile is eligible from its (day, hour) slot for 3 catch-up hours, deduped by `recap_last_run_at` within 20h — stamped whether or not an email went out, so an empty week is checked once. Recipient = `settings.email_address`, fallback env `RECAP_TO`.
 - **Sending**: Nodemailer → IONOS (`SMTP_HOST` default smtp.ionos.com, `SMTP_PORT` default 587 STARTTLS, 465 = implicit TLS; `SMTP_USER`/`SMTP_PASS` required; `RECAP_FROM` default "Pulse <SMTP_USER>"). Settings page "Send weekly recap email" block: toggle, day/time, address, **"Send this week's recap now"** (POST `/api/recap`) and **Preview** (GET `/api/recap`, renders the HTML; `?format=text`). Neither touches `recap_last_run_at`.
 - Verified Oct 1 2026 against the live Sept 24–Oct 1 window (8 briefings + 1 digest): both sections, the 5-channel digest split 3 Post-Pulse / 2 Pulse stories, nothing unplaced, rendered in Chrome. SMTP sending itself is unverified until the IONOS credentials are set.
+
+## Axiom Task for Scheduled Content (migration 035)
+
+After a scheduled cron run saves briefings/digests (they're auto-queued), Pulse creates **one** task in Axiom (the household task app, separate repo `D:\AI\Claude\DailyTaskManager`) for the whole run. Manual and live generations never send one.
+- **Contract**: Axiom's `POST /api/inbound/pulse-task`, `Authorization: Bearer <PULSE_INBOUND_SECRET>`, zod `strictObject` (any extra field → 400): `dedupeKey` 1–200, `title` 1–300, `notes?` ≤4000, `url?` https only ≤2048, `dueDate?` `YYYY-MM-DD`. 201 = created, 200 = existing dedupeKey (idempotent). Axiom always files it for Chris (`AXIOM_INBOUND_OWNER_ID`), priority low, inbox; it appends `url` to the notes.
+- **Code** (`lib/axiom-task.ts`): `savedItemsFromRun(tasks, settled)` keeps only fulfilled generations that persisted a row (an id) — failed and empty channels never appear — digest first, then briefings in channel order. `runTaskPayload(settings, saved)` → null when the profile's toggle is off or nothing was saved. `buildPulseTaskPayload`: title `Pulse: <names> ready to read` (`A` / `A and B` / `A, B and C` / `A, B and N more`; channel names deduped, a digest contributes its channels; cut with `…` to fit 300), notes `N new items in the listen queue.` + `N briefings, M digests` (pluralised), url `https://mypulse-sepia.vercel.app/listen`, dueDate = today ET, dedupeKey `pulse-cron:<ET day>:<sha256 of the sorted kind:id list, 24 hex>` so a resend of the same run is a 200, not a duplicate. A catch-up run that generates the items an earlier run missed has a different item set, so it files its own task.
+- **Never fails the run, adds at most 5s**: the cron **awaits** `sendAxiomTask` inside the run, after the run's items are saved, queued and sorted, not fire-and-forget (Vercel can freeze a function once its response is sent, so a dangling fetch may never complete). One request, no retries, `AbortController` timeout = min(5s, what's left of `maxDuration` (300s) since the request started, minus a 3s margin); under 1s left → skipped ("no time left in the run"), so the request always ends before the platform limit. Worst case: each generation has its own 300s deadline, equal to `maxDuration`, so a run that uses its whole generation budget can't fit another 5s in any design. Such a run skips the task, and a later catch-up run that generates nothing doesn't re-send. Never throws; one log line (`[axiom-task] profile …: created (201)` / `existing (200)` / `Axiom answered N` / `request failed (…)` / `no time left`), never the secret or body; the outcome is also in the cron's JSON (`results[].axiomTask`). Missing `AXIOM_INBOUND_URL` or `PULSE_INBOUND_SECRET` → skipped with a log line. (`after()` was the first build; awaiting replaced it Oct 28 2026 so the call is bounded and visible in the response.)
+- **Setting**: `settings.axiom_task_enabled` (migration 035, applied Oct 28 2026; `NOT NULL DEFAULT TRUE`; a column on the already-granted settings row, so no grant). Settings page → Scheduled Briefings card → "Create an Axiom task for new scheduled content". Missing column reads as on. Axiom files every task for Chris, so Krista's row is set to false (Oct 28 2026); Chris's is on.
+- **Env**: `AXIOM_INBOUND_URL`, `PULSE_INBOUND_SECRET`, server-side only; Sensitive in Vercel. `AXIOM_INBOUND_URL` is the **full endpoint URL**, posted to as-is with nothing appended: production must set it to `https://<axiom domain>/api/inbound/pulse-task` (a bare domain would POST to Axiom's root and get no task). Local testing uses `http://localhost:<port>/api/inbound/pulse-task`. The secret is the same value as Axiom's (≥32 chars there or Axiom answers 401).
+- **Local testing**: serve Axiom's compiled route from a `node:http` wrapper (Axiom's CLAUDE.md "Local testing") on a spare port and point `AXIOM_INBOUND_URL` at it. It writes to the real Axiom project, so use a `test-` dedupeKey prefix (`runTaskPayload(…, keyPrefix)`) and delete the rows by id. Verified Oct 28 2026 with simulated runs (no generation, queue untouched): two saved channels + one failed + one empty → one task "Pulse: Classic Art and Cephalopod Corner ready to read" (201); same run again → 200, still one; refused URL → fails in 1 ms; unanswering host → aborts at 5.0s; nothing saved → no request; toggle off (clicked in the Settings UI) → no request, back on persists across reload; 0.5s budget left → skipped, 2s left → aborts at 2.0s, 60s left → still capped at 5.0s.
 
 ## Post-Pulse Catch-up Panel (migration 034)
 
