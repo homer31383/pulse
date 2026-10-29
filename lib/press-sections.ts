@@ -74,8 +74,9 @@ export function stripPreHeadingNarration(content: string): { content: string; st
   // Heading at the start of a line
   const lineStart = /(?:^|\n)[ \t]{0,3}(#{1,6}[ \t]+\S)/.exec(content)
   if (lineStart) candidates.push(lineStart.index + lineStart[0].length - lineStart[1].length)
-  // Heading glued to the end of a narration sentence
-  const glued = /[.!?)`*][ \t]*(#{1,6}[ \t]+\S)/.exec(content)
+  // Heading glued to the end of a narration sentence, including one that
+  // ends in a colon ("...round out the digest:# Morning Digest")
+  const glued = /[.!?)`*:][ \t]*(#{1,6}[ \t]+\S)/.exec(content)
   if (glued) candidates.push(glued.index + glued[0].length - glued[1].length)
   if (candidates.length === 0) return { content, stripped: '' }
   const idx = Math.min(...candidates)
