@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { BriefingHistoryClient } from '@/components/BriefingHistoryClient'
+import { ExportPdfButton } from '@/components/ExportPdfSheet'
 import type { Channel, Briefing } from '@/lib/types'
 
 interface PageProps {
@@ -47,6 +48,7 @@ export default async function BriefingHistoryPage({ params }: PageProps) {
                 : `${briefings.length} briefing${briefings.length !== 1 ? 's' : ''} on file`}
             </p>
           </div>
+          {briefings.length > 0 && <ExportPdfButton channelId={channel.id} channelName={channel.name} />}
         </div>
       </header>
 

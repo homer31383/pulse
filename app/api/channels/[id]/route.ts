@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { deleteTtsAudio } from '@/lib/tts'
 import { removeQueueItemsFor } from '@/lib/queue'
+import { removeChannelExports } from '@/lib/channel-export'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -43,10 +44,13 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const { id } = await params
   // Briefings cascade in Postgres; their cached premium audio does not
   const { data: briefingRows } = await supabase.from('briefings').select('id').eq('channel_id', id)
+  const { data: owner } = await supabase.from('channels').select('profile_id').eq('id', id).maybeSingle()
   const { error } = await supabase.from('channels').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   const briefingIds = (briefingRows ?? []).map((b: { id: string }) => b.id)
   deleteTtsAudio('briefing', briefingIds).catch(() => {})
   removeQueueItemsFor('briefing', briefingIds).catch(() => {})
+  // Its cached PDF exports too (Storage has no cascade)
+  if (owner?.profile_id) removeChannelExports(owner.profile_id, id).catch(() => {})
   return new NextResponse(null, { status: 204 })
 }

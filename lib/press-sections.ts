@@ -62,3 +62,24 @@ export function parsePressSections(md: string, opts: ParseOptions = {}): { headl
 
   return { headline, sections }
 }
+
+// Sonnet 5 sometimes narrates its research between tool calls ("I have great
+// material now. Let me write the briefing.") despite the prompt, and that
+// text streams out as content ahead of the headline, sometimes glued to it
+// on the same line ("...Parasite content.# 🎬 Classic Movies"). Every briefing
+// opens with a Markdown heading, so drop everything before the first one.
+// Only applied to what gets persisted; the live stream already showed it.
+export function stripPreHeadingNarration(content: string): { content: string; stripped: string } {
+  const candidates: number[] = []
+  // Heading at the start of a line
+  const lineStart = /(?:^|\n)[ \t]{0,3}(#{1,6}[ \t]+\S)/.exec(content)
+  if (lineStart) candidates.push(lineStart.index + lineStart[0].length - lineStart[1].length)
+  // Heading glued to the end of a narration sentence
+  const glued = /[.!?)`*][ \t]*(#{1,6}[ \t]+\S)/.exec(content)
+  if (glued) candidates.push(glued.index + glued[0].length - glued[1].length)
+  if (candidates.length === 0) return { content, stripped: '' }
+  const idx = Math.min(...candidates)
+  const stripped = content.slice(0, idx)
+  if (!stripped.trim()) return { content, stripped: '' }
+  return { content: content.slice(idx), stripped }
+}
