@@ -48,15 +48,15 @@ export class ChannelPdfTooLarge extends Error {
 }
 
 // Page geometry, in points (US Letter)
-const W = 612
-const H = 792
-const ML = 90
-const CW = W - 2 * ML
+export const W = 612
+export const H = 792
+export const ML = 90
+export const CW = W - 2 * ML
 const TOP = 72
 const BOTTOM = H - 72
 const FOOTER_RULE_Y = H - 56
 
-const C = {
+export const C = {
   paper: '#F0ECF4',
   accent: '#6B5CA5',
   ink: '#2C2522',
@@ -69,9 +69,9 @@ const C = {
 
 const TIME_ZONE = 'America/New_York'
 
-type FontKey = 'serif' | 'serif-i' | 'serif-b' | 'serif-bi' | 'sans' | 'sans-m' | 'sans-b'
+export type FontKey = 'serif' | 'serif-i' | 'serif-b' | 'serif-bi' | 'sans' | 'sans-m' | 'sans-b'
 
-const FONT_FILES: Record<FontKey, string> = {
+export const FONT_FILES: Record<FontKey, string> = {
   'serif': 'Gelasio_400Regular.ttf',
   'serif-i': 'Gelasio_400Regular_Italic.ttf',
   'serif-b': 'Gelasio_600SemiBold.ttf',
@@ -81,9 +81,9 @@ const FONT_FILES: Record<FontKey, string> = {
   'sans-b': 'Inter_600SemiBold.ttf',
 }
 
-const FONT_DIR = path.join(process.cwd(), 'lib', 'pdf', 'fonts')
+export const FONT_DIR = path.join(process.cwd(), 'lib', 'pdf', 'fonts')
 let fontBuffers: Record<FontKey, Buffer> | null = null
-function loadFonts(): Record<FontKey, Buffer> {
+export function loadFonts(): Record<FontKey, Buffer> {
   if (!fontBuffers) {
     fontBuffers = Object.fromEntries(
       (Object.keys(FONT_FILES) as FontKey[]).map((k) => [k, readFileSync(path.join(FONT_DIR, FONT_FILES[k]))]),
@@ -94,7 +94,7 @@ function loadFonts(): Record<FontKey, Buffer> {
 
 // ── Text measurement and line breaking ─────────────────────────────────
 
-interface TextStyle {
+export interface TextStyle {
   family: 'serif' | 'sans'
   size: number
   lineHeight: number
@@ -256,7 +256,7 @@ function sameStyle(a: Piece, b: Piece): boolean {
 
 // Greedy line breaking at spaces. A word longer than the line (a bare URL)
 // is cut between characters, never inside one.
-function breakLines(m: Measurer, inlines: Inline[], style: TextStyle, width: number): Line[] {
+export function breakLines(m: Measurer, inlines: Inline[], style: TextStyle, width: number): Line[] {
   const lines: Line[] = []
   const primary = fontFor(style, {})
   const newLine = (): Line => ({ pieces: [], width: 0, lineHeight: style.lineHeight, size: style.size, font: primary })
@@ -314,7 +314,7 @@ function breakLines(m: Measurer, inlines: Inline[], style: TextStyle, width: num
 
 interface Box { id: number; kind: 'aside' | 'quote'; x: number; w: number; pad: number }
 
-interface Row {
+export interface Row {
   h: number
   draw?: (r: Renderer, y: number) => void
   space?: boolean      // collapses at the top or bottom of a page
@@ -326,9 +326,9 @@ interface Row {
 }
 
 interface Fragment { box: Box; top: number; bottom: number }
-interface Page { rows: { row: Row; y: number }[]; fragments: Fragment[]; marks: number[] }
+export interface Page { rows: { row: Row; y: number }[]; fragments: Fragment[]; marks: number[] }
 
-function paginate(rows: Row[]): Page[] {
+export function paginate(rows: Row[]): Page[] {
   const pages: Page[] = []
   let page: Page | null = null
   let y = TOP
@@ -417,7 +417,7 @@ function paginate(rows: Row[]): Page[] {
 
 // ── Renderer ───────────────────────────────────────────────────────────
 
-class Renderer {
+export class Renderer {
   m: Measurer
   private boxId = 0
 
@@ -458,7 +458,7 @@ function lineRows(lines: Line[], x: number, boxes: Box[] | undefined, opts: { kw
   }))
 }
 
-const space = (h: number, boxes?: Box[]): Row => ({ h, space: true, boxes })
+export const space = (h: number, boxes?: Box[]): Row => ({ h, space: true, boxes })
 
 interface Ctx { x: number; w: number; boxes?: Box[]; small: boolean }
 
@@ -468,7 +468,7 @@ function bodyStyle(ctx: Ctx): TextStyle {
     : { family: 'serif', size: 11, lineHeight: 16.5, color: C.body, boldColor: C.ink }
 }
 
-const LABEL: TextStyle = { family: 'sans', weight: 'medium', size: 7.5, lineHeight: 11, color: C.accent, tracking: 1.5, uppercase: true }
+export const LABEL: TextStyle = { family: 'sans', weight: 'medium', size: 7.5, lineHeight: 11, color: C.accent, tracking: 1.5, uppercase: true }
 
 // A section label with a hairline running to the right edge (the reading
 // view's press-label + press-rule-h)
@@ -610,13 +610,13 @@ function tableRows(r: Renderer, cells: Inline[][][], ctx: Ctx): Row[] {
 
 // ── Article, contents, cover ───────────────────────────────────────────
 
-function etDateLong(iso: string): string {
+export function etDateLong(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { timeZone: TIME_ZONE, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
 }
-function etDate(iso: string | Date): string {
+export function etDate(iso: string | Date): string {
   return new Date(iso).toLocaleDateString('en-US', { timeZone: TIME_ZONE, month: 'long', day: 'numeric', year: 'numeric' })
 }
-function etDateShort(iso: string): string {
+export function etDateShort(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { timeZone: TIME_ZONE, month: 'short', day: 'numeric', year: 'numeric' })
 }
 function etTime(iso: string): string {
@@ -630,7 +630,7 @@ function hostOf(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, '') } catch { return '' }
 }
 
-function articleRows(r: Renderer, b: ExportBriefing, article: Article, index: number, total: number, sameDay: boolean): Row[] {
+export function articleRows(r: Renderer, b: ExportBriefing, article: Article, index: number, total: number, sameDay: boolean): Row[] {
   const ctx: Ctx = { x: ML, w: CW, small: false }
   const rows: Row[] = [{ h: 0, pageBreak: true, mark: index }]
 
@@ -694,7 +694,8 @@ function articleRows(r: Renderer, b: ExportBriefing, article: Article, index: nu
   return rows
 }
 
-function contentsRows(r: Renderer, briefings: ExportBriefing[], titles: string[], startPages: number[]): Row[] {
+// destOf names each entry's link target (the archive prefixes the channel)
+export function contentsRows(r: Renderer, briefings: ExportBriefing[], titles: string[], startPages: number[], destOf = (i: number) => `briefing-${i}`): Row[] {
   const rows: Row[] = [{ h: 0, pageBreak: true }]
   const title = breakLines(r.m, [{ text: 'Contents' }], { family: 'serif', size: 24, lineHeight: 30, color: C.ink }, CW)[0]
   rows.push({
@@ -711,7 +712,7 @@ function contentsRows(r: Renderer, briefings: ExportBriefing[], titles: string[]
   const titleStyle: TextStyle = { family: 'serif', size: 10.5, lineHeight: 14.5, color: C.ink }
   const metaStyle: TextStyle = { family: 'sans', size: 7.5, lineHeight: 14.5, color: C.muted, tracking: 0.6, uppercase: true }
   briefings.forEach((b, i) => {
-    const dest = `briefing-${i}`
+    const dest = destOf(i)
     const lines = breakLines(r.m, [{ text: titles[i] }], titleStyle, CW - dateW - numW)
     const date = breakLines(r.m, [{ text: etDateShort(b.created_at) }], metaStyle, dateW)[0]
     const h = lines.length * titleStyle.lineHeight + 9
@@ -757,7 +758,7 @@ function drawCover(r: Renderer, input: ChannelPdfInput, span: string) {
   center(`Exported ${etDate(input.generatedAt ?? new Date())}`, { ...LABEL, color: C.muted }, H - 96)
 }
 
-function drawFooter(r: Renderer, channelName: string, pageNo: number) {
+export function drawFooter(r: Renderer, channelName: string, pageNo: number) {
   r.rule(ML, FOOTER_RULE_Y, CW)
   const style: TextStyle = { family: 'sans', size: 7, lineHeight: 10, color: C.muted, tracking: 1.4, uppercase: true }
   const name = breakLines(r.m, [{ text: channelName }], style, CW - 60)[0]
@@ -766,7 +767,7 @@ function drawFooter(r: Renderer, channelName: string, pageNo: number) {
   r.drawLine(num, ML + CW - num.width, FOOTER_RULE_Y + 6)
 }
 
-function drawPage(r: Renderer, page: Page) {
+export function drawPage(r: Renderer, page: Page) {
   for (const f of page.fragments) {
     if (f.box.kind === 'aside') {
       r.doc.rect(f.box.x, f.top, f.box.w, f.bottom - f.top).fill(C.asideFill)

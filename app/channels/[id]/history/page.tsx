@@ -1,30 +1,40 @@
+import { cookies } from 'next/headers'
 import { supabase } from '@/lib/supabase'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { BriefingHistoryClient } from '@/components/BriefingHistoryClient'
-import { ExportPdfButton } from '@/components/ExportPdfSheet'
+import { ExportPdfButton, type ExportChannel } from '@/components/ExportPdfSheet'
+import { channelsInAppOrder } from '@/lib/archive-export'
 import type { Channel, Briefing } from '@/lib/types'
 
 interface PageProps {
   params: Promise<{ id: string }>
 }
 
+const DEFAULT_PROFILE_ID = '00000000-0000-0000-0000-000000000001'
+
 export default async function BriefingHistoryPage({ params }: PageProps) {
   const { id } = await params
+  const profileId = (await cookies()).get('profile_id')?.value ?? DEFAULT_PROFILE_ID
 
-  const [channelResult, briefingsResult] = await Promise.all([
+  const [channelResult, briefingsResult, profileChannels] = await Promise.all([
     supabase.from('channels').select('*').eq('id', id).single(),
     supabase
       .from('briefings')
       .select('*')
       .eq('channel_id', id)
       .order('created_at', { ascending: false }),
+    // The export picker lists the profile's channels, in app order
+    channelsInAppOrder(profileId),
   ])
 
   if (!channelResult.data) notFound()
 
   const channel = channelResult.data as Channel
   const briefings = (briefingsResult.data ?? []) as Briefing[]
+  const exportChannels: ExportChannel[] = profileChannels.map((c) => ({
+    id: c.id, name: c.name, recapGroup: c.recap_group === 'post_pulse' ? 'post_pulse' : 'pulse',
+  }))
 
   return (
     <div className="min-h-screen paper-page">
@@ -48,7 +58,7 @@ export default async function BriefingHistoryPage({ params }: PageProps) {
                 : `${briefings.length} briefing${briefings.length !== 1 ? 's' : ''} on file`}
             </p>
           </div>
-          {briefings.length > 0 && <ExportPdfButton channelId={channel.id} channelName={channel.name} />}
+          {briefings.length > 0 && <ExportPdfButton channels={exportChannels} preselect={[channel.id]} />}
         </div>
       </header>
 

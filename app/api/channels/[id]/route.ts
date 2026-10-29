@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { deleteTtsAudio } from '@/lib/tts'
 import { removeQueueItemsFor } from '@/lib/queue'
 import { removeChannelExports } from '@/lib/channel-export'
+import { removeProfileArchives } from '@/lib/archive-export'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -50,7 +51,11 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const briefingIds = (briefingRows ?? []).map((b: { id: string }) => b.id)
   deleteTtsAudio('briefing', briefingIds).catch(() => {})
   removeQueueItemsFor('briefing', briefingIds).catch(() => {})
-  // Its cached PDF exports too (Storage has no cascade)
-  if (owner?.profile_id) removeChannelExports(owner.profile_id, id).catch(() => {})
+  // Its cached PDF exports too (Storage has no cascade), and the profile's
+  // multi-channel archives, any of which may hold its briefings
+  if (owner?.profile_id) {
+    removeChannelExports(owner.profile_id, id).catch(() => {})
+    removeProfileArchives(owner.profile_id).catch(() => {})
+  }
   return new NextResponse(null, { status: 204 })
 }

@@ -3,6 +3,8 @@ import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { DailyArchiveClient } from '@/components/DailyArchiveClient'
 import { PressNav } from '@/components/press/PressNav'
+import { ExportPdfButton, type ExportChannel } from '@/components/ExportPdfSheet'
+import { channelsInAppOrder } from '@/lib/archive-export'
 import type { Briefing, Digest, Source } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -25,7 +27,7 @@ export default async function AllBriefingHistoryPage() {
   // Complete daily capture: everything created in the last 30 days, manual
   // and scheduled alike (no scheduled filter; 1000-row guardrail only).
   const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-  const [briefingsResult, digestsResult] = await Promise.all([
+  const [briefingsResult, digestsResult, profileChannels] = await Promise.all([
     channelIds.length > 0
       ? supabase
           .from('briefings')
@@ -42,6 +44,8 @@ export default async function AllBriefingHistoryPage() {
       .gte('created_at', cutoff)
       .order('created_at', { ascending: false })
       .limit(1000),
+    // The export picker, in the home screen's channel order
+    channelsInAppOrder(profileId),
   ])
 
   const briefings = ((briefingsResult.data ?? []) as Briefing[]).map((b) => ({
@@ -57,6 +61,10 @@ export default async function AllBriefingHistoryPage() {
   }))
 
   const total = briefings.length + digests.length
+  // Export PDF here starts with nothing ticked
+  const exportChannels: ExportChannel[] = profileChannels.map((c) => ({
+    id: c.id, name: c.name, recapGroup: c.recap_group === 'post_pulse' ? 'post_pulse' : 'pulse',
+  }))
 
   return (
     <div className="min-h-screen paper-page">
@@ -82,6 +90,7 @@ export default async function AllBriefingHistoryPage() {
                   ].filter(Boolean).join(' · ') + ' · last 30 days'}
             </p>
           </div>
+          {exportChannels.length > 0 && <ExportPdfButton channels={exportChannels} />}
         </div>
       </header>
 
