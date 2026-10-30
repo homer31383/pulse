@@ -2,6 +2,7 @@ import { cookies } from 'next/headers'
 import { supabase } from '@/lib/supabase'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { HistoryNav } from '@/components/press/HistoryNav'
 import { BriefingHistoryClient } from '@/components/BriefingHistoryClient'
 import { ExportPdfButton, type ExportChannel } from '@/components/ExportPdfSheet'
 import { channelsInAppOrder } from '@/lib/archive-export'
@@ -58,6 +59,7 @@ export default async function BriefingHistoryPage({ params }: PageProps) {
                 : `${briefings.length} briefing${briefings.length !== 1 ? 's' : ''} on file`}
             </p>
           </div>
+          <HistoryNav />
           {briefings.length > 0 && <ExportPdfButton channels={exportChannels} preselect={[channel.id]} />}
         </div>
       </header>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { HistoryNav } from '@/components/press/HistoryNav'
 import type { Note } from '@/lib/types'
 
 export default function NotesPage() {
@@ -27,7 +28,7 @@ export default function NotesPage() {
           <Link
             href="/"
             className="p-1.5 rounded-lg text-ink-100 hover:text-ink-300 hover:bg-cream-300 transition-colors"
-            aria-label="Back"
+            aria-label="Back to Pulse"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -39,6 +40,7 @@ export default function NotesPage() {
               {notes.length}
             </span>
           )}
+          <HistoryNav className={notes.length > 0 ? '' : 'ml-auto'} />
         </div>
       </header>
 

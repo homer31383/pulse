@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { HistoryNav } from '@/components/press/HistoryNav'
 import { DigestHistoryClient } from '@/components/DigestHistoryClient'
 import { PressNav } from '@/components/press/PressNav'
 import type { DigestWithCost, Source } from '@/lib/types'
@@ -59,7 +60,7 @@ export default async function DigestHistoryPage() {
           <Link
             href="/"
             className="p-1.5 rounded-lg text-press-muted hover:text-press-ink hover:bg-press-accent/10 transition-colors flex-shrink-0"
-            aria-label="Back"
+            aria-label="Back to Pulse"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -73,6 +74,7 @@ export default async function DigestHistoryPage() {
                 : `${digests.length} digest${digests.length !== 1 ? 's' : ''} on file`}
             </p>
           </div>
+          <HistoryNav />
         </div>
       </header>
 

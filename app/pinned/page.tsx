@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { HistoryNav } from '@/components/press/HistoryNav'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { PRESS_MD_COMPONENTS } from '@/components/press/PressArticle'
@@ -37,7 +38,7 @@ export default function PinnedPage() {
           <Link
             href="/"
             className="p-1.5 rounded-lg text-press-muted hover:text-press-ink hover:bg-press-accent/10 transition-colors"
-            aria-label="Back"
+            aria-label="Back to Pulse"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -49,6 +50,7 @@ export default function PinnedPage() {
               {pins.length === 0 ? 'The reference shelf' : `${pins.length} clipping${pins.length !== 1 ? 's' : ''} on file`}
             </p>
           </div>
+          <HistoryNav />
         </div>
       </header>
 

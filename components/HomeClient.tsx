@@ -24,6 +24,7 @@ import { GroupSection } from './GroupSection'
 import { Masthead } from './press/Masthead'
 import { TickerBar } from './press/TickerBar'
 import { SectionSwitcher } from './press/SectionSwitcher'
+import { HistoryNav } from '@/components/press/HistoryNav'
 import { PressNav } from './press/PressNav'
 import type { Channel, ChannelGroup, BriefingState, BriefingStreamEvent, AppSettings, Profile, Briefing, Digest } from '@/lib/types'
 
@@ -772,7 +773,7 @@ export function HomeClient({ channels: initialChannels, settings, groups: initia
 
       {/* ── Masthead + section tabs + ticker ── */}
       <Masthead />
-      <SectionSwitcher active="pulse" rule={!settings.ticker_items?.length} />
+      <SectionSwitcher active="pulse" rule={!settings.ticker_items?.length} leading={<HistoryNav />} />
       <TickerBar items={settings.ticker_items ?? []} />
 
       <main className="max-w-screen-xl mx-auto px-4 pt-6">

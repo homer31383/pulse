@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import type { ReactNode } from 'react'
 
 // Newspaper section tabs under the masthead: flips between Pulse (home) and
 // Post-Pulse. Shown on both, with the current section active.
@@ -10,14 +11,18 @@ const SECTIONS = [
 export function SectionSwitcher({
   active,
   rule = true,
+  leading,
 }: {
   active: 'pulse' | 'post-pulse'
   // Bottom hairline. Off on home when the ticker's top border already draws it.
   rule?: boolean
+  // Pinned to the row's left edge (the Back/Forward pair); the tabs stay centred.
+  leading?: ReactNode
 }) {
   return (
     <nav aria-label="Sections" className="max-w-2xl mx-auto px-4">
-      <div className="flex items-center justify-center gap-7 py-2 font-chrome text-[10px] uppercase tracking-[1.5px] whitespace-nowrap">
+      <div className="relative flex items-center justify-center gap-7 py-2 font-chrome text-[10px] uppercase tracking-[1.5px] whitespace-nowrap">
+        {leading && <div className="absolute left-0 top-1/2 -translate-y-1/2">{leading}</div>}
         {SECTIONS.map((s) => {
           const isActive = s.key === active
           return (

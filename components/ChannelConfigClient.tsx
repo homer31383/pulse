@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { HistoryNav } from '@/components/press/HistoryNav'
 import type { Channel, ChannelGroup, ConversationMessage, ConfigChatStreamEvent, BriefingWithCost, Profile, RecapGroup } from '@/lib/types'
 import { BriefingHistorySection } from '@/components/BriefingHistorySection'
 
@@ -268,13 +269,14 @@ export function ChannelConfigClient({ channel: initialChannel, initialMessages, 
           <Link
             href="/"
             className="p-1.5 rounded-lg text-ink-100 hover:text-ink-300 hover:bg-cream-200 transition-colors flex-shrink-0"
-            aria-label="Back"
+            aria-label="Back to Pulse"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </Link>
           <h1 className="font-display text-lg font-normal text-ink-300 truncate flex-1">{initialChannel.name}</h1>
+          <HistoryNav />
           {/* History link */}
           <Link
             href={`/channels/${initialChannel.id}/history`}

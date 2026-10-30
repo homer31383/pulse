@@ -156,12 +156,15 @@ export function ExportPdfButton({ channels, preselect = [] }: { channels: Export
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="min-h-[44px] min-w-[44px] flex items-center gap-1.5 px-2.5 font-chrome text-[10px] uppercase tracking-[1.5px] text-press-accent hover:bg-press-accent/10 transition-colors flex-shrink-0"
+        aria-label="Export PDF"
+        title="Export PDF"
+        // Icon only on phones, so the header title keeps its width next to Back/Forward
+        className="min-h-[44px] min-w-[44px] flex items-center justify-center gap-1.5 px-2.5 font-chrome text-[10px] uppercase tracking-[1.5px] text-press-accent hover:bg-press-accent/10 transition-colors flex-shrink-0"
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v11m0 0l-4-4m4 4l4-4M5 19h14" />
         </svg>
-        <span>Export PDF</span>
+        <span className="hidden sm:inline">Export PDF</span>
       </button>
       {/* Portalled: the button sits in a sticky header whose backdrop blur
           would otherwise become the sheet's containing block */}

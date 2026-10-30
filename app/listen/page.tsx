@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { HistoryNav } from '@/components/press/HistoryNav'
 import { ListenQueueClient } from '@/components/ListenQueueClient'
 import { PressNav } from '@/components/press/PressNav'
 import { useQueue } from '@/contexts/QueueContext'
@@ -15,7 +16,7 @@ export default function ListenPage() {
           <Link
             href="/"
             className="p-1.5 rounded-lg text-press-muted hover:text-press-ink hover:bg-press-accent/10 transition-colors"
-            aria-label="Back"
+            aria-label="Back to Pulse"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -27,6 +28,7 @@ export default function ListenPage() {
               {loading ? 'Loading' : unplayed.length === 0 ? 'The listening desk' : `${unplayed.length} item${unplayed.length !== 1 ? 's' : ''} queued`}
             </p>
           </div>
+          <HistoryNav />
         </div>
       </header>
 

@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { HistoryNav } from '@/components/press/HistoryNav'
 import { DailyArchiveClient } from '@/components/DailyArchiveClient'
 import { PressNav } from '@/components/press/PressNav'
 import { ExportPdfButton, type ExportChannel } from '@/components/ExportPdfSheet'
@@ -73,7 +74,7 @@ export default async function AllBriefingHistoryPage() {
           <Link
             href="/"
             className="p-1.5 rounded-lg text-press-muted hover:text-press-ink hover:bg-press-accent/10 transition-colors flex-shrink-0"
-            aria-label="Back"
+            aria-label="Back to Pulse"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -90,6 +91,7 @@ export default async function AllBriefingHistoryPage() {
                   ].filter(Boolean).join(' · ') + ' · last 30 days'}
             </p>
           </div>
+          <HistoryNav />
           {exportChannels.length > 0 && <ExportPdfButton channels={exportChannels} />}
         </div>
       </header>

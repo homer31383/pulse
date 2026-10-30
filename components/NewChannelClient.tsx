@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { HistoryNav } from '@/components/press/HistoryNav'
 
 export function NewChannelClient() {
   const router = useRouter()
@@ -55,13 +56,14 @@ export function NewChannelClient() {
           <Link
             href="/"
             className="p-1.5 rounded-lg text-ink-100 hover:text-ink-300 hover:bg-cream-300 transition-colors"
-            aria-label="Back"
+            aria-label="Back to Pulse"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </Link>
           <h1 className="font-display text-lg font-normal text-ink-300">New Channel</h1>
+          <HistoryNav className="ml-auto" />
         </div>
       </header>
 

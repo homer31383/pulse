@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
+import { Suspense } from 'react'
 import { SpeechProviderWrapper } from '@/components/SpeechProviderWrapper'
+import { HistoryTracker } from '@/components/press/HistoryNav'
 // eslint-disable-next-line @next/next/no-page-custom-font
 import { Lora, Playfair_Display, Inter } from 'next/font/google'
 
@@ -53,6 +55,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <SpeechProviderWrapper>
           {children}
         </SpeechProviderWrapper>
+        {/* Back/Forward fallback where the Navigation API is missing (components/press/HistoryNav.tsx) */}
+        <Suspense fallback={null}>
+          <HistoryTracker />
+        </Suspense>
 
         {/* Register service worker */}
         <script

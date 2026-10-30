@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { PressArticle } from './press/PressArticle'
 import { AudioPlayer, SpokenArticle } from './press/AudioPlayer'
 import { PressNav } from './press/PressNav'
+import { HistoryNav } from '@/components/press/HistoryNav'
 import { QueueNeighborBar, useQueueNeighbors } from './press/QueueNeighbors'
 import { CATCHUP_FROM_PARAM } from '@/lib/post-pulse-catchup-types'
 import type { Source } from '@/lib/types'
@@ -75,6 +76,7 @@ export function ReadArticleClient({ kind, id, title, subtitle, content, sources,
               {subtitle ? `${subtitle} · ` : ''}{dateLabel(createdAt)}{read ? ' · read' : ''}
             </p>
           </div>
+          <HistoryNav />
         </div>
       </header>
 
