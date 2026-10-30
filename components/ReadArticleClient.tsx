@@ -19,13 +19,14 @@ interface Props {
   createdAt: string
   alreadyRead: boolean
   backHref?: string                // '/post-pulse' when opened from the catch-up panel
+  artworkLinks?: boolean           // Image search links on artwork headings (lib/artwork-links.ts)
 }
 
 function dateLabel(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
 }
 
-export function ReadArticleClient({ kind, id, title, subtitle, content, sources, createdAt, alreadyRead, backHref = '/listen' }: Props) {
+export function ReadArticleClient({ kind, id, title, subtitle, content, sources, createdAt, alreadyRead, backHref = '/listen', artworkLinks = false }: Props) {
   const speechId = `${kind}:${id}`
   const endRef = useRef<HTMLDivElement>(null)
   const [read, setRead] = useState(alreadyRead)
@@ -81,7 +82,7 @@ export function ReadArticleClient({ kind, id, title, subtitle, content, sources,
         <QueueNeighborBar neighbors={neighbors} query={query} className="mb-3" />
         <AudioPlayer id={speechId} kind={kind} itemId={id} content={content} className="mb-4" />
         <SpokenArticle id={speechId}>
-          <PressArticle content={content} channelName={title} sourceDate={createdAt} />
+          <PressArticle content={content} channelName={title} sourceDate={createdAt} artworkLinks={artworkLinks} />
         </SpokenArticle>
 
         {sources.length > 0 && (

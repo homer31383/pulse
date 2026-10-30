@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { PressArticle } from './press/PressArticle'
+import { artworkLinksEnabled } from '@/lib/artwork-links'
 import { AudioPlayer, SpokenArticle } from './press/AudioPlayer'
 import type { Briefing, Digest, Source } from '@/lib/types'
 
@@ -172,6 +173,7 @@ function DailyEditionView({ day, onClose }: { day: DayGroup; onClose: () => void
                       content={entry.content}
                       channelName={entry.title}
                       sourceDate={entry.created_at}
+                      artworkLinks={entry.kind === 'briefing' && artworkLinksEnabled({ id: entry.channelId, name: entry.title })}
                     />
                   </SpokenArticle>
                   <SourcesFooter sources={entry.sources} />

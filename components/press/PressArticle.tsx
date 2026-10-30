@@ -104,16 +104,67 @@ export const PRESS_MD_COMPONENTS: Components = {
 }
 
 import { parsePressSections, type PressSection as Section } from '@/lib/press-sections'
+import { imageSearchUrl, parseArtworkHeading, type Artwork } from '@/lib/artwork-links'
+
+// Small "Image" label after an artwork's title. The ::after grows the hit
+// area to 44×44 around the label without moving anything.
+function ImageSearchLink({ artwork }: { artwork: Artwork }) {
+  return (
+    <a
+      href={imageSearchUrl(artwork)}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={`Image search: ${artwork.title}, ${artwork.artist}`}
+      className="press-label relative ml-2 align-middle whitespace-nowrap no-underline hover:underline after:absolute after:left-1/2 after:top-1/2 after:h-11 after:w-11 after:-translate-x-1/2 after:-translate-y-1/2 after:content-['']"
+    >
+      Image
+    </a>
+  )
+}
+
+// A heading's markdown rebuilt from its parsed tree, keeping the italics the
+// artwork parser keys on ("Artist, *Title*, year").
+type HastNode = { type: string; value?: string; tagName?: string; children?: HastNode[] }
+function headingMarkdown(node: HastNode | undefined): string {
+  if (!node) return ''
+  if (node.type === 'text') return node.value ?? ''
+  const inner = (node.children ?? []).map(headingMarkdown).join('')
+  if (node.tagName === 'em') return `*${inner}*`
+  if (node.tagName === 'strong') return `**${inner}**`
+  return inner
+}
+
+// Body components for channels with artwork links: `#` headings that parse
+// as "Artist, *Title*" get the Image link. Everything else is unchanged.
+const ARTWORK_MD_COMPONENTS: Components = {
+  ...PRESS_MD_COMPONENTS,
+  h1({ node, children, ...props }) {
+    const artwork = parseArtworkHeading(headingMarkdown(node as HastNode | undefined))
+    return (
+      <h3 className="font-georgia text-[20px] font-normal tracking-[-0.3px] text-press-ink mt-4 mb-2" {...props}>
+        {children}
+        {artwork && <ImageSearchLink artwork={artwork} />}
+      </h3>
+    )
+  },
+}
 
 interface Props {
   content: string
   channelName?: string | null
   sourceDate?: string | null
   pinnable?: boolean
+  // Image search links on artwork headings (see lib/artwork-links.ts)
+  artworkLinks?: boolean
 }
 
-export function PressArticle({ content, channelName = null, sourceDate = null, pinnable = true }: Props) {
+export function PressArticle({ content, channelName = null, sourceDate = null, pinnable = true, artworkLinks = false }: Props) {
   const { headline, sections } = useMemo(() => parsePressSections(content), [content])
+  const mdComponents = artworkLinks ? ARTWORK_MD_COMPONENTS : PRESS_MD_COMPONENTS
+  const headlineArtwork = useMemo(
+    () => (artworkLinks && headline ? parseArtworkHeading(headline) : null),
+    [artworkLinks, headline],
+  )
   const [pinned, setPinned] = useState<Record<number, boolean>>({})
   const timersRef = useRef<Record<number, ReturnType<typeof setTimeout>>>({})
 
@@ -177,6 +228,7 @@ export function PressArticle({ content, channelName = null, sourceDate = null, p
       {headline && (
         <h2 className="font-georgia text-[20px] font-normal tracking-[-0.3px] text-press-ink leading-snug mb-3">
           {headline}
+          {headlineArtwork && <ImageSearchLink artwork={headlineArtwork} />}
         </h2>
       )}
 
@@ -190,7 +242,7 @@ export function PressArticle({ content, channelName = null, sourceDate = null, p
                 <PinButton index={i} />
               </div>
               <div className="[&_p]:!text-[12px] [&_li]:!text-[12px]">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={PRESS_MD_COMPONENTS}>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
                   {section.body}
                 </ReactMarkdown>
               </div>
@@ -211,7 +263,7 @@ export function PressArticle({ content, channelName = null, sourceDate = null, p
                 </div>
               )}
               <div className={section.body.length > 1100 ? 'press-columns' : undefined}>
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={PRESS_MD_COMPONENTS}>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
                   {section.body}
                 </ReactMarkdown>
               </div>

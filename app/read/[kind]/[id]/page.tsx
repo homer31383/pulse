@@ -4,6 +4,7 @@
 import { notFound } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { ReadArticleClient } from '@/components/ReadArticleClient'
+import { artworkLinksEnabled } from '@/lib/artwork-links'
 import type { Source } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -44,6 +45,7 @@ export default async function ReadPage({ params, searchParams }: Params) {
         createdAt={data.created_at}
         alreadyRead={!!data.read_at}
         backHref={backHref}
+        artworkLinks={artworkLinksEnabled({ id: data.channel_id, name: title })}
       />
     )
   }
