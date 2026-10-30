@@ -39,6 +39,12 @@ const UNDO_MS = 6000
 // removal and rollback, plus a 6-second undo toast ({action: 'reopen'}).
 // Neither touches post_pulse_last_seen.
 //
+// Each briefing/digest row has its own "Seen" button: POST
+// /api/post-pulse/catchup/item-seen sets post_pulse_seen_at on that item
+// (migration 037), optimistic, with the same undo toast (Undo clears it). A
+// digest has one flag, so every row it was split into leaves together and it
+// counts once. It changes nothing else (read_at, queue, last_seen, audio).
+//
 // All actionable review rows render, in their own scroll area (ReviewScroll);
 // the section header, counts and the flagged line stay outside it.
 export function CatchupPanel({ data }: { data: Catchup }) {
@@ -46,7 +52,11 @@ export function CatchupPanel({ data }: { data: Catchup }) {
   const [collapsed, setCollapsed] = useState(data.collapsed)
   const [seenCleared, setSeenCleared] = useState(false)   // after "Mark all as seen"
   const [showOlder, setShowOlder] = useState(false)
-  const [summary, setSummary] = useState<CatchupSummary | null>(data.summary)
+  // A summary is only shown for the item set it was made from (itemKey): a
+  // row marked seen changes the set, so the summary has to be run again.
+  const [summary, setSummary] = useState<{ forKey: string; content: CatchupSummary } | null>(
+    data.summary ? { forKey: data.itemKey, content: data.summary } : null,
+  )
   const [summaryOpen, setSummaryOpen] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [summarizing, setSummarizing] = useState(false)
@@ -57,6 +67,9 @@ export function CatchupPanel({ data }: { data: Catchup }) {
   const [rowState, setRowState] = useState<Record<string, 'confirm' | 'accepting'>>({})
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({})
   const [toast, setToast] = useState<UndoToast | null>(null)
+  // Item keys (`${kind}:${id}`) marked seen here, hidden at once; the next
+  // server snapshot (router.refresh) leaves them out by itself.
+  const [seenKeys, setSeenKeys] = useState<Set<string>>(() => new Set())
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(
     () => () => {
@@ -65,10 +78,28 @@ export function CatchupPanel({ data }: { data: Catchup }) {
     [],
   )
 
-  const hasFeed = data.newCount > 0 && !seenCleared
+  // A fresh snapshot brings its own cached summary (or none) for its item set.
+  useEffect(() => {
+    if (data.summary) setSummary({ forKey: data.itemKey, content: data.summary })
+  }, [data.itemKey, data.summary])
+
+  // Distinct items (a split digest appears under several channels), minus
+  // the ones marked seen here, so the header counts move at once.
+  const distinct = new Map<string, CatchupEntry>()
+  for (const ch of data.channels) for (const e of ch.entries) if (!distinct.has(e.key)) distinct.set(e.key, e)
+  const liveItems = [...distinct.values()].filter((e) => !seenKeys.has(e.key))
+  // True between a tap and the snapshot that no longer has the item: the
+  // estimate and cached summary still describe the old item set.
+  const staleSet = [...distinct.keys()].some((k) => seenKeys.has(k))
+  const newCount = liveItems.length
+  const unreadCount = liveItems.filter((e) => e.unread).length
+  const olderCount = liveItems.filter((e) => e.older).length
+  const shownSummary = !staleSet && summary?.forKey === data.itemKey ? summary.content : null
+  const estimate = staleSet ? null : data.estimate
+
+  const hasFeed = newCount > 0 && !seenCleared
   const reviewItems = data.review.items.filter((i) => !resolvedIds.has(i.id))
   const reviewNew = seenCleared ? 0 : reviewItems.filter((i) => i.isNew).length
-  if (!hasFeed && reviewItems.length === 0) return null
 
   // queue.items, not queue.find(): find reads a ref, so it wouldn't re-render
   // the panel when the queue finishes loading after a full page load.
@@ -77,11 +108,11 @@ export function CatchupPanel({ data }: { data: Catchup }) {
 
   // Distinct items in display order (channel order, newest first), visible ones only.
   const displayItems: CatchupEntry[] = []
-  const seenKeys = new Set<string>()
+  const shownKeys = new Set<string>()
   for (const ch of data.channels) {
     for (const e of ch.entries) {
-      if ((e.older && !showOlder) || seenKeys.has(e.key)) continue
-      seenKeys.add(e.key)
+      if ((e.older && !showOlder) || shownKeys.has(e.key) || seenKeys.has(e.key)) continue
+      shownKeys.add(e.key)
       displayItems.push(e)
     }
   }
@@ -193,7 +224,7 @@ export function CatchupPanel({ data }: { data: Catchup }) {
     setRowError(id, null)
     markResolved(id, true)
     const request = patchQueue(id, 'reject')
-    showToast({ id, title: item.title, request, status: 'idle', error: null })
+    showToast({ kind: 'review', id, title: item.title, label: 'Dismissed', request, status: 'idle', error: null })
     const err = await request
     if (err) {
       markResolved(id, false)
@@ -204,19 +235,71 @@ export function CatchupPanel({ data }: { data: Catchup }) {
     router.refresh()
   }
 
-  // Undo = reopen (rejected -> pending). Waits for the dismiss itself first,
-  // so a fast Undo can't race it.
+  // Undo = reopen (rejected -> pending), or clear post_pulse_seen_at for a
+  // briefing/digest. Waits for the original request first, so a fast Undo
+  // can't race it.
   async function undoDismiss(t: UndoToast) {
     if (toastTimer.current) clearTimeout(toastTimer.current)
     setToast({ ...t, status: 'undoing' })
-    if (await t.request) return // the dismiss failed: the row is already back
-    const err = await patchQueue(t.id, 'reopen')
+    if (await t.request) return // the original request failed: the row is already back
+    const err = t.entry ? await postItemSeen(t.entry, false) : await patchQueue(t.id, 'reopen')
     if (err) {
       showToast({ ...t, status: 'error', error: err })
       return
     }
-    markResolved(t.id, false)
+    if (t.entry) markSeen(t.id, false)
+    else markResolved(t.id, false)
     showToast(null)
+    router.refresh()
+  }
+
+  const markSeen = (key: string, seen: boolean) =>
+    setSeenKeys((prev) => {
+      const next = new Set(prev)
+      if (seen) next.add(key)
+      else next.delete(key)
+      return next
+    })
+
+  async function postItemSeen(entry: Pick<CatchupEntry, 'kind' | 'id'>, seen: boolean): Promise<string | null> {
+    try {
+      const res = await fetch('/api/post-pulse/catchup/item-seen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: [{ kind: entry.kind, id: entry.id }], seen }),
+      })
+      if (res.ok) return null
+      const body = await res.json().catch(() => ({}))
+      return body.error ?? `Request failed (${res.status})`
+    } catch {
+      return 'Network error: nothing was changed'
+    }
+  }
+
+  // Optimistic, like the review dismiss: every row of the item leaves at once
+  // (a digest's split rows share its key) and they come back with the error
+  // if the request fails.
+  async function markItemSeen(e: CatchupEntry) {
+    setRowError(e.key, null)
+    markSeen(e.key, true)
+    const request = postItemSeen(e, true)
+    showToast({
+      kind: 'feed',
+      id: e.key,
+      entry: { kind: e.kind, id: e.id },
+      title: e.headline,
+      label: e.kind === 'digest' ? 'Marked whole digest as seen' : 'Marked as seen',
+      request,
+      status: 'idle',
+      error: null,
+    })
+    const err = await request
+    if (err) {
+      markSeen(e.key, false)
+      setRowError(e.key, `Couldn't mark as seen: ${err}`)
+      setToast((t) => (t?.id === e.key ? null : t))
+      return
+    }
     router.refresh()
   }
 
@@ -231,7 +314,7 @@ export function CatchupPanel({ data }: { data: Catchup }) {
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error ?? `Summary failed (${res.status})`)
-      setSummary(json.summary as CatchupSummary)
+      setSummary({ forKey: json.itemKey as string, content: json.summary as CatchupSummary })
       setSummaryOpen(true)
       setConfirming(false)
     } catch (err) {
@@ -244,7 +327,7 @@ export function CatchupPanel({ data }: { data: Catchup }) {
   // New review items are a subset of "awaiting review", so they're shown in
   // parentheses there and never added to the briefing count.
   const headerParts: string[] = []
-  if (hasFeed) headerParts.push(`${data.newCount} new ${data.sinceLabel}${data.unreadCount ? `, ${data.unreadCount} unread` : ''}`)
+  if (hasFeed) headerParts.push(`${newCount} new ${data.sinceLabel}${unreadCount ? `, ${unreadCount} unread` : ''}`)
   if (reviewItems.length > 0) {
     headerParts.push(
       `${reviewItems.length} awaiting review` +
@@ -267,6 +350,10 @@ export function CatchupPanel({ data }: { data: Catchup }) {
   ))
   const actionBtn =
     'font-chrome text-[11px] text-press-accent hover:text-press-ink disabled:text-press-faint disabled:cursor-default transition-colors'
+  const toastBar = toast && <UndoToastBar toast={toast} onUndo={() => void undoDismiss(toast)} onClose={() => showToast(null)} />
+
+  // Nothing left: the panel goes, but an undo toast stays for its 6 seconds.
+  if (!hasFeed && reviewItems.length === 0) return toastBar || null
 
   return (
     <aside aria-label="While you were away" className="mb-6 p-[14px] sm:p-4 bg-press-accent/[0.06] border-l-2 border-press-accent">
@@ -299,12 +386,12 @@ export function CatchupPanel({ data }: { data: Catchup }) {
                 <button type="button" className={actionBtn} onClick={addAll} disabled={addingAll || toQueue.length === 0}>
                   {addingAll ? 'Adding…' : toQueue.length === 0 ? 'All in queue' : `Add all to queue (${toQueue.length})`}
                 </button>
-                {summary ? (
+                {shownSummary ? (
                   <button type="button" className={actionBtn} onClick={() => setSummaryOpen((v) => !v)}>
                     {summaryOpen ? 'Hide summary' : 'Show summary'}
                   </button>
                 ) : (
-                  data.estimate && (
+                  estimate && (
                     <button type="button" className={actionBtn} onClick={() => setConfirming((v) => !v)} disabled={summarizing}>
                       Summarize
                     </button>
@@ -319,12 +406,12 @@ export function CatchupPanel({ data }: { data: Catchup }) {
             )}
           </div>
 
-          {hasFeed && confirming && !summary && data.estimate && (
+          {hasFeed && confirming && !shownSummary && estimate && (
             <div className="mt-3 pt-2 border-t-[0.5px] border-press-hair font-chrome text-[11px] text-press-body leading-relaxed">
-              One call to {data.estimate.modelLabel}, low effort, no web search, reading the{' '}
-              {data.estimate.items === data.newCount ? `${data.estimate.items}` : `newest ${data.estimate.items}`} item
-              {data.estimate.items === 1 ? '' : 's'} ({Math.round(data.estimate.inputChars / 1000)}k characters).
-              About {formatCost(data.estimate.typicalUsd)}, at most {formatCost(data.estimate.maxUsd)}.
+              One call to {estimate.modelLabel}, low effort, no web search, reading the{' '}
+              {estimate.items === newCount ? `${estimate.items}` : `newest ${estimate.items}`} item
+              {estimate.items === 1 ? '' : 's'} ({Math.round(estimate.inputChars / 1000)}k characters).
+              About {formatCost(estimate.typicalUsd)}, at most {formatCost(estimate.maxUsd)}.
               <span className="ml-3 inline-flex gap-3">
                 <button type="button" className={actionBtn} onClick={runSummary} disabled={summarizing}>
                   {summarizing ? 'Summarizing…' : 'Run'}
@@ -339,13 +426,13 @@ export function CatchupPanel({ data }: { data: Catchup }) {
             </div>
           )}
 
-          {hasFeed && summary && summaryOpen && (
+          {hasFeed && shownSummary && summaryOpen && (
             <div className="mt-3 pt-2 border-t-[0.5px] border-press-hair">
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={PRESS_MD_COMPONENTS}>
-                {summary.content}
+                {shownSummary.content}
               </ReactMarkdown>
               <p className="font-chrome text-[9px] uppercase tracking-[1.5px] text-press-faint">
-                Summary · {formatCost(summary.costUsd)}
+                Summary · {formatCost(shownSummary.costUsd)}
               </p>
             </div>
           )}
@@ -353,7 +440,7 @@ export function CatchupPanel({ data }: { data: Catchup }) {
           {hasFeed && (
           <div className="mt-3">
             {data.channels.map((ch) => {
-              const entries = ch.entries.filter((e) => showOlder || !e.older)
+              const entries = ch.entries.filter((e) => (showOlder || !e.older) && !seenKeys.has(e.key))
               if (entries.length === 0) return null
               return (
                 <section key={ch.id} className="mt-3 first:mt-0">
@@ -368,6 +455,8 @@ export function CatchupPanel({ data }: { data: Catchup }) {
                         entry={e}
                         queued={inQueue(e)}
                         onQueue={() => void queue.add(e.kind, e.id)}
+                        onSeen={() => void markItemSeen(e)}
+                        error={rowErrors[e.key] ?? null}
                       />
                     ))}
                   </ul>
@@ -377,9 +466,9 @@ export function CatchupPanel({ data }: { data: Catchup }) {
           </div>
           )}
 
-          {hasFeed && data.olderCount > 0 && (
+          {hasFeed && olderCount > 0 && (
             <button type="button" className={`${actionBtn} mt-3`} onClick={() => setShowOlder((v) => !v)}>
-              {showOlder ? 'Show fewer' : `Show ${data.olderCount} older`}
+              {showOlder ? 'Show fewer' : `Show ${olderCount} older`}
             </button>
           )}
 
@@ -429,15 +518,18 @@ export function CatchupPanel({ data }: { data: Catchup }) {
           {!hasFeed && footerLines}
         </>
       )}
-      {toast && <UndoToastBar toast={toast} onUndo={() => void undoDismiss(toast)} onClose={() => showToast(null)} />}
+      {toastBar}
     </aside>
   )
 }
 
 interface UndoToast {
-  id: string
+  kind: 'review' | 'feed'
+  id: string                      // review item id, or a feed item's key
+  entry?: Pick<CatchupEntry, 'kind' | 'id'> // feed items: what Undo clears
   title: string
-  request: Promise<string | null> // the dismiss PATCH; resolves to an error or null
+  label: string                   // "Dismissed" / "Marked as seen" / "Marked whole digest as seen"
+  request: Promise<string | null> // the original request; resolves to an error or null
   status: 'idle' | 'undoing' | 'error'
   error: string | null
 }
@@ -456,7 +548,7 @@ function UndoToastBar({ toast, onUndo, onClose }: { toast: UndoToast; onUndo: ()
           <>Couldn&apos;t undo: {toast.error}</>
         ) : (
           <>
-            Dismissed <span className="block truncate opacity-75">{toast.title}</span>
+            {toast.label} <span className="block truncate opacity-75">{toast.title}</span>
           </>
         )}
       </p>
@@ -523,7 +615,20 @@ function ReviewScroll({ children }: { children: ReactNode }) {
   )
 }
 
-function CatchupRow({ entry, queued, onQueue }: { entry: CatchupEntry; queued: boolean; onQueue: () => void }) {
+function CatchupRow({
+  entry,
+  queued,
+  onQueue,
+  onSeen,
+  error,
+}: {
+  entry: CatchupEntry
+  queued: boolean
+  onQueue: () => void
+  onSeen: () => void
+  error: string | null
+}) {
+  const isDigest = entry.kind === 'digest'
   const href = `/read/${entry.kind}/${entry.id}?${CATCHUP_FROM_PARAM}`
   return (
     <li className="py-2.5 border-b-[0.5px] border-press-hair last:border-b-0 flex gap-2.5">
@@ -541,8 +646,13 @@ function CatchupRow({ entry, queued, onQueue }: { entry: CatchupEntry; queued: b
           {entry.dateLabel} · {entry.kind === 'digest' ? 'digest' : entry.scheduled ? 'scheduled' : 'on demand'}
         </p>
         {entry.excerpt && <p className="mt-1 font-georgia text-[13px] leading-[1.55] text-press-body">{entry.excerpt}</p>}
+        {error && (
+          <p role="alert" className="mt-1 font-chrome text-[11px] text-press-down">
+            {error}
+          </p>
+        )}
       </div>
-      <div className="flex-shrink-0 pt-0.5">
+      <div className="flex-shrink-0 pt-0.5 flex flex-col items-end">
         {queued ? (
           <span className="font-chrome text-[10px] text-press-faint">In queue</span>
         ) : (
@@ -555,6 +665,21 @@ function CatchupRow({ entry, queued, onQueue }: { entry: CatchupEntry; queued: b
             + Queue
           </button>
         )}
+        {/* Outside the row's link, so a tap never navigates. Muted ink, not
+            the review queue's green accept. 44px tall; -mr-2 keeps the label
+            in line with "+ Queue" above while the target extends past it. */}
+        <button
+          type="button"
+          onClick={onSeen}
+          aria-label={`Mark ${entry.headline} as seen${isDigest ? ' (whole digest)' : ''}`}
+          title={isDigest ? 'Mark whole digest as seen' : 'Mark as seen'}
+          className="mt-1 -mr-2 h-11 px-2 inline-flex items-center gap-1 font-chrome text-[10px] text-press-muted hover:text-press-ink transition-colors"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          {isDigest ? 'Digest seen' : 'Seen'}
+        </button>
       </div>
     </li>
   )

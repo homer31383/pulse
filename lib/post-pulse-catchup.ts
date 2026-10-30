@@ -169,7 +169,10 @@ export async function compileCatchup(
   range: { since: Date; until: Date },
   longAbsence: boolean,
 ): Promise<CatchupCompiled> {
-  const inputs = await fetchRecapInputs(profileId, range, { group: 'post_pulse' })
+  // Items marked seen one by one (post_pulse_seen_at, migration 037) are left
+  // out here, so they leave the rows, the counts, the summary's item set and
+  // its cache key together.
+  const inputs = await fetchRecapInputs(profileId, range, { group: 'post_pulse', excludePostPulseSeen: true })
   const recap = compileRecap(inputs, '')
   const section = recap.sections.find((s) => s.group === 'post_pulse')
 
@@ -231,6 +234,7 @@ const olderUnread: Counter = async ({ profileId, since, ppChannelIds }) => {
       .select('id', { count: 'exact', head: true })
       .in('channel_id', ppChannelIds)
       .is('read_at', null)
+      .is('post_pulse_seen_at', null)
       .lte('created_at', cutoff),
     supabase
       .from('digests')
@@ -238,6 +242,7 @@ const olderUnread: Counter = async ({ profileId, since, ppChannelIds }) => {
       .eq('profile_id', profileId)
       .overlaps('channel_ids', ppChannelIds)
       .is('read_at', null)
+      .is('post_pulse_seen_at', null)
       .lte('created_at', cutoff),
   ])
   if (b.error || d.error) {
@@ -505,6 +510,7 @@ export async function fetchCatchup(profileId: string, now = new Date()): Promise
 
   return {
     snapshotAt: now.toISOString(),
+    itemKey: compiled.itemKey,
     since: range.since.toISOString(),
     firstVisit: range.firstVisit,
     longAbsence: range.longAbsence,

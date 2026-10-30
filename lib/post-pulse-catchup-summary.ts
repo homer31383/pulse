@@ -28,7 +28,7 @@ const CHANNEL_NAME = 'Post-Pulse catch-up'
 export async function summarizeCatchup(
   profileId: string,
   until: Date,
-): Promise<{ summary: CatchupSummary; cached: boolean } | { empty: true }> {
+): Promise<{ summary: CatchupSummary; cached: boolean; itemKey: string } | { empty: true }> {
   const settings = await fetchCatchupSettings(profileId)
   const range = catchupRange(settings.lastSeen, until)
   const compiled = await compileCatchup(profileId, range, range.longAbsence)
@@ -37,7 +37,7 @@ export async function summarizeCatchup(
   if (settings.cached?.itemKey === compiled.itemKey) {
     const { itemKey: _k, ...summary } = settings.cached
     void _k
-    return { summary, cached: true }
+    return { summary, cached: true, itemKey: compiled.itemKey }
   }
 
   const input = buildSummaryInput(compiled)
@@ -127,5 +127,5 @@ export async function summarizeCatchup(
     .eq('id', profileId)
   if (error) console.warn(`[catchup] summary not cached: ${error.message}`)
 
-  return { summary, cached: false }
+  return { summary, cached: false, itemKey: compiled.itemKey }
 }

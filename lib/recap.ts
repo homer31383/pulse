@@ -112,7 +112,9 @@ export function recapWindow(now = new Date()): RecapRange {
 export async function fetchRecapInputs(
   profileId: string,
   range: RecapRange = recapWindow(),
-  opts: { group?: RecapGroup } = {},
+  // excludePostPulseSeen: the catch-up panel's per-item "Seen" flag
+  // (migration 037). The weekly recap never passes it, so it is unaffected.
+  opts: { group?: RecapGroup; excludePostPulseSeen?: boolean } = {},
 ): Promise<RecapInputs> {
   const since = range.since.toISOString()
   const until = range.until.toISOString()
@@ -128,23 +130,26 @@ export async function fetchRecapInputs(
     .filter((c) => !opts.group || (c.recap_group ?? 'pulse') === opts.group)
     .map((c) => c.id as string)
 
-  const digestQuery = supabase
+  let digestQuery = supabase
     .from('digests')
     .select('id, content, channel_ids, channel_names, scheduled, read_at, created_at')
     .eq('profile_id', profileId)
     .gt('created_at', since)
     .lte('created_at', until)
     .order('created_at', { ascending: false })
+  if (opts.excludePostPulseSeen) digestQuery = digestQuery.is('post_pulse_seen_at', null)
+  let briefingQuery = supabase
+    .from('briefings')
+    .select('id, channel_id, content, scheduled, read_at, created_at')
+    .in('channel_id', channelIds)
+    .gt('created_at', since)
+    .lte('created_at', until)
+    .order('created_at', { ascending: false })
+  if (opts.excludePostPulseSeen) briefingQuery = briefingQuery.is('post_pulse_seen_at', null)
 
   const [{ data: briefings, error: bErr }, { data: digests, error: dErr }] = await Promise.all([
     channelIds.length
-      ? supabase
-          .from('briefings')
-          .select('id, channel_id, content, scheduled, read_at, created_at')
-          .in('channel_id', channelIds)
-          .gt('created_at', since)
-          .lte('created_at', until)
-          .order('created_at', { ascending: false })
+      ? briefingQuery
       : Promise.resolve({ data: [] as RecapBriefingRow[], error: null }),
     opts.group
       ? channelIds.length

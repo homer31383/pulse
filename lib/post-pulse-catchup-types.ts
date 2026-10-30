@@ -80,6 +80,7 @@ export interface CatchupEstimate {
 
 export interface Catchup {
   snapshotAt: string        // upper bound of this snapshot; every "seen" write sends it
+  itemKey: string           // hash of the summary's item set; `summary` is cached for exactly this key
   since: string             // lower bound (exclusive): last_seen, or 7 days back on a first visit
   firstVisit: boolean
   longAbsence: boolean
