@@ -7,7 +7,6 @@ import { AudioPlayer, SpokenArticle } from './press/AudioPlayer'
 import { PressNav } from './press/PressNav'
 import { HistoryNav } from '@/components/press/HistoryNav'
 import { QueueNeighborBar, useQueueNeighbors } from './press/QueueNeighbors'
-import { CATCHUP_FROM_PARAM } from '@/lib/post-pulse-catchup-types'
 import type { Source } from '@/lib/types'
 
 interface Props {
@@ -19,7 +18,9 @@ interface Props {
   sources: Source[]
   createdAt: string
   alreadyRead: boolean
-  backHref?: string                // '/post-pulse' when opened from the catch-up panel
+  backHref?: string                // '/post-pulse' (catch-up panel) or '/channels/<id>/history'
+  backQuery?: string               // the ?from= origin, kept on Previous/Next links
+  backLabel?: string
   artworkLinks?: boolean           // Image search links on artwork headings (lib/artwork-links.ts)
 }
 
@@ -27,13 +28,12 @@ function dateLabel(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
 }
 
-export function ReadArticleClient({ kind, id, title, subtitle, content, sources, createdAt, alreadyRead, backHref = '/listen', artworkLinks = false }: Props) {
+export function ReadArticleClient({ kind, id, title, subtitle, content, sources, createdAt, alreadyRead, backHref = '/listen', backQuery = '', backLabel = 'Back to the listen queue', artworkLinks = false }: Props) {
   const speechId = `${kind}:${id}`
   const endRef = useRef<HTMLDivElement>(null)
   const [read, setRead] = useState(alreadyRead)
   // Previous/Next keep the ?from= origin so the back arrow still returns there
-  const query = backHref === '/post-pulse' ? `?${CATCHUP_FROM_PARAM}` : ''
-  const neighbors = useQueueNeighbors(kind, id, query)
+  const neighbors = useQueueNeighbors(kind, id, backQuery)
 
   // "Fully reading" = reaching the end of the article. Marks it read (the
   // same read_at the archive uses); the item stays in the listen queue —
@@ -64,7 +64,7 @@ export function ReadArticleClient({ kind, id, title, subtitle, content, sources,
           <Link
             href={backHref}
             className="p-1.5 rounded-lg text-press-muted hover:text-press-ink hover:bg-press-accent/10 transition-colors"
-            aria-label={backHref === '/listen' ? 'Back to the listen queue' : 'Back to Post-Pulse'}
+            aria-label={backLabel}
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -81,7 +81,7 @@ export function ReadArticleClient({ kind, id, title, subtitle, content, sources,
       </header>
 
       <main className="max-w-2xl mx-auto px-4 pt-3 pb-28">
-        <QueueNeighborBar neighbors={neighbors} query={query} className="mb-3" />
+        <QueueNeighborBar neighbors={neighbors} query={backQuery} className="mb-3" />
         <AudioPlayer id={speechId} kind={kind} itemId={id} content={content} className="mb-4" />
         <SpokenArticle id={speechId}>
           <PressArticle content={content} channelName={title} sourceDate={createdAt} artworkLinks={artworkLinks} />
@@ -105,7 +105,7 @@ export function ReadArticleClient({ kind, id, title, subtitle, content, sources,
         {/* End-of-article sentinel */}
         <div ref={endRef} className="h-px" aria-hidden />
         <p className="font-chrome text-[9px] uppercase tracking-[2px] text-press-faint text-center mt-8">End</p>
-        <QueueNeighborBar neighbors={neighbors} query={query} className="mt-4" />
+        <QueueNeighborBar neighbors={neighbors} query={backQuery} className="mt-4" />
       </main>
 
       <PressNav />

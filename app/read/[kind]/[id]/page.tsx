@@ -5,6 +5,8 @@ import { notFound } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { ReadArticleClient } from '@/components/ReadArticleClient'
 import { artworkLinksEnabled } from '@/lib/artwork-links'
+import { channelFromParam, channelIdFromParam } from '@/lib/channel-history-types'
+import { CATCHUP_FROM_PARAM } from '@/lib/post-pulse-catchup-types'
 import type { Source } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -18,9 +20,16 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 export default async function ReadPage({ params, searchParams }: Params) {
   const { kind, id } = await params
-  // Rows in the Post-Pulse catch-up panel link here with ?from=post-pulse so
-  // the back arrow returns to the panel instead of the listen queue.
-  const backHref = (await searchParams).from === 'post-pulse' ? '/post-pulse' : '/listen'
+  // Rows in the Post-Pulse catch-up panel link here with ?from=post-pulse and
+  // channel history rows with ?from=channel:<uuid>, so the back arrow returns
+  // there instead of the listen queue. backQuery is carried by Previous/Next.
+  const from = (await searchParams).from
+  const historyChannelId = channelIdFromParam(from)
+  const { backHref, backQuery, backLabel } = from === 'post-pulse'
+    ? { backHref: '/post-pulse', backQuery: `?${CATCHUP_FROM_PARAM}`, backLabel: 'Back to Post-Pulse' }
+    : historyChannelId
+      ? { backHref: `/channels/${historyChannelId}/history`, backQuery: `?${channelFromParam(historyChannelId)}`, backLabel: 'Back to channel history' }
+      : { backHref: '/listen', backQuery: '', backLabel: 'Back to the listen queue' }
   if ((kind !== 'briefing' && kind !== 'digest') || !UUID_RE.test(id)) notFound()
 
   if (kind === 'briefing') {
@@ -45,6 +54,8 @@ export default async function ReadPage({ params, searchParams }: Params) {
         createdAt={data.created_at}
         alreadyRead={!!data.read_at}
         backHref={backHref}
+        backQuery={backQuery}
+        backLabel={backLabel}
         artworkLinks={artworkLinksEnabled({ id: data.channel_id, name: title })}
       />
     )
@@ -69,6 +80,8 @@ export default async function ReadPage({ params, searchParams }: Params) {
       createdAt={data.created_at}
       alreadyRead={!!data.read_at}
       backHref={backHref}
+      backQuery={backQuery}
+      backLabel={backLabel}
     />
   )
 }

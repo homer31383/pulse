@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { clearHistorySnapshot } from '@/lib/channel-history-types'
 import type { Channel } from '@/lib/types'
 
 interface ChannelCardProps {
@@ -36,7 +37,7 @@ export function ChannelCard({ channel, isSelected, onToggle, groupId, hasBriefin
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={isDragging ? 'z-50 relative' : ''}
+      className={`relative h-full ${isDragging ? 'z-50' : ''}`}
     >
       <div
         role="checkbox"
@@ -45,7 +46,8 @@ export function ChannelCard({ channel, isSelected, onToggle, groupId, hasBriefin
         onKeyDown={(e) => (e.key === ' ' || e.key === 'Enter') && onToggle(channel.id)}
         onClick={() => onToggle(channel.id)}
         className={[
-          'group relative p-4 rounded-2xl cursor-pointer select-none',
+          // pb-12 reserves the History row, which sits outside this tap target
+          'group relative h-full px-4 pt-4 pb-12 rounded-2xl cursor-pointer select-none',
           'transition-all duration-200 ease-out',
           isDragging
             ? 'bg-white/70 shadow-[0_8px_30px_rgba(60,50,80,0.14)] scale-[1.02]'
@@ -106,6 +108,21 @@ export function ChannelCard({ channel, isSelected, onToggle, groupId, hasBriefin
           )}
         </div>
       </div>
+
+      {/* History: a sibling of the checkbox, not inside it, so tapping it
+          never toggles the channel. 44px tall; the reserved pb-12 row above
+          keeps it clear of the text whatever the name length. */}
+      <Link
+        href={`/channels/${channel.id}/history`}
+        onClick={clearHistorySnapshot}
+        className="absolute left-1.5 bottom-0.5 h-11 px-2.5 inline-flex items-center gap-1.5 font-chrome text-[9px] uppercase tracking-[1.5px] text-press-accent hover:text-press-ink transition-colors"
+        aria-label={`History for ${channel.name}`}
+      >
+        <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        History
+      </Link>
     </div>
   )
 }

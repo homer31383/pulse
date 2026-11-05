@@ -173,7 +173,7 @@ export function normName(s: string): string {
   return s.toLowerCase().replace(/\s+/g, ' ').trim()
 }
 
-function truncate(text: string, max = EXCERPT_CHARS): string {
+export function truncate(text: string, max = EXCERPT_CHARS): string {
   const t = text.replace(/\s+/g, ' ').trim()
   if (t.length <= max) return t
   const cut = t.slice(0, max)
@@ -182,7 +182,7 @@ function truncate(text: string, max = EXCERPT_CHARS): string {
 }
 
 // First meaningful line of a markdown body: the first bullet or paragraph.
-function firstProse(body: string): string | null {
+export function firstProse(body: string): string | null {
   for (const block of body.split(/\n\s*\n/)) {
     const line = block
       .split('\n')
@@ -196,7 +196,7 @@ function firstProse(body: string): string | null {
 }
 
 // Excerpt rule: the first Key Takeaways bullet, else the first paragraph.
-function excerptFor(sections: ReturnType<typeof parsePressSections>['sections']): string {
+export function excerptFor(sections: ReturnType<typeof parsePressSections>['sections']): string {
   const aside = sections.find((s) => s.isAside)
   const fromAside = aside ? firstProse(aside.body) : null
   if (fromAside) return truncate(fromAside)
