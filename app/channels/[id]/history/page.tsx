@@ -66,7 +66,7 @@ export default async function ChannelHistoryPage({ params }: PageProps) {
         </div>
       </header>
 
-      <ChannelHistoryClient channelId={channel.id} entries={entries} />
+      <ChannelHistoryClient channelId={channel.id} channelName={channel.name} entries={entries} />
     </div>
   )
 }

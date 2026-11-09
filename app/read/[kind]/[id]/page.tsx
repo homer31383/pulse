@@ -5,7 +5,7 @@ import { notFound } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { ReadArticleClient } from '@/components/ReadArticleClient'
 import { artworkLinksEnabled } from '@/lib/artwork-links'
-import { channelFromParam, channelIdFromParam } from '@/lib/channel-history-types'
+import { channelFromParam, channelIdFromParam, fullTextQueryError, normalizeFullTextQuery } from '@/lib/channel-history-types'
 import { CATCHUP_FROM_PARAM } from '@/lib/post-pulse-catchup-types'
 import type { Source } from '@/lib/types'
 
@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic'
 
 interface Params {
   params: Promise<{ kind: string; id: string }>
-  searchParams: Promise<{ from?: string }>
+  searchParams: Promise<{ from?: string; q?: string; w?: string; story?: string }>
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -23,7 +23,14 @@ export default async function ReadPage({ params, searchParams }: Params) {
   // Rows in the Post-Pulse catch-up panel link here with ?from=post-pulse and
   // channel history rows with ?from=channel:<uuid>, so the back arrow returns
   // there instead of the listen queue. backQuery is carried by Previous/Next.
-  const from = (await searchParams).from
+  const sp = await searchParams
+  const from = sp.from
+  // Full-text search results (channel history) pass ?q= (and &w=1 for whole
+  // word, &story=<channel> for a digest story) so the first match is
+  // highlighted and scrolled to. Ignored when malformed.
+  const highlight = typeof sp.q === 'string' && !fullTextQueryError(sp.q)
+    ? { q: normalizeFullTextQuery(sp.q), whole: sp.w === '1', story: typeof sp.story === 'string' ? sp.story.slice(0, 200) : null }
+    : null
   const historyChannelId = channelIdFromParam(from)
   const { backHref, backQuery, backLabel } = from === 'post-pulse'
     ? { backHref: '/post-pulse', backQuery: `?${CATCHUP_FROM_PARAM}`, backLabel: 'Back to Post-Pulse' }
@@ -57,6 +64,7 @@ export default async function ReadPage({ params, searchParams }: Params) {
         backQuery={backQuery}
         backLabel={backLabel}
         artworkLinks={artworkLinksEnabled({ id: data.channel_id, name: title })}
+        highlight={highlight}
       />
     )
   }
@@ -82,6 +90,7 @@ export default async function ReadPage({ params, searchParams }: Params) {
       backHref={backHref}
       backQuery={backQuery}
       backLabel={backLabel}
+      highlight={highlight}
     />
   )
 }
