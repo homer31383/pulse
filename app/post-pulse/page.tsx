@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers'
 import { PipelineMap } from '@/components/post-pulse/PipelineMap'
 import { CatchupPanel } from '@/components/post-pulse/CatchupPanel'
+import { StarredSection } from '@/components/post-pulse/StarredSection'
 import { fetchCatchup } from '@/lib/post-pulse-catchup'
 import type { Catchup } from '@/lib/post-pulse-catchup-types'
 
@@ -23,6 +24,8 @@ export default async function PostPulsePage() {
   return (
     <>
       {catchup && <CatchupPanel data={catchup} />}
+      {/* The profile's stars (migration 038), loaded by the layout */}
+      <StarredSection />
       <PipelineMap />
     </>
   )

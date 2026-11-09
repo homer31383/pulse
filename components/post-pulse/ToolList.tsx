@@ -18,6 +18,7 @@ import { usePostPulse } from './Shell'
 import { listHref } from './Sidebar'
 import { HostChip, StatusBadge, TierBadge } from './Badges'
 import { CompareOverlay } from './CompareOverlay'
+import { StarButton, useInterest } from './Interest'
 
 const TIER_RANK: Record<PpTool['tier'], number> = { automated: 0, assisted: 1, artist_led: 2 }
 const MAX_COMPARE = 3
@@ -33,6 +34,18 @@ export function ToolList() {
   const status = params.get('status')
   const q = (params.get('q') ?? '').trim().toLowerCase()
   const sort = (params.get('sort') ?? 'name') as PpSort
+  const starredOnly = params.get('starred') === '1'
+
+  // Stars (migration 038): starred tools sort first and the Starred chip
+  // filters to them. Both use the settled stars (as they were when this
+  // view or its filters last changed) so a row never jumps from under a tap.
+  const interest = useInterest()
+  const { settled, resettle } = interest
+  const paramKey = params.toString()
+  useEffect(() => {
+    resettle()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paramKey])
 
   const deptById = useMemo(() => new Map(departments.map((d) => [d.id, d])), [departments])
   const toolById = useMemo(() => new Map(tools.map((t) => [t.id, t])), [tools])
@@ -44,6 +57,7 @@ export function ToolList() {
     if (tier) list = list.filter((t) => t.tier === tier)
     if (host) list = list.filter((t) => (t.host_app ?? 'unknown') === host)
     if (status) list = list.filter((t) => t.status === status)
+    if (starredOnly) list = list.filter((t) => settled.tools.has(t.id))
     if (q) {
       list = list.filter((t) =>
         [t.name, t.vendor ?? '', t.blurb ?? '', deptById.get(t.department_id)?.name ?? '']
@@ -69,8 +83,19 @@ export function ToolList() {
       default:
         sorted.sort((a, b) => a.name.localeCompare(b.name))
     }
+    // Starred first, the chosen order kept within each half (stable sort)
+    sorted.sort((a, b) => Number(settled.tools.has(b.id)) - Number(settled.tools.has(a.id)))
     return sorted
-  }, [tools, dept, tier, host, status, q, sort, deptById])
+  }, [tools, dept, tier, host, status, q, sort, deptById, starredOnly, settled])
+
+  // Live count for the chip, within the department / lens being viewed
+  const starredHere = useMemo(() => {
+    let list = tools
+    if (dept) list = list.filter((t) => t.department_id === dept.id)
+    if (tier) list = list.filter((t) => t.tier === tier)
+    if (host) list = list.filter((t) => (t.host_app ?? 'unknown') === host)
+    return list.filter((t) => interest.live.tools.has(t.id)).length
+  }, [tools, dept, tier, host, interest.live])
 
   // The Listen Queue's mini player is `fixed bottom-0 z-40` (MiniPlayer.tsx)
   // and shows whenever there's a current item or a "queue finished" notice.
@@ -117,7 +142,7 @@ export function ToolList() {
         ? hostAppLabel(host === 'unknown' ? null : host)
         : 'All tools'
 
-  const activeFilters = [tier && 'tier', host && 'host', status && 'status', q && 'q'].filter(Boolean).length
+  const activeFilters = [tier && 'tier', host && 'host', status && 'status', q && 'q', starredOnly && 'starred'].filter(Boolean).length
 
   return (
     <div className={playerVisible || selected.length > 0 ? 'pb-32' : ''}>
@@ -145,6 +170,27 @@ export function ToolList() {
 
       {/* Filters — independent of whichever sidebar lens picked the base set */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
+        <button
+          type="button"
+          aria-pressed={starredOnly}
+          onClick={() => setParam('starred', starredOnly ? null : '1')}
+          className={[
+            'h-11 -my-2 px-2 inline-flex items-center gap-1.5 text-xs transition-colors',
+            starredOnly ? 'text-press-accent font-medium' : 'text-ink-100 hover:text-press-accent',
+          ].join(' ')}
+        >
+          <span
+            className={[
+              'inline-flex items-center gap-1 rounded-full border px-2 py-1',
+              starredOnly ? 'border-press-accent bg-press-accent/10' : 'border-cream-300 bg-cream-50',
+            ].join(' ')}
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" aria-hidden fill={starredOnly ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={1.75} strokeLinejoin="round">
+              <path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.8z" />
+            </svg>
+            Starred <span className="tabular-nums text-ink-50">{starredHere}</span>
+          </span>
+        </button>
         <FilterSelect
           label="Tier"
           value={tier ?? ''}
@@ -174,7 +220,7 @@ export function ToolList() {
         {activeFilters > 0 && (
           <button
             type="button"
-            onClick={() => router.push(listHref(params, { tier: null, host: null, status: null, q: null }))}
+            onClick={() => router.push(listHref(params, { tier: null, host: null, status: null, q: null, starred: null }))}
             className="text-xs text-ink-100 hover:text-press-accent underline-offset-2 hover:underline"
           >
             Clear filters
@@ -187,7 +233,9 @@ export function ToolList() {
         <div className="text-center py-16 text-sm text-ink-50">
           {tools.length === 0
             ? 'No tools yet. Run the Post Pulse migration and seed, then reload.'
-            : 'Nothing matches these filters.'}
+            : starredOnly && starredHere === 0
+              ? 'No starred tools here yet. Tap the star on a tool to mark it.'
+              : 'Nothing matches these filters.'}
         </div>
       ) : (
         <ul className="rounded-xl border border-cream-300 bg-cream-50 divide-y divide-cream-300/70 overflow-hidden">
@@ -245,6 +293,8 @@ export function ToolList() {
                     {tool.confidence === 'queued' && <span className="text-press-down">Unverified</span>}
                   </div>
                 </div>
+                {/* Outside the name link and the compare checkbox */}
+                <StarButton type="tool" id={tool.id} name={tool.name} className="-my-2 -mr-2 self-start" />
               </li>
             )
           })}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -12,6 +12,7 @@ import {
 } from '@/lib/post-pulse-types'
 import { findNameCollision, validateStoredProposal } from '@/lib/post-pulse-proposals'
 import { usePostPulse } from './Shell'
+import { StarButton, StarredTargetTag, useInterest } from './Interest'
 
 interface Props {
   items: PpQueueItem[]
@@ -39,6 +40,22 @@ export function QueueClient({ items: initial }: Props) {
     const t = setTimeout(() => document.getElementById(`q-${m[1]}`)?.scrollIntoView({ block: 'start' }), 120)
     return () => clearTimeout(t)
   }, [])
+
+  // Stars (migration 038): directly starred proposals first, then ones about
+  // a starred tool or department, then the rest, newest first in each. The
+  // order uses the settled stars so a card doesn't jump when tapped.
+  const interest = useInterest()
+  const [starredOnly, setStarredOnly] = useState(false)
+  const ordered = useMemo(() => {
+    const list = [...items].sort(
+      (a, b) => interest.proposalRank(a.id) - interest.proposalRank(b.id) || b.created_at.localeCompare(a.created_at),
+    )
+    return starredOnly ? list.filter((i) => interest.proposalRank(i.id) < 2) : list
+  }, [items, interest, starredOnly])
+  const starredCount = items.filter((i) => {
+    const st = interest.proposalStar(i.id)
+    return st.direct || st.viaTarget
+  }).length
 
   const toolById = new Map(tools.map((t) => [t.id, t]))
   const deptById = new Map(departments.map((d) => [d.id, d]))
@@ -75,12 +92,38 @@ export function QueueClient({ items: initial }: Props) {
     )
   }
 
+  const chip = (on: boolean) =>
+    [
+      'h-11 px-1 inline-flex items-center text-xs transition-colors',
+      on ? 'text-press-accent font-medium' : 'text-ink-100 hover:text-press-accent',
+    ].join(' ')
+  const pill = (on: boolean) =>
+    ['inline-flex items-center gap-1 rounded-full border px-2.5 py-1', on ? 'border-press-accent bg-press-accent/10' : 'border-cream-300 bg-cream-50'].join(' ')
+
   return (
     <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-1 -mt-2" role="group" aria-label="Filter proposals">
+        <button type="button" aria-pressed={!starredOnly} onClick={() => { setStarredOnly(false); interest.resettle() }} className={chip(!starredOnly)}>
+          <span className={pill(!starredOnly)}>
+            All <span className="tabular-nums text-ink-50">{items.length}</span>
+          </span>
+        </button>
+        <button type="button" aria-pressed={starredOnly} onClick={() => { setStarredOnly(true); interest.resettle() }} className={chip(starredOnly)}>
+          <span className={pill(starredOnly)}>
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" aria-hidden fill={starredOnly ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={1.75} strokeLinejoin="round">
+              <path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.8z" />
+            </svg>
+            Starred <span className="tabular-nums text-ink-50">{starredCount}</span>
+          </span>
+        </button>
+      </div>
+      {starredOnly && ordered.length === 0 && (
+        <p className="text-sm text-ink-50 py-6 text-center">No starred proposals. Tap the star on a proposal to mark it.</p>
+      )}
       {error && (
         <div className="rounded-lg border border-press-down/30 bg-press-down/10 px-3 py-2 text-sm text-press-down">{error}</div>
       )}
-      {items.map((item) => {
+      {ordered.map((item) => {
         const isDept = item.target_type === 'department'
         const changes = item.proposed_changes
         const targetTool = !isDept && item.proposed_tool_id ? toolById.get(item.proposed_tool_id) : null
@@ -96,6 +139,8 @@ export function QueueClient({ items: initial }: Props) {
         ).filter((k) => !(k === 'department_id' && 'department_slug' in changes))
         const ignored = Object.keys(changes).filter((k) => !fields.includes(k) && k !== 'note' && k !== 'department_id' && k !== 'flag')
         const isBusy = busy === item.id
+        const star = interest.proposalStar(item.id)
+        const plainTitle = interest.pendingById.get(item.id)?.title ?? 'proposal'
         const missingTarget = (item.proposed_tool_id && !targetTool) || (item.proposed_department_id && !targetDept)
         // Same validator the accept handler runs — a row it would refuse is
         // shown as such here instead of failing on click.
@@ -137,7 +182,10 @@ export function QueueClient({ items: initial }: Props) {
               targetId === item.id ? 'border-press-accent ring-1 ring-press-accent/40' : 'border-cream-300'
             }`}
           >
-            <header className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 border-b border-cream-300/70">
+            <header className="flex items-start gap-2 pl-1 pr-4 py-1.5 border-b border-cream-300/70">
+              {/* Star: in the header, away from Accept / Reject in the footer */}
+              <StarButton type="queue_item" id={item.id} name={plainTitle} />
+              <div className="flex-1 min-w-0 flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5">
               {item.source === 'frontier' ? (
                 // Exploratory finding (spec §5a): visually distinct so it is never
                 // mistaken for a confirmed routine update.
@@ -161,9 +209,11 @@ export function QueueClient({ items: initial }: Props) {
               {!isDept && (proposedDept || targetTool) && (
                 <span className="text-xs text-ink-50">{proposedDept?.name ?? deptById.get(targetTool!.department_id)?.name}</span>
               )}
+              {!star.direct && star.viaTarget && <StarredTargetTag kind={star.viaTarget} />}
               <time className="ml-auto text-[11px] text-ink-50" dateTime={item.created_at}>
                 {new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
               </time>
+              </div>
             </header>
 
             <div className="px-4 py-3">

@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation'
 import { fetchTool, fetchToolChangelog, fetchPostPulseDataset } from '@/lib/post-pulse'
 import { PP_TIER_BY_VALUE, formatAttributeValue, hostAppLabel } from '@/lib/post-pulse-types'
 import { HostChip, StatusBadge, TierBadge } from '@/components/post-pulse/Badges'
+import { StarButton } from '@/components/post-pulse/Interest'
+import { toolHostApps } from '@/lib/post-pulse-interest-types'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,6 +29,8 @@ export default async function ToolDetailPage({ params }: PageProps) {
   const { id } = await params
   const [tool, changelog, dataset] = await Promise.all([fetchTool(id), fetchToolChangelog(id), fetchPostPulseDataset()])
   if (!tool) notFound()
+  // The same rule as the "cross-platform" tag in Your starred
+  const hosts = toolHostApps(tool)
 
   const { departments, tools } = dataset
   const department = departments.find((d) => d.id === tool.department_id) ?? null
@@ -60,12 +64,20 @@ export default async function ToolDetailPage({ params }: PageProps) {
       </nav>
 
       <header className="mb-5">
-        <h1 className="font-display text-2xl sm:text-3xl text-ink-300 leading-tight">{tool.name}</h1>
+        <div className="flex items-start gap-2">
+          <h1 className="flex-1 min-w-0 font-display text-2xl sm:text-3xl text-ink-300 leading-tight break-words">{tool.name}</h1>
+          <StarButton type="tool" id={tool.id} name={tool.name} className="-mt-1.5 -mr-2" />
+        </div>
         <div className="flex flex-wrap items-center gap-2 mt-2">
           <TierBadge tier={tool.tier} long />
           <HostChip host={tool.host_app} />
           <StatusBadge status={tool.status} />
           {tool.vendor && <span className="text-sm text-ink-100">· {tool.vendor}</span>}
+          {hosts.length >= 2 && (
+            <span className="text-[11px] text-press-accent" title={`Named hosts: ${hosts.join(', ')}`}>
+              Cross-platform · {hosts.join(', ')}
+            </span>
+          )}
           <a
             href={googleSearchUrl(tool.name, tool.vendor)}
             target="_blank"

@@ -15,6 +15,7 @@ import {
   type CatchupReviewItem,
   type CatchupSummary,
 } from '@/lib/post-pulse-catchup-types'
+import { StarButton, StarredTargetTag, useInterest, type ProposalStar } from './Interest'
 
 // How long a dismiss can be undone from the toast. The server allows a
 // reopen for 60 s (REOPEN_WINDOW_MS), so a late click still works.
@@ -98,8 +99,20 @@ export function CatchupPanel({ data }: { data: Catchup }) {
   const estimate = staleSet ? null : data.estimate
 
   const hasFeed = newCount > 0 && !seenCleared
-  const reviewItems = data.review.items.filter((i) => !resolvedIds.has(i.id))
+  // Stars (migration 038): directly starred first, then proposals about a
+  // starred tool or department, then the server's order (new, then the
+  // rest). Sorted by the settled stars so a row doesn't jump when tapped.
+  const interest = useInterest()
+  const reviewItems = data.review.items
+    .filter((i) => !resolvedIds.has(i.id))
+    .map((item, index) => ({ item, index, rank: interest.proposalRank(item.id) }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map((x) => x.item)
   const reviewNew = seenCleared ? 0 : reviewItems.filter((i) => i.isNew).length
+  // Starred proposals still pending, flagged ("needs resolving in chat")
+  // ones included even though they have no row here
+  const starredPending = interest.pending.filter((p) => !resolvedIds.has(p.id) && interest.proposalStar(p.id).direct)
+  const starredFlagged = starredPending.filter((p) => p.flagged).length
 
   // queue.items, not queue.find(): find reads a ref, so it wouldn't re-render
   // the panel when the queue finishes loading after a full page load.
@@ -331,7 +344,16 @@ export function CatchupPanel({ data }: { data: Catchup }) {
   if (reviewItems.length > 0) {
     headerParts.push(
       `${reviewItems.length} awaiting review` +
-        (reviewNew ? ` (${reviewNew} new${hasFeed ? '' : ` ${data.sinceLabel}`})` : ''),
+        (reviewNew || starredPending.length
+          ? ` (${[
+              reviewNew ? `${reviewNew} new${hasFeed ? '' : ` ${data.sinceLabel}`}` : null,
+              starredPending.length
+                ? `${starredPending.length} starred${starredFlagged ? `, ${starredFlagged} of them ${starredFlagged === 1 ? 'needs' : 'need'} resolving` : ''}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(', ')})`
+          : ''),
     )
   }
   // Flagged notes are pending too, but not actionable here: stated
@@ -488,6 +510,7 @@ export function CatchupPanel({ data }: { data: Catchup }) {
                   <ReviewRow
                     key={item.id}
                     item={item}
+                    star={interest.proposalStar(item.id)}
                     isNew={item.isNew && !seenCleared}
                     state={rowState[item.id] ?? 'idle'}
                     error={rowErrors[item.id] ?? null}
@@ -689,6 +712,7 @@ type ReviewRowState = 'idle' | 'confirm' | 'accepting'
 
 function ReviewRow({
   item,
+  star,
   isNew,
   state,
   error,
@@ -698,6 +722,7 @@ function ReviewRow({
   onDismiss,
 }: {
   item: CatchupReviewItem
+  star: ProposalStar
   isNew: boolean
   state: ReviewRowState
   error: string | null
@@ -730,6 +755,8 @@ function ReviewRow({
   return (
     <li className="py-2.5 border-b-[0.5px] border-press-hair last:border-b-0">
       <div className="flex gap-3">
+        {/* Star at the row's left edge, as far as possible from the accept check */}
+        <StarButton type="queue_item" id={item.id} name={item.title} className="-ml-2.5 -mt-2.5 -mr-1.5" />
         <div className="flex-1 min-w-0">
           <Link href={item.href} className="group block">
             <span className="font-georgia text-[15px] leading-snug text-press-ink group-hover:text-press-accent transition-colors">
@@ -737,6 +764,11 @@ function ReviewRow({
             </span>
             {isNew && (
               <span className="ml-2 align-[2px] font-chrome text-[9px] uppercase tracking-[1.5px] text-press-accent">New</span>
+            )}
+            {!star.direct && star.viaTarget && (
+              <span className="ml-2">
+                <StarredTargetTag kind={star.viaTarget} />
+              </span>
             )}
             <span className="block mt-1 font-georgia text-[13px] leading-[1.5] text-press-body">{item.effect}</span>
           </Link>

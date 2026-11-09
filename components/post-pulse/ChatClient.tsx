@@ -7,6 +7,7 @@ import { MarkdownRenderer } from '@/components/MarkdownRenderer'
 import type { PpChatMessage, PpChatQueued, PpChatSession, PpChatSource, PpDepartment } from '@/lib/post-pulse-types'
 import { generateWorkflowTitle } from '@/lib/post-pulse-workflows'
 import { usePostPulse } from './Shell'
+import { StarButton, useInterest } from './Interest'
 
 interface Props {
   session: PpChatSession
@@ -547,11 +548,13 @@ function SaveWorkflow({
 
 // The inline "added to queue" indicator: one line per proposal, linked to
 // the Queue view where the actual review happens.
+// A proposal still pending can be starred right here (migration 038).
 function QueuedLine({ items }: { items: PpChatQueued[] }) {
+  const { pendingById } = useInterest()
   return (
     <ul className="mt-3 pt-2 border-t border-cream-300/70 space-y-1">
       {items.map((q) => (
-        <li key={q.id} className="flex flex-wrap items-center gap-x-2 text-xs">
+        <li key={q.id} className="flex flex-wrap items-center gap-x-2 text-xs min-h-[44px]">
           <span className="inline-flex items-center gap-1 px-1.5 py-px rounded-full bg-press-up/10 text-press-up font-medium">
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
@@ -562,6 +565,9 @@ function QueuedLine({ items }: { items: PpChatQueued[] }) {
           <Link href="/post-pulse/queue" className="text-press-accent hover:underline">
             Review →
           </Link>
+          {pendingById.has(q.id) && (
+            <StarButton type="queue_item" id={q.id} name={pendingById.get(q.id)?.title ?? q.label} className="-my-2" />
+          )}
         </li>
       ))}
     </ul>

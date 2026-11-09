@@ -4,6 +4,8 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import type { PpDataset } from '@/lib/post-pulse-types'
+import type { PpInterestState } from '@/lib/post-pulse-interest-types'
+import { InterestProvider } from './Interest'
 import { Sidebar } from './Sidebar'
 import { SectionSwitcher } from '@/components/press/SectionSwitcher'
 import { HistoryNav } from '@/components/press/HistoryNav'
@@ -21,12 +23,13 @@ export function usePostPulse(): PpDataset {
 
 interface Props {
   data: PpDataset
+  interest: PpInterestState
   children: ReactNode
 }
 
 // Two-pane shell: a fixed sidebar on desktop, a slide-in drawer on phones.
 // Utility palette (cream/ink), not the broadsheet press design.
-export function PostPulseShell({ data, children }: Props) {
+export function PostPulseShell({ data, interest, children }: Props) {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const pathname = usePathname()
 
@@ -46,6 +49,7 @@ export function PostPulseShell({ data, children }: Props) {
 
   return (
     <DatasetContext.Provider value={data}>
+      <InterestProvider state={interest}>
       <div className="min-h-screen bg-cream-200 text-ink-300">
         {/* Section tabs shared with the Pulse home masthead; scrolls away with the page */}
         <div className="border-b-[0.5px] border-press-hair">
@@ -113,6 +117,7 @@ export function PostPulseShell({ data, children }: Props) {
           </main>
         </div>
       </div>
+      </InterestProvider>
     </DatasetContext.Provider>
   )
 }

@@ -1,5 +1,8 @@
 import type { Metadata } from 'next'
+import { cookies } from 'next/headers'
 import { fetchPostPulseDataset } from '@/lib/post-pulse'
+import { fetchInterestState } from '@/lib/post-pulse-interest'
+import type { PpInterestState } from '@/lib/post-pulse-interest-types'
 import { PostPulseShell } from '@/components/post-pulse/Shell'
 
 export const dynamic = 'force-dynamic'
@@ -12,6 +15,12 @@ export const metadata: Metadata = {
 // Loads the whole pp_* dataset once per navigation. It's small (tens of
 // tools), so the sidebar, list, and compare overlay run client-side from
 // this snapshot. router.refresh() after a queue action re-fetches it.
+// The cookie profile's stars (migration 038) load here too, so every view
+// shares one star state; fetchInterestState also runs the stars' lazy
+// cleanup (lib/post-pulse-interest.ts).
+const DEFAULT_PROFILE_ID = '00000000-0000-0000-0000-000000000001'
+const NO_STARS: PpInterestState = { tools: [], departments: [], queueItems: [], pending: [], collapsed: false }
+
 export default async function PostPulseLayout({ children }: { children: React.ReactNode }) {
   let data
   try {
@@ -32,5 +41,17 @@ export default async function PostPulseLayout({ children }: { children: React.Re
       </div>
     )
   }
-  return <PostPulseShell data={data}>{children}</PostPulseShell>
+  const profileId = (await cookies()).get('profile_id')?.value ?? DEFAULT_PROFILE_ID
+  let interest = NO_STARS
+  try {
+    interest = await fetchInterestState(profileId, data)
+  } catch (err) {
+    // Stars are a convenience: never take Post-Pulse down with them
+    console.warn(`[interest] stars skipped: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  return (
+    <PostPulseShell data={data} interest={interest}>
+      {children}
+    </PostPulseShell>
+  )
 }
