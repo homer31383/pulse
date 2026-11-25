@@ -10,8 +10,10 @@
 // Canvas row of 2026-09-14 — a research new-tool proposal with no tier —
 // is the case this exists for.)
 import {
+  PP_AI_INVOLVEMENTS,
   PP_DEPARTMENT_EDITABLE_FIELDS,
   PP_HOST_APPS,
+  PP_KINDS,
   PP_PIPELINE_STAGES,
   PP_PIPELINE_SUBSTAGES,
   PP_TIERS,
@@ -27,6 +29,29 @@ import {
 // (which files a complete proposal) or reject it.
 export type PpProposalFlag = 'ambiguous' | 'incomplete'
 
+// Same-name products chat resolved and did NOT file (migration 039 era).
+// Stored in proposed_changes.not_this for the reviewer; not an editable
+// field, so accept never applies it.
+export interface PpNotThis {
+  name: string
+  vendor: string | null
+  url: string | null
+  why: string | null
+}
+
+export function cleanNotThis(v: unknown): PpNotThis[] {
+  if (!Array.isArray(v)) return []
+  return v
+    .filter((x): x is Record<string, unknown> => isRecord(x) && typeof x.name === 'string' && !!x.name.trim())
+    .slice(0, 5)
+    .map((x) => ({
+      name: String(x.name).trim(),
+      vendor: typeof x.vendor === 'string' && x.vendor.trim() ? x.vendor.trim() : null,
+      url: typeof x.url === 'string' && /^https?:\/\//i.test(x.url.trim()) ? x.url.trim() : null,
+      why: typeof x.why === 'string' && x.why.trim() ? x.why.trim() : null,
+    }))
+}
+
 export type PpProposalInput =
   | {
       kind: 'tool_create'
@@ -36,6 +61,7 @@ export type PpProposalInput =
       source: PpQueueSource
       sourceUrls?: string[]
       flag?: PpProposalFlag
+      notThis?: PpNotThis[]
     }
   | {
       kind: 'tool_update'
@@ -45,6 +71,7 @@ export type PpProposalInput =
       source: PpQueueSource
       sourceUrls?: string[]
       flag?: PpProposalFlag
+      notThis?: PpNotThis[]
     }
   | {
       kind: 'department_create'
@@ -68,8 +95,37 @@ export type PpProposalInput =
 // somewhere in the dataset. Any object with these two lists qualifies —
 // PpDataset does.
 export interface PpProposalContext {
-  tools: { id: string; name: string; department_id: string }[]
+  tools: { id: string; name: string; department_id: string; ai_involvement?: string | null }[]
   departments: { id: string; name: string }[]
+}
+
+// ── Scope rule: automated research stays AI-only (migration 039) ────────
+//
+// Chat (and the manual POST /api/post-pulse/queue) may file anything
+// helpful, AI or not. The automated producers (the daily research pass,
+// whose rows are source rss or search, and the frontier scans, source
+// frontier) may only CREATE entries with ai_involvement assisted or core,
+// and may not touch an existing non-AI entry or mark one non-AI. Enforced
+// here, at write time, for every producer, so no prompt drift can get a
+// non-AI row into the queue from a research run.
+export const PP_AUTOMATED_SOURCES: readonly PpQueueSource[] = ['rss', 'search', 'frontier']
+const AI_VALUES_FOR_RESEARCH = new Set(['assisted', 'core'])
+
+export function automatedScopeError(input: PpProposalInput, ctx?: PpProposalContext): string | null {
+  if (!PP_AUTOMATED_SOURCES.includes(input.source)) return null
+  if (input.kind === 'tool_create') {
+    const ai = isRecord(input.fields) ? normalizeToolFields(input.fields).ai_involvement : undefined
+    if (typeof ai !== 'string' || !AI_VALUES_FOR_RESEARCH.has(ai)) {
+      return `skipped: not AI (automated research may only create entries with ai_involvement assisted or core; got ${typeof ai === 'string' ? ai : 'none given'})`
+    }
+  }
+  if (input.kind === 'tool_update') {
+    const target = ctx?.tools.find((t) => t.id === input.toolId)
+    if (target?.ai_involvement === 'none') return 'skipped: not AI (automated research leaves non-AI entries alone; update them from chat)'
+    const ai = isRecord(input.changes) ? normalizeToolFields(input.changes).ai_involvement : undefined
+    if (ai === 'none') return 'skipped: not AI (automated research may not mark an entry non-AI)'
+  }
+  return null
 }
 
 // Name normalisation for the cross-department collision check. Drops
@@ -121,6 +177,8 @@ const TIER_VALUES = new Set<string>(PP_TIERS.map((t) => t.value))
 const STAGE_VALUES = new Set<string>(PP_PIPELINE_STAGES.map((s) => s.value))
 const SUBSTAGE_VALUES = new Set<string>(PP_PIPELINE_SUBSTAGES.map((s) => s.value))
 const STATUS_VALUES = new Set(['active', 'discontinued'])
+const KIND_VALUES = new Set<string>(PP_KINDS.map((k) => k.value))
+const AI_VALUES = new Set<string>(PP_AI_INVOLVEMENTS.map((a) => a.value))
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === 'object' && !Array.isArray(v)
@@ -149,6 +207,12 @@ export function normalizeToolFields(changes: Record<string, unknown>): Record<st
   if (typeof out.status === 'string') out.status = out.status.trim().toLowerCase()
   if (typeof out.name === 'string') out.name = out.name.trim()
   if ('source_urls' in out) out.source_urls = httpUrls(out.source_urls)
+  if (typeof out.kind === 'string') out.kind = out.kind.trim().toLowerCase().replace(/[\s-]+/g, '_')
+  if (typeof out.ai_involvement === 'string') out.ai_involvement = out.ai_involvement.trim().toLowerCase()
+  if (typeof out.url === 'string') out.url = out.url.trim() || null
+  if (typeof out.pricing === 'string') out.pricing = out.pricing.trim() || null
+  // A tier on a non-software entry has no meaning; an explicit "none" is null.
+  if (typeof out.tier === 'string' && ['none', 'n_a', 'na', 'null', ''].includes(out.tier)) out.tier = null
   return out
 }
 
@@ -164,12 +228,29 @@ function normalizeDepartmentFields(changes: Record<string, unknown>): Record<str
 // ── Validation of field sets (shared by build and stored-row checks) ────
 
 function validateToolFields(fields: Record<string, unknown>, create: boolean): string | null {
+  if ('kind' in fields && !KIND_VALUES.has(String(fields.kind))) return `kind must be ${Array.from(KIND_VALUES).join(' | ')}`
+  if ('ai_involvement' in fields && !AI_VALUES.has(String(fields.ai_involvement))) return `ai_involvement must be ${Array.from(AI_VALUES).join(' | ')}`
+  if ('url' in fields && fields.url !== null && !(typeof fields.url === 'string' && /^https?:\/\//i.test(fields.url))) return 'url must be an http(s) URL'
+  if ('pricing' in fields && fields.pricing !== null && typeof fields.pricing !== 'string') return 'pricing must be text'
+  // Tier is required for software and has no meaning for the other kinds
+  // (migration 039: tier null allowed only when kind is not software).
+  const kind = typeof fields.kind === 'string' ? fields.kind : null
   if (create) {
     if (typeof fields.name !== 'string' || !fields.name.trim()) return 'a new tool needs a name'
-    if (typeof fields.tier !== 'string' || !TIER_VALUES.has(fields.tier)) return 'a new tool needs tier = automated | assisted | artist_led'
-  } else if ('tier' in fields && !TIER_VALUES.has(String(fields.tier))) {
-    return 'tier must be automated | assisted | artist_led'
+    if ((kind ?? 'software') === 'software') {
+      if (typeof fields.tier !== 'string' || !TIER_VALUES.has(fields.tier)) return 'a new software entry needs tier = automated | assisted | artist_led'
+    } else if (fields.tier !== undefined && fields.tier !== null) {
+      return `tier does not apply to a ${kind}; leave it out`
+    }
+  } else if ('tier' in fields) {
+    if (fields.tier === null) {
+      if (!kind || kind === 'software') return 'tier can only be cleared together with a kind that is not software'
+    } else if (!TIER_VALUES.has(String(fields.tier))) {
+      return 'tier must be automated | assisted | artist_led'
+    }
   }
+  // (An update that sets kind=software on an entry with no tier is refused
+  // by the database constraint pp_tools_tier_required_for_software.)
   if ('status' in fields && !STATUS_VALUES.has(String(fields.status))) return 'status must be active | discontinued'
   if ('attributes' in fields && !isRecord(fields.attributes)) return 'attributes must be an object'
   if ('name' in fields && (typeof fields.name !== 'string' || !fields.name.trim())) return 'name must be a non-empty string'
@@ -196,8 +277,12 @@ export type BuildResult = { ok: true; row: PpProposalRow; kind: PpProposalKind }
 export function buildProposal(input: PpProposalInput, ctx?: PpProposalContext): BuildResult {
   const note = typeof input.note === 'string' ? input.note.trim() : ''
   if (!note) return { ok: false, error: 'a proposal needs a note (the rationale shown to the reviewer)' }
+  const scope = automatedScopeError(input, ctx)
+  if (scope) return { ok: false, error: scope }
   const sourceUrls = httpUrls(input.sourceUrls)
   const flagged = input.flag ? { flag: input.flag } : {}
+  const notThis = (input.kind === 'tool_create' || input.kind === 'tool_update') && input.notThis ? cleanNotThis(input.notThis) : []
+  const extras = notThis.length ? { not_this: notThis } : {}
 
   switch (input.kind) {
     case 'tool_create': {
@@ -226,7 +311,7 @@ export function buildProposal(input: PpProposalInput, ctx?: PpProposalContext): 
           target_type: 'tool',
           proposed_tool_id: null,
           proposed_department_id: null,
-          proposed_changes: { ...fields, department_id: input.department.id, department_slug: input.department.slug, note, ...flagged },
+          proposed_changes: { ...fields, department_id: input.department.id, department_slug: input.department.slug, note, ...flagged, ...extras },
           source: input.source,
           source_urls: sourceUrls,
         },
@@ -244,7 +329,7 @@ export function buildProposal(input: PpProposalInput, ctx?: PpProposalContext): 
           target_type: 'tool',
           proposed_tool_id: input.toolId,
           proposed_department_id: null,
-          proposed_changes: { ...changes, note, ...flagged },
+          proposed_changes: { ...changes, note, ...flagged, ...extras },
           source: input.source,
           source_urls: sourceUrls,
         },

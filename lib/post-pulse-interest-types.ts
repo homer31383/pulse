@@ -12,7 +12,7 @@
 // and sorts with the starred ones (after the directly starred).
 
 import { findNameCollision, normalizeToolName, validateStoredProposal } from './post-pulse-proposals'
-import type { PpDataset, PpQueueItem, PpTool } from './post-pulse-types'
+import { newEntryWord, type PpDataset, type PpQueueItem, type PpTool } from './post-pulse-types'
 
 export type PpInterestTarget = 'tool' | 'department' | 'queue_item'
 export const PP_INTEREST_TARGETS: readonly PpInterestTarget[] = ['tool', 'department', 'queue_item']
@@ -40,6 +40,7 @@ export interface PpInterestState {
   queueItems: string[]      // pending proposals with their OWN star row (group stars are derived)
   pending: PpPendingStarInfo[]
   collapsed: boolean        // "Your starred" on the landing page (settings.post_pulse_starred_collapsed)
+  starOnAdd: boolean        // research chat stars each proposal it files (settings.post_pulse_star_on_add, migration 039)
 }
 
 type DatasetLike = Pick<PpDataset, 'tools' | 'departments'>
@@ -85,7 +86,7 @@ export function queueItemTitle(item: PpQueueItem, dataset: DatasetLike): string 
   }
   const tool = item.proposed_tool_id ? dataset.tools.find((t) => t.id === item.proposed_tool_id) : null
   if (tool) return `Update ${tool.name}`
-  return item.proposed_tool_id ? 'Update to a tool that no longer exists' : `New tool${name ? `: ${name}` : ''}`
+  return item.proposed_tool_id ? 'Update to a tool that no longer exists' : `${newEntryWord(item.proposed_changes?.kind)}${name ? `: ${name}` : ''}`
 }
 
 export function pendingStarInfo(item: PpQueueItem, dataset: DatasetLike): PpPendingStarInfo {

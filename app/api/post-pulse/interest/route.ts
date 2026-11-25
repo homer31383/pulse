@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { fetchPostPulseDataset } from '@/lib/post-pulse'
-import { fetchInterestState, isUuid, setInterest, setStarredCollapsed } from '@/lib/post-pulse-interest'
+import { fetchInterestState, isUuid, setInterest, setStarOnAdd, setStarredCollapsed } from '@/lib/post-pulse-interest'
 import { PP_INTEREST_TARGETS, type PpInterestTarget } from '@/lib/post-pulse-interest-types'
 
 export const dynamic = 'force-dynamic'
@@ -10,6 +10,7 @@ export const dynamic = 'force-dynamic'
 //   GET                                   → the profile's stars + pending proposal info (runs the lazy cleanup)
 //   POST  {targetType, targetId, starred} → star / unstar one tool, department or pending proposal
 //   PATCH {collapsed}                     → "Your starred" collapsed state on the landing page
+//   PATCH {starOnAdd}                     → research chat's "Star on add" (migration 039)
 // Writes only pp_interest (and the one settings column); never the dataset,
 // the changelog, the queue, read marks, audio, or any model.
 const DEFAULT_PROFILE_ID = '00000000-0000-0000-0000-000000000001'
@@ -52,8 +53,16 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const pid = await profileId()
   if (!pid) return NextResponse.json({ error: 'Unknown profile' }, { status: 400 })
-  const body = (await req.json().catch(() => ({}))) as { collapsed?: unknown }
-  if (typeof body.collapsed !== 'boolean') return NextResponse.json({ error: 'collapsed must be a boolean' }, { status: 400 })
+  const body = (await req.json().catch(() => ({}))) as { collapsed?: unknown; starOnAdd?: unknown }
+  if (typeof body.starOnAdd === 'boolean') {
+    try {
+      await setStarOnAdd(pid, body.starOnAdd)
+      return NextResponse.json({ ok: true })
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed' }, { status: 500 })
+    }
+  }
+  if (typeof body.collapsed !== 'boolean') return NextResponse.json({ error: 'collapsed or starOnAdd must be a boolean' }, { status: 400 })
   try {
     await setStarredCollapsed(pid, body.collapsed)
     return NextResponse.json({ ok: true })

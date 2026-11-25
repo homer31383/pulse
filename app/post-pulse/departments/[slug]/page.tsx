@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { fetchDepartmentBySlug, fetchPostPulseDataset } from '@/lib/post-pulse'
+import { countLabel } from '@/lib/post-pulse-types'
 import { AnchoredMarkdown } from '@/components/post-pulse/AnchoredMarkdown'
 import { DepartmentRoster } from '@/components/post-pulse/DepartmentRoster'
 import { StarButton } from '@/components/post-pulse/Interest'
@@ -60,7 +61,7 @@ export default async function DepartmentDocPage({ params }: PageProps) {
           {new Date(department.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
           {' · '}
           <Link href={`/post-pulse/tools?dept=${department.slug}`} className="text-press-accent hover:underline">
-            {tools.length} {tools.length === 1 ? 'tool' : 'tools'} tracked
+            {countLabel(tools)} tracked
           </Link>
           {' · '}
           {/* Stamped by every research run that touched this department (migration 024) */}

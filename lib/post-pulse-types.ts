@@ -4,6 +4,13 @@
 // of the work they take over. See POST_PULSE_SPEC.md.
 
 export type PpTier = 'automated' | 'assisted' | 'artist_led'
+// Migration 039: what an entry IS (kind) and how much AI is in it
+// (ai_involvement), separate from tier (who does the labour). Tier is
+// required for software and null for the other kinds, where it does not
+// apply. Research and frontier scans may only create AI entries
+// (buildProposal enforces it); chat may file anything helpful.
+export type PpKind = 'software' | 'asset_library' | 'learning_resource' | 'reference'
+export type PpAiInvolvement = 'none' | 'assisted' | 'core'
 export type PpStatus = 'active' | 'discontinued'
 export type PpConfidence = 'verified' | 'queued'
 export type PpQueueSource = 'rss' | 'search' | 'chat' | 'frontier' // frontier = exploratory scan (spec §5a, migration 028)
@@ -146,7 +153,11 @@ export interface PpTool {
   id: string
   department_id: string
   name: string
-  tier: PpTier
+  tier: PpTier | null // null only when kind is not software (migration 039)
+  kind: PpKind
+  ai_involvement: PpAiInvolvement
+  url: string | null
+  pricing: string | null
   host_app: string | null
   status: PpStatus
   replacement_tool_id: string | null
@@ -204,6 +215,25 @@ export interface PpChatQueued {
   id: string
   label: string
   targetType: PpQueueTargetType
+  // The resolved identity of a tool proposal (migration 039 era), shown on
+  // the chat's "Added to queue" line so the user can see which product was
+  // filed, and which same-name products were not.
+  identity?: {
+    name: string
+    vendor: string | null
+    url: string | null
+    pricing: string | null
+    kind: PpKind | null
+    aiInvolvement: PpAiInvolvement | null
+    departmentName: string | null
+    notThis: { name: string; vendor: string | null; url: string | null; why: string | null }[]
+  }
+  starred?: boolean // starred on add (settings.post_pulse_star_on_add)
+  // What accepting would do, computed when filed (lib/post-pulse-effects.ts,
+  // the same words as the catch-up panel's confirm). The server re-checks
+  // everything on accept, so a stale line can only make accept refuse.
+  effect?: string
+  warning?: string | null
 }
 
 export interface PpChatMessage {
@@ -310,6 +340,39 @@ export const PP_TIER_BY_VALUE = Object.fromEntries(PP_TIERS.map((t) => [t.value,
   (typeof PP_TIERS)[number]
 >
 
+export const PP_KINDS: { value: PpKind; label: string; plural: string; description: string }[] = [
+  { value: 'software', label: 'Software', plural: 'software', description: 'An app, plugin, script or native toolset.' },
+  { value: 'asset_library', label: 'Asset library', plural: 'asset libraries', description: 'Models, textures, scans or other ready-made assets.' },
+  { value: 'learning_resource', label: 'Learning resource', plural: 'learning resources', description: 'A course, tutorial series or training.' },
+  { value: 'reference', label: 'Reference', plural: 'references', description: 'Documentation, a paper, a site worth keeping.' },
+]
+export const PP_KIND_BY_VALUE = Object.fromEntries(PP_KINDS.map((k) => [k.value, k])) as Record<PpKind, (typeof PP_KINDS)[number]>
+
+export const PP_AI_INVOLVEMENTS: { value: PpAiInvolvement; label: string; description: string }[] = [
+  { value: 'core', label: 'AI core', description: 'AI is the product or does the central job.' },
+  { value: 'assisted', label: 'AI assisted', description: 'AI features help with part of the work.' },
+  { value: 'none', label: 'Non-AI', description: 'No AI or machine learning in it.' },
+]
+export const PP_AI_BY_VALUE = Object.fromEntries(PP_AI_INVOLVEMENTS.map((a) => [a.value, a])) as Record<
+  PpAiInvolvement,
+  (typeof PP_AI_INVOLVEMENTS)[number]
+>
+
+// Tools vs resources in counts: software counts as a tool, every other kind
+// as a resource ("12 tools, 2 resources").
+export function isResource(t: { kind?: PpKind | null }): boolean {
+  return !!t.kind && t.kind !== 'software'
+}
+
+export function countLabel(list: { kind?: PpKind | null }[]): string {
+  const resources = list.filter(isResource).length
+  const tools = list.length - resources
+  const t = `${tools} ${tools === 1 ? 'tool' : 'tools'}`
+  if (!resources) return t
+  const r = `${resources} ${resources === 1 ? 'resource' : 'resources'}`
+  return tools ? `${t}, ${r}` : r
+}
+
 // Canonical host-app values from the spec. The column is free text so a
 // tool can carry something else; the sidebar groups whatever it finds.
 export const PP_HOST_APPS = ['Maya', 'Houdini', 'Nuke', 'standalone', 'web', 'plugin', 'native'] as const
@@ -340,6 +403,10 @@ export const PP_TOOL_EDITABLE_FIELDS = [
   'doc_anchor',
   'attributes',
   'source_urls',
+  'kind', // migration 039
+  'ai_involvement',
+  'url',
+  'pricing',
 ] as const
 
 export type PpToolEditableField = (typeof PP_TOOL_EDITABLE_FIELDS)[number]
@@ -360,6 +427,7 @@ export type PpDepartmentEditableField = (typeof PP_DEPARTMENT_EDITABLE_FIELDS)[n
 export const PP_SORTS = [
   { value: 'name', label: 'Name' },
   { value: 'tier', label: 'Tier' },
+  { value: 'kind', label: 'Kind' },
   { value: 'host', label: 'Host app' },
   { value: 'vendor', label: 'Vendor' },
   { value: 'updated', label: 'Recently updated' },
@@ -394,4 +462,11 @@ export function slugifyHeading(text: string): string {
     .trim()
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
+}
+
+// "New tool" / "New asset library" for a create proposal's title (migration
+// 039), so a resource is never called a tool in the queue, panel or chat.
+export function newEntryWord(kind: unknown): string {
+  const k = typeof kind === 'string' ? PP_KIND_BY_VALUE[kind as PpKind] : undefined
+  return k && k.value !== 'software' ? `New ${k.label.toLowerCase()}` : 'New tool'
 }

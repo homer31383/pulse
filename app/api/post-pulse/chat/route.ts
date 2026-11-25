@@ -1,4 +1,7 @@
 import { NextRequest } from 'next/server'
+import { cookies } from 'next/headers'
+import { supabase } from '@/lib/supabase'
+import { isUuid } from '@/lib/post-pulse-interest'
 import { createChatSession, getChatSession } from '@/lib/post-pulse'
 import { runChatTurn, type PpChatStreamEvent } from '@/lib/post-pulse-chat'
 
@@ -33,13 +36,22 @@ export async function POST(req: NextRequest) {
     created = true
   }
 
+  // "Star on add" (migration 039, settings.post_pulse_star_on_add): when on,
+  // every proposal filed this turn is starred for the cookie profile.
+  const pid = (await cookies()).get('profile_id')?.value ?? '00000000-0000-0000-0000-000000000001'
+  let starOnAddProfileId: string | null = null
+  if (isUuid(pid)) {
+    const { data } = await supabase.from('settings').select('post_pulse_star_on_add').eq('id', pid).maybeSingle()
+    if (data?.post_pulse_star_on_add) starOnAddProfileId = pid
+  }
+
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
     async start(controller) {
       const send = (data: object) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
       if (created) send({ type: 'session', id: session!.id })
       try {
-        await runChatTurn({ session: session!, userMessage: message, onEvent: (e: PpChatStreamEvent) => send(e) })
+        await runChatTurn({ session: session!, userMessage: message, onEvent: (e: PpChatStreamEvent) => send(e), starOnAddProfileId })
       } catch (err) {
         send({ type: 'error', error: err instanceof Error ? err.message : 'Failed' })
       } finally {

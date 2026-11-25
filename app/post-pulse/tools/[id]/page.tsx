@@ -1,8 +1,8 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { fetchTool, fetchToolChangelog, fetchPostPulseDataset } from '@/lib/post-pulse'
-import { PP_TIER_BY_VALUE, formatAttributeValue, hostAppLabel } from '@/lib/post-pulse-types'
-import { HostChip, StatusBadge, TierBadge } from '@/components/post-pulse/Badges'
+import { PP_AI_BY_VALUE, PP_KIND_BY_VALUE, PP_TIER_BY_VALUE, formatAttributeValue, hostAppLabel } from '@/lib/post-pulse-types'
+import { HostChip, KindLabels, StatusBadge, TierBadge } from '@/components/post-pulse/Badges'
 import { StarButton } from '@/components/post-pulse/Interest'
 import { toolHostApps } from '@/lib/post-pulse-interest-types'
 
@@ -40,8 +40,10 @@ export default async function ToolDetailPage({ params }: PageProps) {
   const alternatives = tools
     .filter((t) => t.department_id === tool.department_id && t.id !== tool.id)
     .sort((a, b) => (a.status === b.status ? a.name.localeCompare(b.name) : a.status === 'active' ? -1 : 1))
-  const tierMeta = PP_TIER_BY_VALUE[tool.tier]
-  const anchor = tool.doc_anchor ?? tierMeta.anchor
+  // Null-safe (migration 039): an entry with no tier links to the doc's top
+  const tierMeta = tool.tier ? PP_TIER_BY_VALUE[tool.tier] : null
+  const anchor = tool.doc_anchor ?? tierMeta?.anchor ?? null
+  const kindMeta = PP_KIND_BY_VALUE[tool.kind]
   const schema = department?.comparison_attributes ?? []
   const extraKeys = Object.keys(tool.attributes).filter((k) => !schema.some((s) => s.key === k))
   const hasAttributes = schema.some((s) => tool.attributes[s.key] !== undefined) || extraKeys.length > 0
@@ -69,7 +71,8 @@ export default async function ToolDetailPage({ params }: PageProps) {
           <StarButton type="tool" id={tool.id} name={tool.name} className="-mt-1.5 -mr-2" />
         </div>
         <div className="flex flex-wrap items-center gap-2 mt-2">
-          <TierBadge tier={tool.tier} long />
+          {tool.tier && <TierBadge tier={tool.tier} long />}
+          <KindLabels kind={tool.kind} ai={tool.ai_involvement} />
           <HostChip host={tool.host_app} />
           <StatusBadge status={tool.status} />
           {tool.vendor && <span className="text-sm text-ink-100">· {tool.vendor}</span>}
@@ -132,17 +135,45 @@ export default async function ToolDetailPage({ params }: PageProps) {
 
       {tool.blurb && <p className="font-serif text-base text-ink-200 leading-relaxed mb-6">{tool.blurb}</p>}
 
+      {/* What it is (migration 039): kind, AI involvement, link, price */}
+      <dl className="rounded-xl border border-cream-300 bg-cream-50 divide-y divide-cream-300/70 text-sm mb-6">
+        <div className="grid grid-cols-[minmax(110px,1fr)_2fr] gap-3 px-4 py-2">
+          <dt className="text-ink-100">Kind</dt>
+          <dd className="text-ink-300">{kindMeta?.label ?? tool.kind}</dd>
+        </div>
+        <div className="grid grid-cols-[minmax(110px,1fr)_2fr] gap-3 px-4 py-2">
+          <dt className="text-ink-100">AI involvement</dt>
+          <dd className="text-ink-300">{PP_AI_BY_VALUE[tool.ai_involvement]?.label ?? tool.ai_involvement}</dd>
+        </div>
+        {tool.url && (
+          <div className="grid grid-cols-[minmax(110px,1fr)_2fr] gap-3 px-4 py-2">
+            <dt className="text-ink-100">Link</dt>
+            <dd className="min-w-0">
+              <a href={tool.url} target="_blank" rel="noopener noreferrer" className="text-press-accent hover:underline break-all">
+                {tool.url.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+              </a>
+            </dd>
+          </div>
+        )}
+        {tool.pricing && (
+          <div className="grid grid-cols-[minmax(110px,1fr)_2fr] gap-3 px-4 py-2">
+            <dt className="text-ink-100">Pricing</dt>
+            <dd className="text-ink-300">{tool.pricing}</dd>
+          </div>
+        )}
+      </dl>
+
       {/* Why this tier — deep link into the department doc */}
       {department && (
         <Link
-          href={`/post-pulse/departments/${department.slug}#${anchor}`}
+          href={`/post-pulse/departments/${department.slug}${anchor ? `#${anchor}` : ''}`}
           className="group flex items-center gap-3 rounded-xl border border-cream-300 bg-cream-50 px-4 py-3 mb-6 hover:border-press-accent/50 transition-colors"
         >
           <div className="min-w-0 flex-1">
             <p className="text-[10px] uppercase tracking-[1.5px] text-press-accent font-medium">Why it sits here</p>
             <p className="text-sm text-ink-200 mt-0.5">
-              {tierMeta.label} in <span className="font-medium text-ink-300">{department.name}</span>. The reasoning lives in the
-              department doc.
+              {tierMeta ? tierMeta.label : `${kindMeta?.label ?? 'Entry'}, not tiered`} in{' '}
+              <span className="font-medium text-ink-300">{department.name}</span>. The reasoning lives in the department doc.
             </p>
           </div>
           <span className="text-press-accent group-hover:translate-x-0.5 transition-transform">→</span>
@@ -194,7 +225,7 @@ export default async function ToolDetailPage({ params }: PageProps) {
                 ].join(' ')}
               >
                 {t.name}
-                <span className="text-[10px] text-ink-50">{PP_TIER_BY_VALUE[t.tier].short}</span>
+                <span className="text-[10px] text-ink-50">{t.tier ? PP_TIER_BY_VALUE[t.tier].short : PP_KIND_BY_VALUE[t.kind]?.label ?? 'Not tiered'}</span>
               </Link>
             ))}
           </div>

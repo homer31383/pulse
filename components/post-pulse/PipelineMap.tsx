@@ -5,6 +5,7 @@ import Link from 'next/link'
 import {
   PP_PIPELINE_STAGES,
   PP_PIPELINE_SUBSTAGES,
+  countLabel,
   type PpDepartment,
   type PpPipelineStage,
   type PpPipelineSubstage,
@@ -25,7 +26,9 @@ export function PipelineMap() {
   const [openStage, setOpenStage] = useState<PpPipelineStage | null>('post_production')
   const [openSub, setOpenSub] = useState<PpPipelineSubstage | null>(null)
 
-  const toolCount = (d: PpDepartment) => tools.filter((t) => t.department_id === d.id).length
+  // "N tools, M resources" (migration 039): asset libraries, learning
+  // resources and references are never counted as tools.
+  const toolCount = (d: PpDepartment) => countLabel(tools.filter((t) => t.department_id === d.id))
   const byStage = (stage: PpPipelineStage) => departments.filter((d) => d.pipeline_stage === stage)
   const bySub = (sub: PpPipelineSubstage) =>
     departments.filter((d) => d.pipeline_stage === 'post_production' && d.pipeline_substage === sub)
@@ -50,7 +53,7 @@ export function PipelineMap() {
         </p>
         <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs">
           <Link href="/post-pulse/tools" className="text-press-accent hover:underline">
-            Browse all {tools.length} tools →
+            Browse all: {countLabel(tools)} →
           </Link>
           {pendingQueueCount > 0 && (
             <Link href="/post-pulse/queue" className="text-press-accent hover:underline">
@@ -264,7 +267,7 @@ function DepartmentCards({
   toolCount,
 }: {
   departments: PpDepartment[]
-  toolCount: (d: PpDepartment) => number
+  toolCount: (d: PpDepartment) => string
 }) {
   if (departments.length === 0) {
     return (
@@ -276,7 +279,7 @@ function DepartmentCards({
   return (
     <ul className="grid grid-cols-2 lg:grid-cols-4 gap-2">
       {departments.map((d) => {
-        const n = toolCount(d)
+        const counted = toolCount(d)
         const age = checkedAge(d.last_researched_at)
         return (
           <li key={d.id} className="min-w-0">
@@ -287,7 +290,7 @@ function DepartmentCards({
               eyebrow={age.label}
               eyebrowTone={age.stale ? 'stale' : 'default'}
               title={d.name}
-              meta={`${n} ${n === 1 ? 'tool' : 'tools'} tracked`}
+              meta={`${counted} tracked`}
             />
           </li>
         )

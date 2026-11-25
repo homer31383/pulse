@@ -18,9 +18,14 @@ import {
   fetchPostPulseDataset,
   updateChatSession,
 } from '@/lib/post-pulse'
-import { normalizeToolFields } from '@/lib/post-pulse-proposals'
+import { cleanNotThis, normalizeToolFields, type PpNotThis } from '@/lib/post-pulse-proposals'
+import { describeEffect, describeRemoval } from '@/lib/post-pulse-effects'
+import { setInterest } from '@/lib/post-pulse-interest'
 import {
+  PP_AI_INVOLVEMENTS,
   PP_CHAT_DEFAULT_NAME,
+  PP_KINDS,
+  newEntryWord,
   PP_DEPARTMENT_EDITABLE_FIELDS,
   PP_PIPELINE_STAGES,
   PP_PIPELINE_SUBSTAGES,
@@ -34,6 +39,7 @@ import {
   type PpChatSource,
   type PpDataset,
   type PpDepartment,
+  type PpQueueItem,
 } from '@/lib/post-pulse-types'
 
 // Sonnet, per the spec: tier and taxonomy calls need real reasoning, not
@@ -72,7 +78,7 @@ function departmentLine(d: PpDepartment, dataset: PpDataset): string {
     ? tools
         .map(
           (t) =>
-            `    - ${t.name} [${t.tier}, ${hostAppLabel(t.host_app)}, ${t.status}${t.vendor ? `, ${t.vendor}` : ''}] id=${t.id}`
+            `    - ${t.name} [${t.kind}, ai=${t.ai_involvement}, tier=${t.tier ?? 'none'}, ${hostAppLabel(t.host_app)}, ${t.status}${t.vendor ? `, ${t.vendor}` : ''}${t.url ? `, ${t.url}` : ''}] id=${t.id}`
         )
         .join('\n')
     : '    (no tools tracked yet)'
@@ -88,6 +94,8 @@ export function buildSystemPrompt(dataset: PpDataset, contextDepartment: PpDepar
   const stages = PP_PIPELINE_STAGES.map((s) => `${s.value} (${s.label})`).join(', ')
   const substages = PP_PIPELINE_SUBSTAGES.map((s) => `${s.value} (${s.label}: ${s.description})`).join('; ')
   const departments = dataset.departments.map((d) => departmentLine(d, dataset)).join('\n')
+  const kinds = PP_KINDS.map((k) => `${k.value} (${k.description})`).join('; ')
+  const ais = PP_AI_INVOLVEMENTS.map((a) => `${a.value} (${a.description})`).join('; ')
 
   const context = contextDepartment
     ? `\n\n## Session context: ${contextDepartment.name}\n` +
@@ -99,13 +107,23 @@ export function buildSystemPrompt(dataset: PpDataset, contextDepartment: PpDepar
     : ''
 
   return (
-    `You are the research assistant for Post Pulse, a structured reference of AI tools across the commercial VFX pipeline. ` +
+    `You are the research assistant for Post Pulse, a structured reference of the tools across the commercial VFX pipeline: mainly AI tools, plus any non-AI tool, plugin, script, asset library or learning resource the user finds helpful. ` +
     `It has three layers: department docs (long-form markdown with the reasoning, split into Tier 1 / Tier 2 / Tier 3 sections), ` +
     `tool entries (structured rows with a one-line blurb that deep-link into the department doc for the "why"), and a review queue that gates every change to the data.\n\n` +
     `Your job: research tools people ask about, decide where they fit (department, tier, host app), explain the reasoning, and file proposals when you are confident. Be conversational, direct, and concise. Markdown is fine. Cite the sources you relied on with plain links.\n\n` +
     `## Tiers — the reasoning framework used throughout this dataset\n${tiers}\n` +
     `Tier 3 (artist_led) means the work requires DIRECTED CREATIVE JUDGMENT — someone has to make the creative call, art-direct the result, or own the taste. It does not mean "AI can't do it at all"; AI may touch the edges (defaults, first passes, cleanup) and the department still sits at Tier 3. ` +
     `Tier 1 (automated) means the tool does the work end to end and a human only reviews. Tier 2 (assisted) is everything where AI takes a real share of the labour but an artist drives and finishes it. Ask: who makes the creative call, and who does the labour?\n\n` +
+    `## Scope (what can be filed)\n` +
+    `Anything the user finds helpful for the pipeline can be filed, AI or not: an app, plugin, script or native toolset, an asset library, a learning resource, or a reference. Never refuse an entry, and never ask whether to queue it, because it is not AI; just record that honestly. Every entry has two fields that say what it is:\n` +
+    `- kind: ${kinds}.\n` +
+    `- ai_involvement: ${ais}.\n` +
+    `Tier (who does the labour) is required when kind=software, even for non-AI software: a manual brush toolkit or animation script set is honestly artist_led. For asset_library, learning_resource and reference, leave tier out: it does not apply.\n\n` +
+    `## Identity first (hard rule)\n` +
+    `Before filing a new entry, resolve exactly which product it is: its name, vendor or author, its own URL (the product page, not a press article), and its price. Search for other products with the same or a very similar name.\n` +
+    `- When the user pasted a URL, that URL settles which product it is: resolve it and file straight away, no question.\n` +
+    `- When the user gave only a name and several different products match, ask ONE short clarifying question that names the candidates (name, vendor, URL), and do not file.\n` +
+    `- Open your reply with one line in exactly this form: "Filing: <name>, <vendor>, <url>, <price>" (write "price unknown" if you could not find it). If you found same-name products you are NOT filing, add a second line: "Not this: <name>, <vendor>, <url>" for each, and pass them in not_this.\n\n` +
     `## Pipeline\nStages: ${stages}. Post-production sub-groups: ${substages}. Pre-production, production, and finishing & delivery are intentionally empty so far — that is a real gap in coverage, not a bug, and a new department there is a legitimate proposal.\n\n` +
     `## Departments and tools currently tracked (live from the database)\n${departments}\n\n` +
     `## Hard rule: confidence before proposals\n` +
@@ -116,7 +134,7 @@ export function buildSystemPrompt(dataset: PpDataset, contextDepartment: PpDepar
     `After the call, tell the user in one line each what you queued; do not restate the whole record.\n` +
     `- Use the ids listed above for updates. If something is already tracked — in ANY department, including a related one — propose an update to that id, never a duplicate "new" entry; a duplicate name is refused at write time.\n` +
     `- For a tool edit, include only the fields that change.\n` +
-    `- For a new tool: name, department_slug, tier, host_app (Maya | Houdini | Nuke | standalone | web | plugin | native), status, vendor, blurb (one line), attributes keyed to that department's compare attributes, source_urls.\n` +
+    `- For a new entry: name, department_slug, kind, ai_involvement, tier (software only), vendor, url, pricing (short text such as "Free", "$49 one-time", "Subscription"), host_app (Maya | Houdini | Nuke | standalone | web | plugin | native), status, blurb (one line), attributes keyed to that department's compare attributes, source_urls. vendor and url are required for a new entry.\n` +
     `- For a department doc edit, overview_doc is replaced wholesale on accept: send the COMPLETE new doc, keep the opening synthesis paragraph and the "## Tier 1 — Automated {#tier-1}", "## Tier 2 — AI-assisted {#tier-2}", "## Tier 3 — Artist-led {#tier-3}" sections.\n` +
     `- For a new department: name, slug, overview_doc in that same structure, comparison_attributes ([{key,label,type}]), pipeline_stage, and pipeline_substage only if the stage is post_production.\n` +
     `- Discontinued tools stay in the dataset with status=discontinued and a replacement_tool_id; never propose removing one.\n\n` +
@@ -150,7 +168,7 @@ const PROPOSE_TOOL: Anthropic.Tool = {
       changes: {
         type: 'object',
         description:
-          'Field values. Tool fields: name, tier, host_app, status, vendor, blurb, attributes, source_urls, replacement_tool_id, doc_anchor. ' +
+          'Field values. Entry fields: name, kind (software | asset_library | learning_resource | reference), ai_involvement (none | assisted | core), tier (automated | assisted | artist_led; software only, omit for other kinds), vendor, url (the product page), pricing, host_app, status, blurb, attributes, source_urls, replacement_tool_id, doc_anchor. A new entry needs name, kind, ai_involvement, vendor and url. ' +
           'Department fields: name, slug, overview_doc, comparison_attributes, pipeline_stage, pipeline_substage. For updates include only the fields that change.',
         additionalProperties: true,
       },
@@ -159,6 +177,20 @@ const PROPOSE_TOOL: Anthropic.Tool = {
         description: 'One or two sentences on why this fits where you put it — shown to the reviewer.',
       },
       source_urls: { type: 'array', items: { type: 'string' }, description: 'URLs that support the proposal.' },
+      not_this: {
+        type: 'array',
+        description: 'Same-name or similar-name products you found and are NOT filing, so the reviewer can confirm which one this is. Empty if none.',
+        items: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            vendor: { type: 'string' },
+            url: { type: 'string' },
+            why: { type: 'string', description: 'A few words on how it differs (for example "paid, different author").' },
+          },
+          required: ['name'],
+        },
+      },
     },
     required: ['target_type', 'action', 'changes', 'rationale'],
   },
@@ -172,6 +204,7 @@ interface ProposeInput {
   changes?: unknown
   rationale?: unknown
   source_urls?: unknown
+  not_this?: unknown
 }
 
 type ProposalOutcome = { ok: true; queued: PpChatQueued } | { ok: false; error: string }
@@ -216,14 +249,35 @@ async function handleProposal(input: ProposeInput, dataset: PpDataset, turnSourc
   // rules (required fields, enums, normalisation) live in buildProposal.
   if (targetType === 'tool') {
     const changes = normalizeToolFields(pick(input.changes, PP_TOOL_EDITABLE_FIELDS))
+    const notThis = cleanNotThis(input.not_this)
     if (action === 'update') {
       const tool = targetId ? dataset.tools.find((t) => t.id === targetId) : null
       if (!tool) return { ok: false, error: 'target_id does not match a tracked tool; use an id from the department list, or action=create' }
       if (Object.keys(changes).length === 0) return { ok: false, error: 'no editable tool fields in changes' }
-      const res = await enqueueProposal({ kind: 'tool_update', toolId: tool.id, changes, note: rationale, source: 'chat', sourceUrls }, dataset)
+      const res = await enqueueProposal({ kind: 'tool_update', toolId: tool.id, changes, note: rationale, source: 'chat', sourceUrls, notThis }, dataset)
       if ('error' in res) return { ok: false, error: res.error }
-      return { ok: true, queued: { id: res.id, label: `Update ${tool.name} (${Object.keys(changes).join(', ')})`, targetType: 'tool' } }
+      const merged = { ...tool, ...changes } as Record<string, unknown>
+      const department = dataset.departments.find((d) => d.id === tool.department_id)
+      return {
+        ok: true,
+        queued: withEffect(
+          {
+            id: res.id,
+            label: `Update ${tool.name} (${Object.keys(changes).join(', ')})`,
+            targetType: 'tool',
+            identity: identityOf(merged, department?.name ?? null, notThis),
+          },
+          res,
+          dataset
+        ),
+      }
     }
+    // Identity first (migration 039 era): a new entry names its vendor and
+    // its own URL, so the reviewer can see which same-name product this is.
+    if (typeof changes.vendor !== 'string' || !changes.vendor.trim()) return { ok: false, error: 'a new entry needs vendor (the maker or author)' }
+    if (typeof changes.url !== 'string' || !/^https?:\/\//i.test(changes.url)) return { ok: false, error: 'a new entry needs url: the product page (http or https)' }
+    if (typeof changes.kind !== 'string') return { ok: false, error: 'a new entry needs kind = software | asset_library | learning_resource | reference' }
+    if (typeof changes.ai_involvement !== 'string') return { ok: false, error: 'a new entry needs ai_involvement = none | assisted | core' }
     const department = deptSlug ? dataset.departments.find((d) => d.slug === deptSlug) : null
     if (!department) return { ok: false, error: 'department_slug must name an existing department (or propose the department first)' }
     const name = typeof changes.name === 'string' ? changes.name.trim() : ''
@@ -237,11 +291,24 @@ async function handleProposal(input: ProposeInput, dataset: PpDataset, turnSourc
         note: rationale,
         source: 'chat',
         sourceUrls,
+        notThis,
       },
       dataset
     )
     if ('error' in res) return { ok: false, error: res.error }
-    return { ok: true, queued: { id: res.id, label: `New tool: ${name} → ${department.name}`, targetType: 'tool' } }
+    return {
+      ok: true,
+      queued: withEffect(
+        {
+          id: res.id,
+          label: `${newEntryWord(changes.kind)}: ${name} in ${department.name}`,
+          targetType: 'tool',
+          identity: identityOf(changes, department.name, notThis),
+        },
+        res,
+        dataset
+      ),
+    }
   }
 
   // Department targets
@@ -263,6 +330,34 @@ async function handleProposal(input: ProposeInput, dataset: PpDataset, turnSourc
   const res = await enqueueProposal({ kind: 'department_create', fields: { ...changes, slug }, note: rationale, source: 'chat', sourceUrls }, dataset)
   if ('error' in res) return { ok: false, error: res.error }
   return { ok: true, queued: { id: res.id, label: `New department: ${name}`, targetType: 'department' } }
+}
+
+function str(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() ? v.trim() : null
+}
+
+function identityOf(fields: Record<string, unknown>, departmentName: string | null, notThis: PpNotThis[]): NonNullable<PpChatQueued['identity']> {
+  return {
+    name: str(fields.name) ?? '',
+    vendor: str(fields.vendor),
+    url: str(fields.url),
+    pricing: str(fields.pricing),
+    kind: (str(fields.kind) as NonNullable<PpChatQueued['identity']>['kind']) ?? null,
+    aiInvolvement: (str(fields.ai_involvement) as NonNullable<PpChatQueued['identity']>['aiInvolvement']) ?? null,
+    departmentName,
+    notThis,
+  }
+}
+
+// The confirm text for the chat's inline Accept: the same describeEffect /
+// describeRemoval the catch-up panel uses, from the row exactly as stored.
+function withEffect(queued: PpChatQueued, res: { id: string; row: Omit<PpQueueItem, 'id' | 'status' | 'created_at' | 'resolved_at'> }, dataset: PpDataset): PpChatQueued {
+  const item: PpQueueItem = { ...res.row, id: res.id, status: 'pending', created_at: new Date().toISOString(), resolved_at: null }
+  try {
+    return { ...queued, effect: describeEffect(item, dataset), warning: describeRemoval(item, dataset) }
+  } catch {
+    return queued
+  }
 }
 
 // ── One turn ────────────────────────────────────────────────────────────
@@ -293,8 +388,11 @@ export async function runChatTurn(params: {
   session: PpChatSession
   userMessage: string
   onEvent: (e: PpChatStreamEvent) => void
+  // Star every proposal filed this turn for this profile
+  // (settings.post_pulse_star_on_add, read by the route from the cookie).
+  starOnAddProfileId?: string | null
 }): Promise<void> {
-  const { session, userMessage, onEvent } = params
+  const { session, userMessage, onEvent, starOnAddProfileId = null } = params
   const model = PP_CHAT_MODEL
   const dataset = await fetchPostPulseDataset()
   const contextDepartment = session.department_context_id ? await fetchDepartmentById(session.department_context_id) : null
@@ -437,6 +535,15 @@ export async function runChatTurn(params: {
             continue
           }
           const outcome = await handleProposal(block.input as ProposeInput, dataset, sources)
+          if (outcome.ok && starOnAddProfileId) {
+            // Only pp_interest is written; a failure leaves the proposal unstarred.
+            try {
+              const r = await setInterest(starOnAddProfileId, 'queue_item', outcome.queued.id, true, dataset)
+              if (r.ok) outcome.queued.starred = true
+            } catch (err) {
+              console.warn(`[pp chat] star on add failed: ${err instanceof Error ? err.message : String(err)}`)
+            }
+          }
           if (outcome.ok) {
             queued.push(outcome.queued)
             onEvent({ type: 'queued', item: outcome.queued })

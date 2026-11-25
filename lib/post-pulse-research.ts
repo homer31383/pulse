@@ -85,6 +85,15 @@ const USAGE_LABEL = 'Post Pulse research'
 // are judgment calls and always queue.
 const AUTO_PUBLISH_FIELDS = new Set(['vendor', 'blurb', 'source_urls', 'attributes', 'host_app'])
 
+// Create fields carry the finding's top-level ai_involvement (a required
+// enum in both report schemas) unless changes already set one, so the scope
+// rule in buildProposal sees it. Updates never take it: research does not
+// reclassify an existing entry.
+function withAiInvolvement(fields: Record<string, unknown>, f: { ai_involvement?: string }): Record<string, unknown> {
+  if (typeof fields.ai_involvement === 'string' || typeof f.ai_involvement !== 'string') return fields
+  return { ...fields, ai_involvement: f.ai_involvement.toLowerCase() }
+}
+
 // ── Findings schema (what the Sonnet call reports) ──────────────────────
 
 type FindingKind = 'new_tool' | 'update' | 'confirmation' | 'ambiguous' | 'noop'
@@ -92,6 +101,7 @@ type FindingKind = 'new_tool' | 'update' | 'confirmation' | 'ambiguous' | 'noop'
 interface Finding {
   kind: FindingKind
   tool_id?: string
+  ai_involvement?: string
   name: string
   department_slug?: string
   changes?: Record<string, unknown>
@@ -124,12 +134,18 @@ const REPORT_TOOL: Anthropic.Tool = {
           properties: {
             kind: { type: 'string', enum: ['new_tool', 'update', 'confirmation', 'ambiguous', 'noop'] },
             tool_id: { type: 'string', description: 'Existing tool id (from the list) for update/confirmation/ambiguous-about-a-tool.' },
+            ai_involvement: {
+              type: 'string',
+              enum: ['core', 'assisted', 'none'],
+              description:
+                'Required on every finding. core = AI is the product or does the central job; assisted = AI features help with part of the work; none = no AI (out of scope: such an entry is never created by research). For an existing tool, repeat its ai value from the list.',
+            },
             name: { type: 'string', description: 'Tool name as it should appear.' },
             department_slug: { type: 'string', description: 'Department the finding belongs to (this one unless it clearly belongs elsewhere).' },
             changes: {
               type: 'object',
               description:
-                'For update/new_tool: the field values. Tool fields: name, tier, host_app, status, vendor, blurb, attributes, source_urls, replacement_tool_id. For updates include only fields that changed.',
+                'For update/new_tool: the field values. Tool fields: name, tier, url, pricing, host_app, status, vendor, blurb, attributes, source_urls, replacement_tool_id. For updates include only fields that changed.',
               additionalProperties: true,
             },
             summary: { type: 'string', description: 'One or two sentences: what happened, in plain words. Goes into the briefing.' },
@@ -138,7 +154,7 @@ const REPORT_TOOL: Anthropic.Tool = {
             confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
             from_lead: { type: 'integer', description: 'Index of the RSS lead this verifies, if any.' },
           },
-          required: ['kind', 'name', 'summary'],
+          required: ['kind', 'name', 'summary', 'ai_involvement'],
         },
       },
       notes: { type: 'string', description: 'Anything a human reviewer should know about this pass (dead ends, conflicts, coverage gaps).' },
@@ -195,7 +211,7 @@ function tierFramework(): string {
 
 function toolLine(t: PpTool): string {
   const attrs = Object.keys(t.attributes).length ? ` attributes=${JSON.stringify(t.attributes)}` : ''
-  return `- ${t.name} [id=${t.id}; ${t.tier}; ${hostAppLabel(t.host_app)}; ${t.status}; vendor=${t.vendor ?? '—'}; verified=${t.last_verified_at?.slice(0, 10) ?? 'never'}] blurb: ${t.blurb ?? ''}${attrs}`
+  return `- ${t.name} [id=${t.id}; ${t.tier}; ai=${t.ai_involvement}; ${hostAppLabel(t.host_app)}; ${t.status}; vendor=${t.vendor ?? '—'}; verified=${t.last_verified_at?.slice(0, 10) ?? 'never'}] blurb: ${t.blurb ?? ''}${attrs}`
 }
 
 function cleanName(s: string): string {
@@ -268,6 +284,7 @@ function researchSystemPrompt(dept: PpDepartment, tools: PpTool[], dataset: PpDa
     `## Tier framework\n${tierFramework()}\n\n` +
     `## The department doc (current state; the reasoning the dataset holds today)\n"""\n${dept.overview_doc.trim() || '(empty)'}\n"""\n\n` +
     `## Tools tracked in ${dept.name}\n${tools.length ? tools.map(toolLine).join('\n') : '(none yet)'}\n\n` +
+    nonAiSection(dept, dataset) +
     `Other departments (use their slug only if a finding clearly belongs there): ${otherDepts}.${relatedSection}\n\n` +
     `## Rules\n` +
     `- You have ${MAX_SEARCHES_PER_DEPARTMENT} web searches. Run them ONE AT A TIME and read each result before deciding the next — never batch several searches in a single step, or the budget is spent before you see anything. When the budget is exhausted the tool returns an error — that is the budget, not an outage; report what you have.\n` +
@@ -275,6 +292,7 @@ function researchSystemPrompt(dept: PpDepartment, tools: PpTool[], dataset: PpDa
     `- In report_findings, fill follow_up_sources with the specific places the next pass should start (URLs or named sources you recommend but could not reach, or that proved productive). That list is handed to the next pass verbatim, so make it concrete.\n` +
     `- Verify each RSS lead you are given first (cite its URL in source_urls and set from_lead), then run the suggested queries you have budget for.\n` +
     `- kind=update: an existing tool (tool_id) changed — include ONLY changed fields in changes, and only fields you can support with a source. kind=confirmation: you found current evidence that the entry is accurate and nothing changed (tool_id required). kind=new_tool: a tool not in the list, worth tracking — changes MUST include tier (automated | assisted | artist_led), host_app (${PP_HOST_APPS.join(' | ')}), status, vendor, blurb, and source_urls; a new_tool without a tier is stored only as an incomplete note a human has to redo, so decide the tier or report it as ambiguous instead. kind=noop: nothing found worth recording (one per pass is enough).\n` +
+    `- Scope (hard rule): this pass covers AI tools only. Report a new_tool only when AI or machine learning is part of it, and set the finding's ai_involvement to core (AI is the product or does the central job) or assisted (AI features help with part of the work); every finding carries ai_involvement. Never report non-AI software, plugins, scripts, asset libraries, learning resources or references: those are added by hand in chat. The same applies to kind=ambiguous about something not yet tracked. A new_tool, or such an ambiguous note, without ai_involvement core or assisted is refused at write time.\n` +
     `- Hard rule: when a named entity cannot be confidently resolved — several unrelated things share the name, sources conflict, nothing matches, or the fit is a coin flip — report kind=ambiguous with what you saw and why it is unresolved. Never assert a tier, status, or identity you could not verify; a wrong guess looks as credible as a verified entry to a reviewer.\n` +
     `- Confidence: high = a primary or vendor-grade source states it plainly; medium = a credible secondary source; low = inference. Tier and status changes are judgment calls and will be reviewed by a human regardless of confidence.\n` +
     `- Do not propose removing discontinued tools; propose status=discontinued with a replacement if you can name one.\n` +
@@ -282,10 +300,22 @@ function researchSystemPrompt(dept: PpDepartment, tools: PpTool[], dataset: PpDa
   )
 }
 
+// Non-AI entries in a department (migration 039): named so the pass does
+// not rediscover them as new, and fenced off from updates and confirmations.
+function nonAiSection(dept: PpDepartment, dataset: PpDataset): string {
+  const list = dataset.tools.filter((t) => t.department_id === dept.id && t.ai_involvement === 'none')
+  if (!list.length) return ''
+  return (
+    `## Non-AI entries also filed here (out of scope: never report them as new, and never report updates or confirmations about them)\n` +
+    list.map((t) => `- ${t.name}`).join('\n') +
+    `\n\n`
+  )
+}
+
 function routeSystemPrompt(dataset: PpDataset): string {
   const depts = dataset.departments
     .map((d) => {
-      const tools = dataset.tools.filter((t) => t.department_id === d.id).map((t) => `${t.name} (id=${t.id})`)
+      const tools = dataset.tools.filter((t) => t.department_id === d.id && t.ai_involvement !== 'none').map((t) => `${t.name} (id=${t.id})`)
       return `- ${d.name} (slug=${d.slug}): ${tools.join(', ') || 'no tools yet'}`
     })
     .join('\n')
@@ -370,7 +400,10 @@ async function researchDepartment(
   leads: Lead[],
   spend: Spend
 ): Promise<{ findings: Finding[]; notes: string; searches: number; complete: boolean; followUps: string[] }> {
-  const tools = dataset.tools.filter((t) => t.department_id === dept.id)
+  // Scope (migration 039): research maintains AI entries only. Non-AI
+  // entries (filed by hand in chat) are listed to the model for dedupe and
+  // never researched: no queries about them, no updates, no confirmations.
+  const tools = dataset.tools.filter((t) => t.department_id === dept.id && t.ai_involvement !== 'none')
   const since = dept.last_researched_at
     ? new Date(dept.last_researched_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     : `the dataset was seeded (${new Date(Date.now() - RSS_LOOKBACK_DAYS * 86_400_000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} or so)`
@@ -478,6 +511,22 @@ async function publishFindings(
     const targetDept = f.department_slug ? dataset.departments.find((d) => d.slug === f.department_slug) ?? dept : dept
     const note = `${f.summary}${f.evidence ? ` — ${f.evidence}` : ''} [research ${runTag}${lead ? `, via ${lead.item.sourceName}` : ''}]`
 
+    // Scope (migration 039): automated research leaves non-AI entries
+    // alone. A finding about one (update, confirmation, ambiguous note, or a
+    // new_tool whose name is already tracked as a non-AI entry) is dropped,
+    // so it is never re-proposed and never re-verified by research.
+    const nonAiTarget =
+      (tool && tool.ai_involvement === 'none' ? tool : null) ??
+      (!tool ? (() => {
+        const c = findNameCollision(f.name, dataset)?.tool
+        const t = c ? toolById.get(c.id) : undefined
+        return t && t.ai_involvement === 'none' ? t : null
+      })() : null)
+    if (nonAiTarget) {
+      console.log(`[post-pulse research] skipped: not AI (${f.kind} about non-AI entry "${nonAiTarget.name}")`)
+      continue
+    }
+
     if (f.kind === 'confirmation') {
       if (tool) {
         confirmedIds.push(tool.id)
@@ -528,7 +577,7 @@ async function publishFindings(
           : {
               kind: 'tool_create',
               department: { id: targetDept.id, slug: targetDept.slug },
-              fields: { ...changes, name: f.name.trim() },
+              fields: withAiInvolvement({ ...changes, name: f.name.trim() }, f),
               note: `Needs a human — could not be resolved confidently. ${note}`,
               source,
               sourceUrls: urls,
@@ -548,7 +597,7 @@ async function publishFindings(
     const existing =
       dataset.tools.find((t) => t.department_id === targetDept.id && t.name.toLowerCase() === f.name.trim().toLowerCase()) ??
       findNameCollision(f.name, dataset)?.tool
-    const fields: Record<string, unknown> = { ...changes, name: f.name.trim() }
+    const fields: Record<string, unknown> = withAiInvolvement({ ...changes, name: f.name.trim() }, f)
     // The model must supply a tier for a real create; without one the row
     // is stored as an incomplete note rather than a proposal Accept would
     // choke on (the Beeble Canvas case, 2026-09-14).
@@ -617,6 +666,7 @@ type FrontierKind = 'new_tool' | 'new_department' | 'existing' | 'noop'
 
 interface FrontierFinding {
   kind: FrontierKind
+  ai_involvement?: string
   name: string
   department_slug?: string
   department?: { name?: string; slug?: string; pipeline_substage?: string; overview?: string }
@@ -642,6 +692,12 @@ const FRONTIER_TOOL: Anthropic.Tool = {
             kind: { type: 'string', enum: ['new_tool', 'new_department', 'existing', 'noop'] },
             name: { type: 'string', description: 'Tool name (new_tool/existing) or the proposed department name (new_department).' },
             department_slug: { type: 'string', description: 'new_tool only: the existing department it belongs to (must be in this stage).' },
+            ai_involvement: {
+              type: 'string',
+              enum: ['core', 'assisted', 'none'],
+              description:
+                'Required on every finding. core = AI is the product or does the central job; assisted = AI features help with part of the work; none = no AI (out of scope: such an entry is never created by research). For an existing tool, repeat its ai value from the list.',
+            },
             department: {
               type: 'object',
               description: 'new_department only.',
@@ -654,7 +710,7 @@ const FRONTIER_TOOL: Anthropic.Tool = {
             },
             changes: {
               type: 'object',
-              description: 'new_tool only: name, tier, host_app, status, vendor, blurb, attributes, source_urls.',
+              description: 'new_tool only: name, tier, url, pricing, host_app, status, vendor, blurb, attributes, source_urls.',
               additionalProperties: true,
             },
             summary: { type: 'string', description: 'One or two plain sentences. Goes into the briefing.' },
@@ -662,7 +718,7 @@ const FRONTIER_TOOL: Anthropic.Tool = {
             source_urls: { type: 'array', items: { type: 'string' } },
             confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
           },
-          required: ['kind', 'name', 'summary'],
+          required: ['kind', 'name', 'summary', 'ai_involvement'],
         },
       },
       notes: { type: 'string', description: 'What a reviewer should know: coverage, dead ends, categories you looked for and did not find.' },
@@ -725,7 +781,8 @@ function frontierSystemPrompt(stage: PpPipelineStage, dataset: PpDataset): strin
     `## Rules\n` +
     `- Ask capability questions, not vendor questions: "what AI exists for <problem>" per sub-area, not "what is new from <vendor>". Follow the search plan in the user message in order, one search at a time; you have ${MAX_SEARCHES_PER_DEPARTMENT} searches. Trade sources (${TRADE_SOURCES.join(', ')}) before generic search. When the budget is exhausted the tool returns an error — that is the budget, not an outage; report what you have.\n` +
     `- A finding is exploratory by nature; be honest about confidence. Never assert a tier, status, or identity you could not verify — if a named thing cannot be resolved, say so in notes rather than reporting it.\n` +
-    `- kind=new_tool needs changes with tier (automated | assisted | artist_led), host_app (${PP_HOST_APPS.join(' | ')}), status, vendor, blurb, source_urls, and department_slug from the roster above. A new_tool without a tier is stored only as an incomplete note.\n` +
+    `- kind=new_tool needs ai_involvement (core | assisted) on the finding, and changes with tier (automated | assisted | artist_led), host_app (${PP_HOST_APPS.join(' | ')}), status, vendor, url, blurb, source_urls, and department_slug from the roster above. A new_tool without a tier is stored only as an incomplete note.\n` +
+    `- Scope (hard rule): AI tools only. Never report non-AI software, plugins, scripts, asset libraries, learning resources or references; they are added by hand in chat. A new_tool without ai_involvement core or assisted is refused at write time.\n` +
     `- kind=new_department is for a real gap: a category of work in this stage with real AI tooling and no department to hold it. Give department.name, department.slug, an overview naming the tools, and (post-production only) pipeline_substage. Do not propose a department that duplicates an existing one under another name.\n` +
     `- Prefer a few well-sourced findings to many thin ones. Finish by calling report_frontier exactly once; fill follow_up_sources with where the next scan should start.` +
     ` Known sources (vendor-grade): ${known}; also befores & afters, fxguide.`
@@ -872,7 +929,7 @@ async function publishFrontierFindings(
         console.warn(`[post-pulse frontier] new_tool "${f.name}" named no department in ${stage}; skipped`)
         continue
       }
-      const fields: Record<string, unknown> = { ...normalizeToolFields(f.changes && typeof f.changes === 'object' ? f.changes : {}), name: f.name.trim() }
+      const fields: Record<string, unknown> = withAiInvolvement({ ...normalizeToolFields(f.changes && typeof f.changes === 'object' ? f.changes : {}), name: f.name.trim() }, f)
       const incomplete = typeof fields.tier !== 'string'
       const res = await enqueueProposal(
         {

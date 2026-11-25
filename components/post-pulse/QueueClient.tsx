@@ -4,10 +4,14 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
+  PP_AI_BY_VALUE,
   PP_DEPARTMENT_EDITABLE_FIELDS,
+  PP_KIND_BY_VALUE,
   PP_QUEUE_SOURCES,
   PP_TOOL_EDITABLE_FIELDS,
   formatAttributeValue,
+  type PpAiInvolvement,
+  type PpKind,
   type PpQueueItem,
 } from '@/lib/post-pulse-types'
 import { findNameCollision, validateStoredProposal } from '@/lib/post-pulse-proposals'
@@ -137,7 +141,11 @@ export function QueueClient({ items: initial }: Props) {
         const fields = Object.keys(changes).filter(
           (k) => editable.includes(k) || (!isDept && k === 'department_slug')
         ).filter((k) => !(k === 'department_id' && 'department_slug' in changes))
-        const ignored = Object.keys(changes).filter((k) => !fields.includes(k) && k !== 'note' && k !== 'department_id' && k !== 'flag')
+        // not_this (migration 039 era): the same-name products chat resolved
+        // and did NOT file; context for the reviewer, never applied.
+        const ignored = Object.keys(changes).filter((k) => !fields.includes(k) && k !== 'note' && k !== 'department_id' && k !== 'flag' && k !== 'not_this')
+        const notThis = notThisList(changes.not_this)
+        const newKind = typeof changes.kind === 'string' ? PP_KIND_BY_VALUE[changes.kind as PpKind] : null
         const isBusy = busy === item.id
         const star = interest.proposalStar(item.id)
         const plainTitle = interest.pendingById.get(item.id)?.title ?? 'proposal'
@@ -171,7 +179,10 @@ export function QueueClient({ items: initial }: Props) {
         ) : missingTarget ? (
           <span className="text-press-down">Update to a tool that no longer exists</span>
         ) : (
-          <>New tool{typeof changes.name === 'string' ? `: ${changes.name}` : ''}</>
+          <>
+            {newKind && newKind.value !== 'software' ? `New ${newKind.label.toLowerCase()}` : 'New tool'}
+            {typeof changes.name === 'string' ? `: ${changes.name}` : ''}
+          </>
         )
 
         return (
@@ -235,6 +246,27 @@ export function QueueClient({ items: initial }: Props) {
               {typeof changes.note === 'string' && (
                 <p className="text-sm text-ink-200 mb-3 leading-relaxed">{changes.note}</p>
               )}
+              {notThis.length > 0 && (
+                <p className="text-xs text-ink-100 mb-3">
+                  <span className="font-medium">Not this:</span>{' '}
+                  {notThis.map((n, i) => (
+                    <span key={i}>
+                      {i > 0 && '; '}
+                      {n.name}
+                      {n.vendor ? ` (${n.vendor})` : ''}
+                      {n.url && (
+                        <>
+                          {' '}
+                          <a href={n.url} target="_blank" rel="noopener noreferrer" className="text-press-accent hover:underline break-all">
+                            {n.url.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                          </a>
+                        </>
+                      )}
+                      {n.why ? `, ${n.why}` : ''}
+                    </span>
+                  ))}
+                </p>
+              )}
               {fields.length === 0 ? (
                 <p className="text-sm text-ink-50 italic">No recognised fields in this proposal.</p>
               ) : (
@@ -268,18 +300,22 @@ export function QueueClient({ items: initial }: Props) {
                     }
 
                     const afterLabel =
-                      field === 'department_slug'
+                      field === 'kind' || field === 'ai_involvement'
+                        ? valueLabel(field, after)
+                        : field === 'department_slug'
                         ? proposedDept?.name ?? formatAttributeValue(after)
                         : field === 'replacement_tool_id' && typeof after === 'string'
                           ? toolById.get(after)?.name ?? after
                           : formatAttributeValue(after)
                     const beforeLabel =
-                      field === 'replacement_tool_id' && typeof before === 'string'
+                      field === 'kind' || field === 'ai_involvement'
+                        ? valueLabel(field, before)
+                        : field === 'replacement_tool_id' && typeof before === 'string'
                         ? toolById.get(before)?.name ?? before
                         : formatAttributeValue(before)
                     return (
                       <div key={field} className="contents">
-                        <dt className="text-xs text-ink-100 pt-0.5 font-medium">{field.replace(/_/g, ' ')}</dt>
+                        <dt className="text-xs text-ink-100 pt-0.5 font-medium">{FIELD_LABELS[field] ?? field.replace(/_/g, ' ')}</dt>
                         <dd className="min-w-0">
                           {current && (
                             <span className={['text-ink-50', unchanged ? '' : 'line-through decoration-ink-50/50'].join(' ')}>
@@ -336,4 +372,25 @@ export function QueueClient({ items: initial }: Props) {
       })}
     </div>
   )
+}
+
+// Readable labels for the migration 039 fields in the diff.
+const FIELD_LABELS: Record<string, string> = { ai_involvement: 'AI involvement', url: 'URL', department_slug: 'department' }
+
+function valueLabel(field: string, v: unknown): string {
+  if (typeof v !== 'string') return formatAttributeValue(v)
+  if (field === 'kind') return PP_KIND_BY_VALUE[v as PpKind]?.label ?? v
+  return PP_AI_BY_VALUE[v as PpAiInvolvement]?.label ?? v
+}
+
+function notThisList(v: unknown): { name: string; vendor: string | null; url: string | null; why: string | null }[] {
+  if (!Array.isArray(v)) return []
+  return v
+    .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && typeof (x as { name?: unknown }).name === 'string')
+    .map((x) => ({
+      name: String(x.name),
+      vendor: typeof x.vendor === 'string' ? x.vendor : null,
+      url: typeof x.url === 'string' && /^https?:\/\//i.test(x.url) ? x.url : null,
+      why: typeof x.why === 'string' ? x.why : null,
+    }))
 }

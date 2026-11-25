@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { PP_TIERS, hostAppLabel, type PpTool } from '@/lib/post-pulse-types'
 import { usePostPulse } from './Shell'
-import { TierDot } from './Badges'
+import { NOT_TIERED, TierDot } from './Badges'
 import { HowToUse } from './HowToUse'
 
 type Lens = 'department' | 'tier' | 'host'
@@ -81,11 +81,15 @@ export function Sidebar({ onNavigate }: Props) {
       }))
     }
     if (lens === 'tier') {
-      return PP_TIERS.map((tier) => ({
+      const tiers: TreeNode[] = PP_TIERS.map((tier) => ({
         key: tier.value,
         label: tier.label,
         tools: tools.filter((t) => t.tier === tier.value),
       }))
+      // Migration 039: entries with no tier are their own node, never a tier
+      const untiered = tools.filter((t) => !t.tier)
+      if (untiered.length) tiers.push({ key: 'none', label: NOT_TIERED.label, tools: untiered })
+      return tiers
     }
     const hosts = Array.from(new Set(tools.map((t) => t.host_app ?? ''))).sort((a, b) =>
       hostAppLabel(a || null).localeCompare(hostAppLabel(b || null))
@@ -212,7 +216,7 @@ export function Sidebar({ onNavigate }: Props) {
                     isActive ? 'text-press-accent font-medium' : 'text-ink-200 hover:text-ink-300',
                   ].join(' ')}
                 >
-                  {lens === 'tier' && <TierDot tier={node.key as PpTool['tier']} />}
+                  {lens === 'tier' && <TierDot tier={node.key === 'none' ? null : (node.key as PpTool['tier'])} />}
                   <span className="truncate flex-1">{node.label}</span>
                   <Count n={node.tools.length} muted={node.tools.length === 0} />
                 </Link>

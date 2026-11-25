@@ -36,6 +36,8 @@ interface InterestCtx {
   pendingById: Map<string, PpPendingStarInfo>
   collapsed: boolean
   setCollapsed: (v: boolean) => void
+  starOnAdd: boolean
+  setStarOnAdd: (v: boolean) => void
   isStarred: (type: 'tool' | 'department', id: string) => boolean
   proposalStar: (id: string, sets?: StarSets) => ProposalStar
   // 0 = directly starred, 1 = about a starred tool/department, 2 = neither
@@ -68,6 +70,7 @@ export function InterestProvider({ state, children }: { state: PpInterestState; 
   const [live, setLive] = useState<StarSets>(() => toSets(state))
   const [settled, setSettled] = useState<StarSets>(() => toSets(state))
   const [collapsed, setCollapsedState] = useState(state.collapsed)
+  const [starOnAdd, setStarOnAddState] = useState(state.starOnAdd)
   const [inflight, setInflight] = useState<Set<string>>(() => new Set())
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -80,6 +83,7 @@ export function InterestProvider({ state, children }: { state: PpInterestState; 
     setLive(toSets(state))
     setSettled(toSets(state))
     setCollapsedState(state.collapsed)
+    setStarOnAddState(state.starOnAdd)
   }, [state])
 
   // A new page re-sorts by the stars as they are now
@@ -183,6 +187,28 @@ export function InterestProvider({ state, children }: { state: PpInterestState; 
     }).catch(() => {})
   }, [])
 
+  // Research chat's "Star on add" (migration 039): saved per profile,
+  // optimistic, rolled back with the toast on failure.
+  const setStarOnAdd = useCallback((v: boolean) => {
+    setStarOnAddState(v)
+    void (async () => {
+      try {
+        const res = await fetch('/api/post-pulse/interest', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ starOnAdd: v }),
+        })
+        const body = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`)
+      } catch (err) {
+        setStarOnAddState(!v)
+        showError(`Couldn't save Star on add: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    })()
+    // showError only touches state setters and a ref, so it is stable enough
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const value: InterestCtx = {
     live,
     settled,
@@ -190,6 +216,8 @@ export function InterestProvider({ state, children }: { state: PpInterestState; 
     pendingById,
     collapsed,
     setCollapsed,
+    starOnAdd,
+    setStarOnAdd,
     isStarred: (type, id) => live[setKey(type)].has(id),
     proposalStar,
     proposalRank,

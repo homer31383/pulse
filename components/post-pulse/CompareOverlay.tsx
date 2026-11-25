@@ -3,6 +3,8 @@
 import { useEffect } from 'react'
 import Link from 'next/link'
 import {
+  PP_AI_BY_VALUE,
+  PP_KIND_BY_VALUE,
   PP_TIER_BY_VALUE,
   formatAttributeValue,
   hostAppLabel,
@@ -90,6 +92,13 @@ export function CompareOverlay({ tools, department, allTools, onClose }: Props) 
             ))}
 
             <Row label="Tier">{tools.map((t) => <Cell key={t.id}><TierBadge tier={t.tier} /></Cell>)}</Row>
+            <Row label="Kind">
+              {tools.map((t) => (
+                <Cell key={t.id}>
+                  {PP_KIND_BY_VALUE[t.kind]?.label ?? t.kind} · {PP_AI_BY_VALUE[t.ai_involvement]?.label ?? t.ai_involvement}
+                </Cell>
+              ))}
+            </Row>
             <Row label="Host app">{tools.map((t) => <Cell key={t.id}>{hostAppLabel(t.host_app)}</Cell>)}</Row>
             <Row label="Status">
               {tools.map((t) => (
@@ -125,7 +134,11 @@ export function CompareOverlay({ tools, department, allTools, onClose }: Props) 
                 <Cell key={t.id}>
                   {department ? (
                     <Link
-                      href={`/post-pulse/departments/${department.slug}#${t.doc_anchor ?? PP_TIER_BY_VALUE[t.tier].anchor}`}
+                      href={`/post-pulse/departments/${department.slug}${(() => {
+                        // Null-safe (migration 039): no tier, no tier anchor
+                        const a = t.doc_anchor ?? (t.tier ? PP_TIER_BY_VALUE[t.tier].anchor : null)
+                        return a ? `#${a}` : ''
+                      })()}`}
                       className="text-press-accent hover:underline"
                     >
                       Department doc →

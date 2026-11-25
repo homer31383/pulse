@@ -104,7 +104,7 @@ export async function fetchInterestState(profileId: string, dataset: Pick<PpData
   const [starsRes, pending, settingsRes] = await Promise.all([
     supabase.from('pp_interest').select('target_type, target_id').eq('profile_id', profileId),
     fetchPendingQueue(),
-    supabase.from('settings').select('post_pulse_starred_collapsed').eq('id', profileId).maybeSingle(),
+    supabase.from('settings').select('post_pulse_starred_collapsed, post_pulse_star_on_add').eq('id', profileId).maybeSingle(),
   ])
   if (starsRes.error) throw new Error(`pp_interest: ${starsRes.error.message}`)
   const stars = starsRes.data ?? []
@@ -119,6 +119,7 @@ export async function fetchInterestState(profileId: string, dataset: Pick<PpData
     queueItems: of('queue_item').filter((id) => pendingIds.has(id)),
     pending: pending.map((p) => pendingStarInfo(p, dataset)),
     collapsed: settingsRes.error ? false : !!settingsRes.data?.post_pulse_starred_collapsed,
+    starOnAdd: settingsRes.error ? false : !!settingsRes.data?.post_pulse_star_on_add,
   }
 }
 
@@ -179,6 +180,11 @@ export async function setInterest(
     .in('target_id', [...ids])
   if (error) throw new Error(`pp_interest: ${error.message}`)
   return { ok: true, queueItemsCleared: [...ids] }
+}
+
+export async function setStarOnAdd(profileId: string, on: boolean): Promise<void> {
+  const { error } = await supabase.from('settings').update({ post_pulse_star_on_add: on }).eq('id', profileId)
+  if (error) throw new Error(error.message)
 }
 
 export async function setStarredCollapsed(profileId: string, collapsed: boolean): Promise<void> {

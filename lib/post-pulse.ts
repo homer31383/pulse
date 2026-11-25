@@ -8,6 +8,7 @@ import {
   validateStoredProposal,
   type PpProposalContext,
   type PpProposalInput,
+  type PpProposalRow,
 } from '@/lib/post-pulse-proposals'
 import { matchReferencedTools } from '@/lib/post-pulse-workflows'
 import {
@@ -60,6 +61,10 @@ function normalizeTool(row: Record<string, unknown>): PpTool {
         ? (row.attributes as Record<string, unknown>)
         : {},
     source_urls: Array.isArray(row.source_urls) ? (row.source_urls as string[]) : [],
+    kind: (row.kind as PpTool['kind']) ?? 'software',
+    ai_involvement: (row.ai_involvement as PpTool['ai_involvement']) ?? 'assisted',
+    url: (row.url as string | null) ?? null,
+    pricing: (row.pricing as string | null) ?? null,
   }
 }
 
@@ -432,11 +437,13 @@ async function acceptToolItem(item: PpQueueItem): Promise<QueueResolution> {
     return { ok: true, targetType: 'tool', toolId: item.proposed_tool_id, departmentId: null, changedFields: applied.changedFields }
   }
 
-  if (!changes.name || !changes.department_id || !changes.tier) {
+  // Tier is required for software only (migration 039); an asset library,
+  // learning resource or reference has no tier.
+  if (!changes.name || !changes.department_id || (!changes.tier && (changes.kind ?? 'software') === 'software')) {
     return {
       ok: false,
       status: 400,
-      error: 'A new-tool proposal needs at least name, department (id or slug), and tier',
+      error: 'A new-tool proposal needs at least name, department (id or slug), and tier (tier only for software)',
     }
   }
   // Rows written before the cross-department check existed can still
@@ -627,7 +634,7 @@ export async function reopenQueueItem(queueId: string): Promise<QueueResolution>
 export async function enqueueProposal(
   input: PpProposalInput,
   context?: PpProposalContext
-): Promise<{ id: string; label: string } | { error: string }> {
+): Promise<{ id: string; label: string; row: PpProposalRow } | { error: string }> {
   // The cross-department name check needs the live roster; callers that
   // already hold the dataset pass it, everyone else pays one fetch.
   const ctx = context ?? (await fetchPostPulseDataset())
@@ -635,7 +642,7 @@ export async function enqueueProposal(
   if (!built.ok) return { error: built.error }
   const { data, error } = await supabase.from('pp_queue').insert(built.row).select('id').single()
   if (error) return { error: error.message }
-  return { id: data.id, label: built.kind }
+  return { id: data.id, label: built.kind, row: built.row }
 }
 
 // ── Workflow docs (migration 030) ───────────────────────────────────────

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { MarkdownRenderer } from '@/components/MarkdownRenderer'
-import type { PpChatMessage, PpChatQueued, PpChatSession, PpChatSource, PpDepartment } from '@/lib/post-pulse-types'
+import { PP_KIND_BY_VALUE, type PpChatMessage, type PpChatQueued, type PpChatSession, type PpChatSource, type PpDepartment } from '@/lib/post-pulse-types'
 import { generateWorkflowTitle } from '@/lib/post-pulse-workflows'
 import { usePostPulse } from './Shell'
 import { StarButton, useInterest } from './Interest'
@@ -291,7 +291,10 @@ export function ChatClient({ session, rerun = null }: Props) {
             {busy ? '…' : 'Send'}
           </button>
         </div>
-        <p className="text-[11px] text-ink-50 mt-1.5">Enter to send, Shift+Enter for a new line. Proposals go straight to the review queue.</p>
+        <div className="flex flex-wrap items-center gap-x-3 mt-0.5">
+          <p className="text-[11px] text-ink-50 flex-1 min-w-[12rem]">Enter to send, Shift+Enter for a new line. Proposals go straight to the review queue.</p>
+          <StarOnAddToggle />
+        </div>
       </form>
     </div>
   )
@@ -383,6 +386,23 @@ function MessageBubble({
         </details>
       )}
     </div>
+  )
+}
+
+// "Star on add" (migration 039, settings.post_pulse_star_on_add, per
+// profile): when on, the server stars every proposal chat files.
+function StarOnAddToggle() {
+  const { starOnAdd, setStarOnAdd } = useInterest()
+  return (
+    <label className="inline-flex items-center gap-1.5 text-[11px] text-ink-100 min-h-[44px] cursor-pointer select-none">
+      <input
+        type="checkbox"
+        checked={starOnAdd}
+        onChange={(e) => setStarOnAdd(e.target.checked)}
+        className="w-4 h-4 rounded border-cream-400 accent-[#6B5CA5]"
+      />
+      Star on add
+    </label>
   )
 }
 
@@ -546,30 +566,167 @@ function SaveWorkflow({
   )
 }
 
-// The inline "added to queue" indicator: one line per proposal, linked to
-// the Queue view where the actual review happens.
-// A proposal still pending can be starred right here (migration 038).
+// The inline "added to queue" indicator: one block per proposal, linked to
+// the Queue view. A proposal still pending can be starred (migration 038)
+// and accepted right here (migration 039 era). Accept uses the same confirm
+// as the landing page's review panel (effect line, "This can't be undone",
+// the removal warning) and the same PATCH route, so acceptQueueItem() is
+// the only code that applies it. The identity line shows which product was
+// filed and which same-name products were not.
 function QueuedLine({ items }: { items: PpChatQueued[] }) {
-  const { pendingById } = useInterest()
   return (
-    <ul className="mt-3 pt-2 border-t border-cream-300/70 space-y-1">
+    <ul className="mt-3 pt-2 border-t border-cream-300/70 space-y-2">
       {items.map((q) => (
-        <li key={q.id} className="flex flex-wrap items-center gap-x-2 text-xs min-h-[44px]">
-          <span className="inline-flex items-center gap-1 px-1.5 py-px rounded-full bg-press-up/10 text-press-up font-medium">
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-            </svg>
-            Added to queue
-          </span>
-          <span className="text-ink-200">{q.label}</span>
-          <Link href="/post-pulse/queue" className="text-press-accent hover:underline">
-            Review →
-          </Link>
-          {pendingById.has(q.id) && (
-            <StarButton type="queue_item" id={q.id} name={pendingById.get(q.id)?.title ?? q.label} className="-my-2" />
-          )}
-        </li>
+        <QueuedItem key={q.id} q={q} />
       ))}
     </ul>
+  )
+}
+
+function QueuedItem({ q }: { q: PpChatQueued }) {
+  const { pendingById } = useInterest()
+  const router = useRouter()
+  const [state, setState] = useState<'idle' | 'confirm' | 'accepting' | 'accepted'>('idle')
+  const [error, setError] = useState<string | null>(null)
+  const [resultHref, setResultHref] = useState<string | null>(null)
+  const pending = pendingById.get(q.id)
+  const title = pending?.title ?? q.label
+  const id = q.identity
+  const kindLabel = id?.kind && id.kind !== 'software' ? PP_KIND_BY_VALUE[id.kind]?.label : null
+
+  async function accept() {
+    setState('accepting')
+    setError(null)
+    try {
+      const res = await fetch(`/api/post-pulse/queue/${q.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'accept' }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`)
+      setResultHref(typeof body.toolId === 'string' ? `/post-pulse/tools/${body.toolId}` : null)
+      setState('accepted')
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong')
+      setState('confirm')
+    }
+  }
+
+  return (
+    <li className="text-xs">
+      <div className="flex flex-wrap items-center gap-x-2 min-h-[44px]">
+        <span className="inline-flex items-center gap-1 px-1.5 py-px rounded-full bg-press-up/10 text-press-up font-medium">
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+          </svg>
+          {state === 'accepted' ? 'Accepted' : 'Added to queue'}
+        </span>
+        <span className="text-ink-200 min-w-0 break-words">{q.label}</span>
+        {state === 'accepted' ? (
+          resultHref && (
+            <Link href={resultHref} className="text-press-accent hover:underline inline-flex items-center min-h-[44px]">
+              View entry →
+            </Link>
+          )
+        ) : (
+          <Link href={`/post-pulse/queue#q-${q.id}`} className="text-press-accent hover:underline inline-flex items-center min-h-[44px]">
+            Review →
+          </Link>
+        )}
+        {pending && state !== 'accepted' && (
+          <>
+            <StarButton type="queue_item" id={q.id} name={title} className="-my-2" />
+            {state === 'idle' && (
+              <button
+                type="button"
+                onClick={() => setState('confirm')}
+                aria-label={`Accept ${title}`}
+                className="h-11 -my-2 px-1 inline-flex items-center text-press-up hover:underline font-medium"
+              >
+                <span className="inline-flex items-center gap-1 rounded-full border border-press-up/40 px-2 py-1">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Accept
+                </span>
+              </button>
+            )}
+          </>
+        )}
+      </div>
+      {id && (
+        <p className="text-[11px] text-ink-100 break-words">
+          <span className="font-medium text-ink-200">Filing:</span> {id.name}
+          {id.vendor ? `, ${id.vendor}` : ''}
+          {id.url && (
+            <>
+              {', '}
+              <a href={id.url} target="_blank" rel="noopener noreferrer" className="text-press-accent hover:underline break-all">
+                {id.url.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+              </a>
+            </>
+          )}
+          {`, ${id.pricing ?? 'price unknown'}`}
+          {kindLabel ? ` · ${kindLabel}` : ''}
+          {id.aiInvolvement === 'none' ? ' · Non-AI' : ''}
+          {id.departmentName ? ` · ${id.departmentName}` : ''}
+        </p>
+      )}
+      {id && id.notThis.length > 0 && (
+        <p className="text-[11px] text-ink-100 mt-0.5 break-words">
+          <span className="font-medium text-press-down">Not this:</span>{' '}
+          {id.notThis.map((n, i) => (
+            <span key={i}>
+              {i > 0 && '; '}
+              {n.name}
+              {n.vendor ? ` (${n.vendor})` : ''}
+              {n.url && (
+                <>
+                  {' '}
+                  <a href={n.url} target="_blank" rel="noopener noreferrer" className="text-press-accent hover:underline break-all">
+                    {n.url.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                  </a>
+                </>
+              )}
+              {n.why ? `, ${n.why}` : ''}
+            </span>
+          ))}
+        </p>
+      )}
+      {(state === 'confirm' || state === 'accepting') && pending && (
+        // Accept can't be undone (it writes pp_tools and the changelog), so
+        // nothing is sent until the second Accept.
+        <div role="group" aria-label={`Confirm accepting ${title}`} className="mt-1.5 p-2.5 bg-press-up/[0.06] border-l-2 border-press-up">
+          <p className="text-[12px] text-ink-300">
+            Accept? <span className="text-ink-200">{q.effect ?? title}.</span> This can&apos;t be undone.
+          </p>
+          {q.warning && <p className="mt-1 text-[11px] font-semibold text-press-down">{q.warning}.</p>}
+          {error && <p className="mt-1 text-[11px] text-press-down">{error}</p>}
+          <div className="flex gap-3 mt-1.5">
+            <button
+              type="button"
+              onClick={() => void accept()}
+              disabled={state === 'accepting'}
+              className="h-11 px-3 rounded-lg bg-press-up text-white font-medium disabled:opacity-60"
+            >
+              {state === 'accepting' ? 'Accepting…' : 'Accept'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setState('idle')
+                setError(null)
+              }}
+              disabled={state === 'accepting'}
+              className="h-11 px-3 rounded-lg border border-cream-400 text-ink-200 hover:bg-cream-200"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </li>
   )
 }

@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 // shares one star state; fetchInterestState also runs the stars' lazy
 // cleanup (lib/post-pulse-interest.ts).
 const DEFAULT_PROFILE_ID = '00000000-0000-0000-0000-000000000001'
-const NO_STARS: PpInterestState = { tools: [], departments: [], queueItems: [], pending: [], collapsed: false }
+const NO_STARS: PpInterestState = { tools: [], departments: [], queueItems: [], pending: [], collapsed: false, starOnAdd: false }
 
 export default async function PostPulseLayout({ children }: { children: React.ReactNode }) {
   let data

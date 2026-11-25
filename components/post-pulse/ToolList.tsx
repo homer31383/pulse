@@ -4,11 +4,14 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
+  PP_AI_INVOLVEMENTS,
   PP_HOST_APPS,
+  PP_KINDS,
   PP_SORTS,
   PP_STATUSES,
   PP_TIERS,
   PP_TIER_BY_VALUE,
+  countLabel,
   hostAppLabel,
   type PpSort,
   type PpTool,
@@ -16,11 +19,16 @@ import {
 import { useQueue } from '@/contexts/QueueContext'
 import { usePostPulse } from './Shell'
 import { listHref } from './Sidebar'
-import { HostChip, StatusBadge, TierBadge } from './Badges'
+import { HostChip, KindLabels, NOT_TIERED, StatusBadge, TierBadge } from './Badges'
 import { CompareOverlay } from './CompareOverlay'
 import { StarButton, useInterest } from './Interest'
 
-const TIER_RANK: Record<PpTool['tier'], number> = { automated: 0, assisted: 1, artist_led: 2 }
+const TIER_RANK: Record<NonNullable<PpTool['tier']>, number> = { automated: 0, assisted: 1, artist_led: 2 }
+// Null-safe: entries with no tier (migration 039) sort after every tier.
+const tierRank = (t: PpTool) => (t.tier ? TIER_RANK[t.tier] : 3)
+const KIND_RANK = Object.fromEntries(PP_KINDS.map((k, i) => [k.value, i])) as Record<PpTool['kind'], number>
+// ?tier=none selects the entries with no tier
+const tierMatches = (t: PpTool, tier: string) => (tier === 'none' ? !t.tier : t.tier === tier)
 const MAX_COMPARE = 3
 
 export function ToolList() {
@@ -35,6 +43,9 @@ export function ToolList() {
   const q = (params.get('q') ?? '').trim().toLowerCase()
   const sort = (params.get('sort') ?? 'name') as PpSort
   const starredOnly = params.get('starred') === '1'
+  // Migration 039 chips: kind and AI involvement, default All (no param)
+  const kind = params.get('kind')
+  const ai = params.get('ai')
 
   // Stars (migration 038): starred tools sort first and the Starred chip
   // filters to them. Both use the settled stars (as they were when this
@@ -54,9 +65,11 @@ export function ToolList() {
   const filtered = useMemo(() => {
     let list = tools
     if (dept) list = list.filter((t) => t.department_id === dept.id)
-    if (tier) list = list.filter((t) => t.tier === tier)
+    if (tier) list = list.filter((t) => tierMatches(t, tier))
     if (host) list = list.filter((t) => (t.host_app ?? 'unknown') === host)
     if (status) list = list.filter((t) => t.status === status)
+    if (kind) list = list.filter((t) => t.kind === kind)
+    if (ai) list = list.filter((t) => t.ai_involvement === ai)
     if (starredOnly) list = list.filter((t) => settled.tools.has(t.id))
     if (q) {
       list = list.filter((t) =>
@@ -69,7 +82,10 @@ export function ToolList() {
     const sorted = [...list]
     switch (sort) {
       case 'tier':
-        sorted.sort((a, b) => TIER_RANK[a.tier] - TIER_RANK[b.tier] || a.name.localeCompare(b.name))
+        sorted.sort((a, b) => tierRank(a) - tierRank(b) || a.name.localeCompare(b.name))
+        break
+      case 'kind':
+        sorted.sort((a, b) => KIND_RANK[a.kind] - KIND_RANK[b.kind] || a.name.localeCompare(b.name))
         break
       case 'host':
         sorted.sort((a, b) => hostAppLabel(a.host_app).localeCompare(hostAppLabel(b.host_app)) || a.name.localeCompare(b.name))
@@ -86,16 +102,25 @@ export function ToolList() {
     // Starred first, the chosen order kept within each half (stable sort)
     sorted.sort((a, b) => Number(settled.tools.has(b.id)) - Number(settled.tools.has(a.id)))
     return sorted
-  }, [tools, dept, tier, host, status, q, sort, deptById, starredOnly, settled])
+  }, [tools, dept, tier, host, status, kind, ai, q, sort, deptById, starredOnly, settled])
 
   // Live count for the chip, within the department / lens being viewed
   const starredHere = useMemo(() => {
     let list = tools
     if (dept) list = list.filter((t) => t.department_id === dept.id)
-    if (tier) list = list.filter((t) => t.tier === tier)
+    if (tier) list = list.filter((t) => tierMatches(t, tier))
     if (host) list = list.filter((t) => (t.host_app ?? 'unknown') === host)
     return list.filter((t) => interest.live.tools.has(t.id)).length
   }, [tools, dept, tier, host, interest.live])
+
+  // Chip counts: within the department / lens, ignoring the chip's own filter
+  const chipBase = useMemo(() => {
+    let list = tools
+    if (dept) list = list.filter((t) => t.department_id === dept.id)
+    if (tier) list = list.filter((t) => tierMatches(t, tier))
+    if (host) list = list.filter((t) => (t.host_app ?? 'unknown') === host)
+    return list
+  }, [tools, dept, tier, host])
 
   // The Listen Queue's mini player is `fixed bottom-0 z-40` (MiniPlayer.tsx)
   // and shows whenever there's a current item or a "queue finished" notice.
@@ -137,12 +162,14 @@ export function ToolList() {
   const title = dept
     ? dept.name
     : tier
-      ? PP_TIER_BY_VALUE[tier as PpTool['tier']]?.label ?? 'Tools'
+      ? tier === 'none'
+        ? NOT_TIERED.label
+        : PP_TIER_BY_VALUE[tier as NonNullable<PpTool['tier']>]?.label ?? 'Tools'
       : host
         ? hostAppLabel(host === 'unknown' ? null : host)
         : 'All tools'
 
-  const activeFilters = [tier && 'tier', host && 'host', status && 'status', q && 'q', starredOnly && 'starred'].filter(Boolean).length
+  const activeFilters = [tier && 'tier', host && 'host', status && 'status', kind && 'kind', ai && 'ai', q && 'q', starredOnly && 'starred'].filter(Boolean).length
 
   return (
     <div className={playerVisible || selected.length > 0 ? 'pb-32' : ''}>
@@ -150,7 +177,7 @@ export function ToolList() {
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-1">
         <h1 className="font-display text-2xl text-ink-300">{title}</h1>
         <span className="text-sm text-ink-50 tabular-nums">
-          {filtered.length} {filtered.length === 1 ? 'tool' : 'tools'}
+          {countLabel(filtered)}
           {filtered.length !== tools.length && ` of ${tools.length}`}
         </span>
         {dept && (
@@ -195,7 +222,10 @@ export function ToolList() {
           label="Tier"
           value={tier ?? ''}
           onChange={(v) => setParam('tier', v || null)}
-          options={PP_TIERS.map((t) => ({ value: t.value, label: t.short }))}
+          options={[
+            ...PP_TIERS.map((t) => ({ value: t.value as string, label: t.short })),
+            ...(tools.some((t) => !t.tier) ? [{ value: 'none', label: NOT_TIERED.short }] : []),
+          ]}
         />
         <FilterSelect
           label="Host"
@@ -220,12 +250,30 @@ export function ToolList() {
         {activeFilters > 0 && (
           <button
             type="button"
-            onClick={() => router.push(listHref(params, { tier: null, host: null, status: null, q: null, starred: null }))}
+            onClick={() => router.push(listHref(params, { tier: null, host: null, status: null, kind: null, ai: null, q: null, starred: null }))}
             className="text-xs text-ink-100 hover:text-press-accent underline-offset-2 hover:underline"
           >
             Clear filters
           </button>
         )}
+      </div>
+
+      {/* Kind and AI involvement chips (migration 039); All = no filter */}
+      <div className="flex flex-col gap-1 mb-4 -mt-1">
+        <ChipRow
+          label="Kind"
+          value={kind}
+          onChange={(v) => setParam('kind', v)}
+          options={PP_KINDS.map((k) => ({ value: k.value, label: k.label, count: chipBase.filter((t) => t.kind === k.value && (!ai || t.ai_involvement === ai)).length }))}
+          total={chipBase.filter((t) => !ai || t.ai_involvement === ai).length}
+        />
+        <ChipRow
+          label="AI"
+          value={ai}
+          onChange={(v) => setParam('ai', v)}
+          options={PP_AI_INVOLVEMENTS.map((a) => ({ value: a.value, label: a.label, count: chipBase.filter((t) => t.ai_involvement === a.value && (!kind || t.kind === kind)).length }))}
+          total={chipBase.filter((t) => !kind || t.kind === kind).length}
+        />
       </div>
 
       {/* Rows */}
@@ -265,7 +313,8 @@ export function ToolList() {
                     >
                       {tool.name}
                     </Link>
-                    <TierBadge tier={tool.tier} />
+                    {tool.tier && <TierBadge tier={tool.tier} />}
+                    <KindLabels kind={tool.kind} ai={tool.ai_involvement} />
                     <HostChip host={tool.host_app} />
                     <StatusBadge status={tool.status} />
                     {!dept && (
@@ -343,6 +392,45 @@ export function ToolList() {
           onClose={() => setComparing(false)}
         />
       )}
+    </div>
+  )
+}
+
+// One row of filter chips. "All" clears the param. Each chip's hit area is
+// 44px tall (h-11 with negative margin, like the Starred chip); options with
+// no entries are hidden unless selected, so a phone row stays short.
+function ChipRow({
+  label,
+  value,
+  onChange,
+  options,
+  total,
+}: {
+  label: string
+  value: string | null
+  onChange: (v: string | null) => void
+  options: { value: string; label: string; count: number }[]
+  total: number
+}) {
+  const shown = options.filter((o) => o.count > 0 || o.value === value)
+  const chip = (key: string, text: string, count: number, active: boolean, next: string | null) => (
+    <button
+      key={key}
+      type="button"
+      aria-pressed={active}
+      onClick={() => onChange(next)}
+      className={['h-11 -my-1.5 px-0.5 inline-flex items-center text-xs transition-colors', active ? 'text-press-accent font-medium' : 'text-ink-100 hover:text-press-accent'].join(' ')}
+    >
+      <span className={['inline-flex items-center gap-1 rounded-full border px-2 py-1 whitespace-nowrap', active ? 'border-press-accent bg-press-accent/10' : 'border-cream-300 bg-cream-50'].join(' ')}>
+        {text} <span className="tabular-nums text-ink-50">{count}</span>
+      </span>
+    </button>
+  )
+  return (
+    <div role="group" aria-label={`Filter by ${label.toLowerCase()}`} className="flex flex-wrap items-center gap-x-1">
+      <span className="text-xs text-ink-50 w-9 flex-shrink-0">{label}</span>
+      {chip('all', 'All', total, !value, null)}
+      {shown.map((o) => chip(o.value, o.label, o.count, value === o.value, value === o.value ? null : o.value))}
     </div>
   )
 }
