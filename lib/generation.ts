@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { calculateCost } from '@/lib/cost'
 import { logUsage } from '@/lib/usage'
 import { enqueue } from '@/lib/queue'
+import { applyCoverageWindow, briefingSearchCap } from '@/lib/coverage-window'
 import type { Channel, Source } from '@/lib/types'
 import { stripPreHeadingNarration } from '@/lib/press-sections'
 
@@ -514,6 +515,71 @@ async function logFailedUsage(opts: {
 }
 
 // ── Single-channel briefing ───────────────────────────────────────────────────
+// ── Briefing prompt (pure, so it can be compared across versions) ─────────
+
+export function buildBriefingPrompt(opts: {
+  channel: Channel
+  settings: Record<string, any> | null
+  previousBriefing: { content: string; created_at: string } | null
+  otherChannels: Array<{ name: string; description: string | null }> | null
+  now: Date
+  intervalDays: number
+}): { systemPrompt: string; userMessage: string } {
+  const { channel, settings, previousBriefing, now, intervalDays } = opts
+  const density = settings?.briefing_density ?? 'balanced'
+  const queries = channel.search_queries?.join(', ') || channel.name
+  let systemPrompt = channel.instructions?.trim()
+    ? applyCoverageWindow(channel.instructions, now, intervalDays)
+    : `You are a research assistant. Search the web and provide a concise, well-structured briefing about: ${channel.name}`
+
+  const densityInstruction = BRIEFING_DENSITY_INSTRUCTIONS[density]
+  if (densityInstruction) {
+    systemPrompt += `\n\n${densityInstruction}`
+  }
+
+  // Inject serendipity mode exclusions
+  if (channel.serendipity_mode) {
+    const otherChannels = opts.otherChannels
+    if (otherChannels && otherChannels.length > 0) {
+      const exclusionList = otherChannels
+        .map((c: { name: string; description: string | null }) =>
+          `- ${c.name}${c.description ? `: ${c.description}` : ''}`)
+        .join('\n')
+      systemPrompt +=
+        `\n\nSERENDIPITY MODE — This briefing must NOT overlap with the topics covered by the user's other channels listed below. ` +
+        `Do not cover these subjects — they are already handled elsewhere. ` +
+        `Instead, actively seek out surprising, unexpected, or serendipitous content that the user would not encounter through their regular channels.\n\n` +
+        `EXCLUDED TOPICS (covered by other channels):\n${exclusionList}`
+    }
+  }
+
+  // Inject watchlist terms
+  if (settings?.watchlist_enabled && settings?.watchlist_terms?.length > 0) {
+    const terms = settings.watchlist_terms.join(', ')
+    systemPrompt += `\n\nAlways surface any relevant information about these watchlist items: ${terms}`
+  }
+
+  // Build user message — include previous briefing context when available
+  let previousContext = ''
+  if (previousBriefing?.content) {
+    const prevDate = new Date(previousBriefing.created_at).toDateString()
+    const truncated = previousBriefing.content.slice(0, 5000)
+    const ellipsis = previousBriefing.content.length > 5000 ? '\n\n[…truncated…]' : ''
+    previousContext =
+      `\n\n---\nPREVIOUS BRIEFING (${prevDate}):\n${truncated}${ellipsis}\n---\n\n` +
+      `Where relevant, note what has changed, developed further, or dropped off since the previous briefing above.`
+  }
+
+  const userMessage =
+    `Search queries to use: ${queries}\n\n` +
+    `Please search the web for the latest information and produce a comprehensive briefing as well-formatted Markdown.\n` +
+    `Include a short "## Key Takeaways" section at the top, then detailed sections below.\n` +
+    `Today's date: ${now.toDateString()}` +
+    previousContext
+
+  return { systemPrompt, userMessage }
+}
+
 export async function generateChannelBriefing(opts: {
   channel: Channel
   profileId: string
@@ -525,7 +591,7 @@ export async function generateChannelBriefing(opts: {
 
   return withRateLimitRetry(async () => {
     // ── Fetch previous briefing, app settings, and (if serendipity) other channels ──
-    const [prevResult, settingsResult, otherChannelsResult] = await Promise.all([
+    const [prevResult, settingsResult, otherChannelsResult, channelLimitsResult] = await Promise.all([
       supabase
         .from('briefings')
         .select('content, created_at')
@@ -541,68 +607,34 @@ export async function generateChannelBriefing(opts: {
             .neq('id', channelId)
             .order('position', { ascending: true })
         : Promise.resolve({ data: null }),
+      // A failed read (e.g. before migration 040) falls back to the defaults.
+      supabase.from('channels').select('max_searches, schedule_interval_days').eq('id', channelId).maybeSingle(),
     ])
 
     const previousBriefing = prevResult.data
     const settings = settingsResult.data
     const model = resolveModel(settings?.model)
-    const density = settings?.briefing_density ?? 'balanced'
 
-    const queries = channel.search_queries?.join(', ') || channel.name
-    let systemPrompt = channel.instructions?.trim()
-      ? channel.instructions
-      : `You are a research assistant. Search the web and provide a concise, well-structured briefing about: ${channel.name}`
+    // Per-channel search cap and interval come from the database, never from
+    // the channel object a client posted (migration 040: null = default 6).
+    const dbChannel = channelLimitsResult.data as { max_searches?: number | null; schedule_interval_days?: number | null } | null
+    const maxSearches = briefingSearchCap(dbChannel?.max_searches)
+    const intervalDays = dbChannel?.schedule_interval_days ?? channel.schedule_interval_days ?? settings?.schedule_interval_days ?? 1
 
-    const densityInstruction = BRIEFING_DENSITY_INSTRUCTIONS[density]
-    if (densityInstruction) {
-      systemPrompt += `\n\n${densityInstruction}`
-    }
-
-    // Inject serendipity mode exclusions
-    if (channel.serendipity_mode) {
-      const otherChannels = otherChannelsResult.data
-      if (otherChannels && otherChannels.length > 0) {
-        const exclusionList = otherChannels
-          .map((c: { name: string; description: string | null }) =>
-            `- ${c.name}${c.description ? `: ${c.description}` : ''}`)
-          .join('\n')
-        systemPrompt +=
-          `\n\nSERENDIPITY MODE — This briefing must NOT overlap with the topics covered by the user's other channels listed below. ` +
-          `Do not cover these subjects — they are already handled elsewhere. ` +
-          `Instead, actively seek out surprising, unexpected, or serendipitous content that the user would not encounter through their regular channels.\n\n` +
-          `EXCLUDED TOPICS (covered by other channels):\n${exclusionList}`
-      }
-    }
-
-    // Inject watchlist terms
-    if (settings?.watchlist_enabled && settings?.watchlist_terms?.length > 0) {
-      const terms = settings.watchlist_terms.join(', ')
-      systemPrompt += `\n\nAlways surface any relevant information about these watchlist items: ${terms}`
-    }
-
-    // Build user message — include previous briefing context when available
-    let previousContext = ''
-    if (previousBriefing?.content) {
-      const prevDate = new Date(previousBriefing.created_at).toDateString()
-      const truncated = previousBriefing.content.slice(0, 5000)
-      const ellipsis = previousBriefing.content.length > 5000 ? '\n\n[…truncated…]' : ''
-      previousContext =
-        `\n\n---\nPREVIOUS BRIEFING (${prevDate}):\n${truncated}${ellipsis}\n---\n\n` +
-        `Where relevant, note what has changed, developed further, or dropped off since the previous briefing above.`
-    }
-
-    const userMessage =
-      `Search queries to use: ${queries}\n\n` +
-      `Please search the web for the latest information and produce a comprehensive briefing as well-formatted Markdown.\n` +
-      `Include a short "## Key Takeaways" section at the top, then detailed sections below.\n` +
-      `Today's date: ${new Date().toDateString()}` +
-      previousContext
+    const { systemPrompt, userMessage } = buildBriefingPrompt({
+      channel,
+      settings,
+      previousBriefing,
+      otherChannels: otherChannelsResult.data,
+      now: new Date(),
+      intervalDays,
+    })
 
     const { content, sources, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, webSearchCount } =
       await runWebSearchStream({
         model,
         maxTokens: BRIEFING_MAX_TOKENS,
-        maxSearches: 6,
+        maxSearches,
         effort: BRIEFING_EFFORT,
         system: systemPrompt,
         userMessage,

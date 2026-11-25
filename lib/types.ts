@@ -31,6 +31,7 @@ export interface Channel {
   schedule_interval_days?: number | null   // NULL = inherit profile setting (migration 017)
   schedule_output?: ChannelScheduleOutput | null // NULL = inherit profile setting
   recap_group?: RecapGroup                       // default 'pulse' (migration 033)
+  max_searches?: number | null                   // web search cap per briefing; NULL = default 6 (migration 040)
   created_at: string
   updated_at: string
 }

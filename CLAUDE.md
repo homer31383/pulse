@@ -34,7 +34,7 @@ npm install
 npm run dev
 ```
 
-Run all migrations in `supabase/migrations/` in order (001 through 039) in the Supabase SQL editor. Optionally run `supabase/seed.sql` for sample channels (run it once only — the channel insert has no conflict target) and `supabase/seed_post_pulse.sql` + `supabase/post_pulse_pipeline_stages_seed_update.sql` for the Post Pulse reference dataset (both idempotent, re-run to refresh).
+Run all migrations in `supabase/migrations/` in order (001 through 040) in the Supabase SQL editor. Optionally run `supabase/seed.sql` for sample channels (run it once only — the channel insert has no conflict target) and `supabase/seed_post_pulse.sql` + `supabase/post_pulse_pipeline_stages_seed_update.sql` for the Post Pulse reference dataset (both idempotent, re-run to refresh).
 
 ## File Structure
 
@@ -167,7 +167,8 @@ lib/
   types.ts      — All TypeScript types and interfaces
   supabase.ts   : Server-only Supabase client (`sb_secret_` key; keyAwareFetch sends it as `apikey`, never as Bearer)
   anthropic.ts  — Anthropic client + DEFAULT_MODEL constant
-  generation.ts — Shared briefing/digest generation (prompts, web-search stream, persist, usage) used by SSE routes AND the cron route
+  generation.ts — Shared briefing/digest generation (prompts, web-search stream, persist, usage) used by SSE routes AND the cron route; buildBriefingPrompt() is the pure prompt builder
+  coverage-window.ts : Pure helpers (no clients): briefingSearchCap() (channels.max_searches, migration 040) and the {{COVERAGE_WINDOW}} placeholder; tests in coverage-window.test.ts
   cost.ts       — Token cost calculation and formatting
   press-sections.ts — Shared markdown parser: headline + ## sections + aside detection (renderer and speech)
   artwork-links.ts  — Client-safe: "Image" search links on artwork headings (channel list, URL template, heading parser)
@@ -242,7 +243,7 @@ Instead of per-channel briefings, generates a single unified digest across all s
 ## Claude API Integration
 
 - **Default model**: `claude-sonnet-5` (configurable per profile in settings; premium option `claude-opus-4-8`). Legacy IDs (`claude-sonnet-4-6`, `claude-opus-4-6`) in old settings rows are mapped to their successors by `resolveModel()` in `lib/anthropic.ts`
-- **Web search (briefings/digests)**: `web_search_20260209` tool (GA, no beta header) with dynamic filtering; `max_uses` caps the search loop at 6 per briefing / 10 per digest — each search iteration re-processes all prior results, so cost grows superlinearly with search count. Discuss/other routes still use the older `web_search_20250305` + beta header
+- **Web search (briefings/digests)**: `web_search_20260209` tool (GA, no beta header) with dynamic filtering; `max_uses` caps the search loop at 6 per briefing (or the channel's `max_searches`, migration 040) / 10 per digest — each search iteration re-processes all prior results, so cost grows superlinearly with search count. Discuss/other routes still use the older `web_search_20250305` + beta header
 - **Search budget prompt note is load-bearing**: the system prompt tells the model its `max_uses` limit. Without it, Sonnet 5 treats the "server tool use limit exceeded" error on search N+1 as an outage, retries with sandbox sleeps (minutes of silent wall-clock), and writes an apology instead of the briefing
 - **Generation timeouts** (`runWebSearchStream`): 300s overall deadline + 120s stream-idle watchdog via AbortController — a stalled/grinding request throws "Generation timed out" instead of hanging until a platform limit
 - **Effort** (`output_config.effort`; `BRIEFING_EFFORT` / `DIGEST_EFFORT` in `lib/generation.ts`, default `'medium'`, overridable per deployment with env `PULSE_BRIEFING_EFFORT` / `PULSE_DIGEST_EFFORT`): the lever on adaptive-thinking spend. At the API default (`high`), every channel spent 5k–10k output tokens per briefing beyond the ~1.5k–4k tokens of article, and a Sept 2026 Classic Movies run burned ~10.9k of its 12k writing-pass cap on thinking before truncating. Single-sample A/B on Classic Movies (Sept 3 2026): `low` 6,994 output tokens, `medium` 14,690, historical `high` 5.3k–13.8k — run-to-run variance in the search/filter loop swamps one sample, so judge a level on a week of cron runs via the `[generation] done:` log line (splits output into article / tool code / remainder ≈ thinking) and `usage_logs`. Even at `medium` the writing pass thinks >2.5k tokens before the first article character
@@ -363,6 +364,50 @@ A second search on `/channels/[id]/history`, below the as-you-type title and exc
 - **Read only**: no read marks, queue, playback, `post_pulse_last_seen` / `post_pulse_seen_at`, model or TTS. Verified with the DB fingerprint (read_at, listen_queue, settings incl. voice, usage_logs count) before and after.
 - **Timing** (local dev against Supabase, Nov 9 2026): Science and space, the biggest channel (20 briefings, ~243k chars), "the" with 20 hits, 0.5 to 0.85 s server time, mostly the two Supabase round trips; matching itself is a few ms.
 - **Verified in Chrome, Nov 9 2026**: "retime" in The Foundry Nuke → 1 of 19 entries, 4 matches; whole word → 3 ("retimes" excluded). "usd" in Autodesk Maya → 15 entries (13 digests, all story scope, + 2 briefings); the 4 digests left out mention USD only outside the Maya story. E & RWA Outlook digests isolate their story. `us_` and `u%d` → 0; "40%" in Science and space → 1. Empty and one-character queries refused with the message. The "whole digest" label checked with a patched response (no real row needs it). Back arrow restored "13 of 17 digests mention "usd"", the Digests chip, 13 rows and the scroll. Krista's channel under Chris's cookie and the reverse → 404. 360/390px (iframes): no horizontal scroll, controls 44px, Back/Forward and Export clear of the title.
+
+## Ads Worth Watching and Per-Channel Coverage Windows (migration 040)
+
+A Chris-only Pulse channel, "Ads Worth Watching" (id a031b119-28ce-4955-8a2f-374836c114b9, ungrouped, `recap_group` pulse, `schedule_interval_days` 14, output briefing, `max_searches` 10, appended to Chris's `schedule_channel_ids`). Every two weeks: a VFX Spotlight (3 to 4 spots), Broader Scope (3 to 5 picks labelled Craft, Buzz or Results), and a Closing Note. Its prompt lives in the channel's instructions (edit on its config page).
+- **`channels.max_searches`** (migration 040, nullable integer 1 to 20, applied by hand Nov 25 2026): the briefing's web search cap; null means the default 6 (`briefingSearchCap()` in `lib/coverage-window.ts`). `generateChannelBriefing` reads it, and the interval, from the database, never from the channel object a client posts to `/api/briefings/[channelId]`. Not editable in the UI. Only this channel sets it.
+- **`{{COVERAGE_WINDOW}}`** in a channel's instructions is replaced at generation time (`applyCoverageWindow()`) with: "Coverage window: <start> to <end> (N days, Eastern time). Only cover work released, launched, awarded or reported in this window.", "Never repeat a pick from the previous briefing.", and in the last 7 days of a month a line asking the closing note to name the month's strongest picks so far. The window is the channel's own interval (its `schedule_interval_days`, else the profile's) in Eastern calendar days ending today, so runs that far apart tile with no overlap. Instructions without the token are untouched: a byte comparison of all 21 existing channels (both profiles) against HEAD's prompt code gave identical system prompts, user messages and search caps. Tests: `npx tsx --test lib/coverage-window.test.ts` (needs no env).
+- **Schedule anchor**: both Nov 25 2026 test briefings were deleted (with their listen queue rows), so the channel has no briefing and no anchor. The cron treats "no anchor" as due now, so the first scheduled run is the 01:00 ET hourly run on Nov 26 2026 (Chris's slot is 01:30), covering Nov 13 to 26; it then anchors the 14-day cycle.
+- **Cost**: $0.47 to $0.87 per run, not the $0.40 to $0.60 estimated before the first run. Test run 1 logged $0.870 (10 searches, 16,997 output tokens, 1.02M cache-read tokens, 222 s); test run 2 logged $0.473 (10 searches, 11,968 output tokens, 55k cache-read tokens, 153 s). Cache reads, i.e. how much each search re-reads, drive the spread. The Settings estimator shows about $0.435/wk from the history. Judge the cap of 10 on a few scheduled runs.
+- **Test run findings (Nov 25 2026, both for Nov 12 to 25, both deleted)**. Run 1, first prompt: structure, Watch links (all from its sources), narration stripping (527 chars) and dashes were right, but it had 6 Broader Scope picks (limit 5), used Nov 4 to 10 results data, ran five quotes of 16 to 20 words and quoted one source twice, and got awards wrong against the shots Awards EMEA 2026 winners page: Chanel's Gold was in Direction, not Animation; Waitrose won Bronze VFX but was called shortlisted; McDonald's shortlist entries were tied to GTA VI, which the page never says. Run 2, after hard counts, quote, award and window rules: counts right (3 and 4), no award claims, no marked quotes, but Disney's film (Nov 9) and Amazon's ad (Nov 9, data week Nov 11 to 17) were outside the window, McDonald's VFX was credited to Company 3 LA (Reel Chicago credits Company 3 for colour and The VANITY for VFX), sentences were copied without quotation marks (the Disney synopsis word for word from Ads of the World and ABC7, Coca-Cola's nearly so from Content Grip), no Watch line had a URL, and one en dash came through in a copied title. The second round of rules below answers those.
+- **Checking a run is limited by blocked trade sites**: Ad Age, LBB, CG Channel and Creative Review return 403 to automated fetches (Adweek's EDO figures are paywalled), so claims sourced only there could not be verified. Use other copies of the same story the run cited (Reel Chicago, Muse, DesignRush, Ads of the World, ABC7, FirstShowing, Content Grip and shots.net were readable).
+- **Next step**: the first scheduled run (Nov 26 2026) is the real test. Review it against the same checks: pick counts, quotes per source and length, no unquoted copying, every award and category claim against its source page, each pick's own release date inside the window, credits as the source states them, every Watch line a URL from the sources, no dashes, no narration before the headline.
+- **The prompt** (the channel's `instructions`, as of Nov 25 2026):
+
+```
+You are a sharp, well-connected advertising critic with a VFX supervisor's eye, writing a fortnightly briefing called Ads Worth Watching. Each edition covers only the two weeks in the coverage window below.
+
+{{COVERAGE_WINDOW}}
+
+Every edition has two sections and a closing note.
+
+VFX Spotlight: pick exactly 3 or 4 standout commercials from the window where visual effects are central to the idea: CG, creatures, compositing, de-aging, virtual production, or in-camera tricks. For each spot give the brand, the agency, the production company, the VFX studio and the director when your sources name them (write "not credited in sources" rather than guessing), what the VFX work actually was, and why it stands out. End each pick with a "Watch:" line linking the official video or a studio or agency case study.
+
+Broader Scope: pick exactly 3 to 5 of the most successful or talked-about pieces of advertising from the window: award wins and shortlists, effectiveness results, viral or widely discussed campaigns, notable tentpoles. For each give the brand, the agency, the idea in a sentence or two, and why it landed. Start each pick with one bold label saying why it was chosen: **Craft**, **Buzz**, or **Results**.
+
+Closing Note: two or three sentences on how the VFX picks compare with the wider field.
+
+Rules:
+- Hard limits: VFX Spotlight has exactly 3 or 4 picks and Broader Scope has exactly 3 to 5 picks. If you have more candidates, drop the weakest. Never exceed these counts.
+- Never invent metrics, award results, shortlists, view counts or sales figures. State a number or an award only when a source in your search results states it. Two weeks is often too soon for award or effectiveness data; when it is not available yet, say so plainly, for example "No award or results data yet for this window."
+- Links: every "Watch:" line must contain a URL that appeared in your search results: the official video, or a studio or agency case study. Never guess or build a URL. If none appeared, write "Watch: no official link found."
+- Do not embed video and do not try to fetch or watch video. Work from written sources.
+- Quotes: never copy a source's sentences without quotation marks. Write in your own words. At most one quote per source in the entire briefing, strictly under 15 words, in quotation marks with attribution. Never quote the same source twice. When unsure, paraphrase.
+- Awards and shortlists: state an award, category or shortlist only when a source in your search results states it, and give the category exactly as the source words it. If a result is not on a page you retrieved, leave it out entirely. Never infer a win, shortlist or campaign tie-in (for example a game or franchise) that the source does not state.
+- Window: any award, results or effectiveness data must be dated inside the coverage window. Data from outside it must not be used; write "No award or results data yet for this window." instead.
+- Release dates: a pick's own release or launch date must fall inside the coverage window, not just the news coverage of it. If you cannot confirm the date from a source, leave the pick out.
+- Credits: state a credit (agency, production company, VFX studio, director) only when a source in your results names it. Otherwise write "not credited in sources". Never attribute a role to a company based on a different role: a colour grade credit is not a VFX credit.
+- When a key page could not be read in full, say less about it. Do not fill gaps from memory.
+- Favour trade and awards sources: Ads of the Brand, Campaign, Creative Review, Shots, Lürzer's Archive, Cannes Lions, D&AD, and studio and vendor pages, then reputable press.
+- If the window is thin, pick fewer items rather than padding or reaching outside the window.
+
+Tone: knowledgeable and direct, like a creative director who also understands how the shot was made. Specific about craft, honest about hype. Readable in 6 to 8 minutes.
+
+Format: open with a # headline that names the edition and the window, then the short "## Key Takeaways" section, then "## VFX Spotlight", "## Broader Scope" and "## Closing Note". Give each pick a ### sub-heading in the form "Brand: Title". Do not use em dashes or en dashes anywhere, including inside titles you copy: use plain hyphens or colons instead.
+```
 
 ## Post-Pulse Entry Kinds and AI Involvement (migration 039)
 
